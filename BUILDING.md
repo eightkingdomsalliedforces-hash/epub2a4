@@ -1,26 +1,53 @@
 # 建置 Android APK
 
-倉庫根目錄的 `android-source.zip` 包含完整 Android Studio 專案。GitHub Actions 會自動解壓、執行 Python 測試、Gradle 單元測試、建立 arm64-v8a Debug APK，並檢查 16 KB APK 對齊。
+## 建議環境
 
-## GitHub Actions
+- Android Studio，含 Android SDK 36
+- JDK 17
+- Python 3.13（64 位元）
+- Gradle 8.13
 
-1. 開啟倉庫的 **Actions**。
-2. 選擇 **Android debug APK**。
-3. 按 **Run workflow**。
-4. 工作完成後下載 `EPUB-Word-Android-debug` artifact。
+## Android Studio
 
-推送新的 `android-source.zip` 或修改工作流程也會自動觸發建置。
+1. 以 Android Studio 開啟專案根目錄。
+2. 安裝缺少的 Android SDK 36／Build Tools。
+3. 確認電腦可執行 `python3.13`。若名稱不同，在使用者的 `~/.gradle/gradle.properties` 加入：
 
-## 本機建置
+   ```properties
+   chaquopyBuildPython=/完整路徑/python3.13
+   ```
+
+4. 等待 Gradle Sync 完成。
+5. 選擇 `Build > Build APK(s)`。
+6. Debug APK 位於 `app/build/outputs/apk/debug/app-debug.apk`。
+
+## 命令列
+
+專案不依賴已提交的 Gradle Wrapper JAR；有 Gradle 8.13 時可執行：
 
 ```bash
-unzip android-source.zip
-cd EPUB_Word_Android_Offline_v0.1.0
 gradle --no-daemon testDebugUnitTest assembleDebug
 ```
 
-需要 JDK 17、Android SDK 36、Gradle 8.13、Python 3.13。輸出 APK 位於：
+也可以把專案推送到 GitHub，手動執行 `.github/workflows/android.yml`。工作流程會建立並上傳 `EPUB-Word-Android-debug` artifact。
 
-```text
-app/build/outputs/apk/debug/app-debug.apk
+## 本機驗證
+
+```bash
+python3.13 -m pip install pytest beautifulsoup4==4.13.4 lxml==5.3.0 Pillow==11.0.0 python-docx==1.1.2
+PYTHONPATH=app/src/main/python python3.13 -m pytest python-tests -q
+PYTHONPATH=app/src/main/python python3.13 -m compileall -q app/src/main/python
+python3.13 scripts/verify_project.py
 ```
+
+## APK 驗證
+
+產生 APK 後至少執行：
+
+```bash
+apkanalyzer manifest permissions app-debug.apk
+apkanalyzer files list app-debug.apk | grep '^lib/'
+zipalign -c -P 16 -v 4 app-debug.apk
+```
+
+預期沒有 `android.permission.INTERNET` 或全域儲存權限，且原生 ABI 只有 `arm64-v8a`。仍需在 Android 15／16 的 16 KB ARM64 環境做啟動與實際轉換驗證。

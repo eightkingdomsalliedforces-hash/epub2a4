@@ -1,0 +1,17 @@
+# 重建狀態
+
+## 已驗證
+
+- Python 轉換核心與 Android Bridge：完整測試套件通過。
+- DOCX 測試文件可透過 Bridge 重新排版為 A5 DOCX。
+- EPUB 測試文件可透過 Bridge 轉換為 4×6 DOCX，進度回呼與圖片統計正常。
+- Android Python 原始碼可由 Python 編譯器解析。
+- Kotlin 的資料模型 smoke test 通過。
+- 全部 Kotlin 應用程式原始碼已用 Android／Compose／Chaquopy API stub 做型別編譯檢查。
+- 專案只設定 `arm64-v8a`，且 Manifest 不要求網路或傳統全域儲存權限。
+
+## 尚待外部 Android 建置環境驗證
+
+目前執行環境沒有 Android SDK、Gradle 發行版或 Android 模擬器，因此尚未在此環境產生 APK，也尚未聲稱完成實機驗證。
+
+專案附有 GitHub Actions 工作流程。將原始碼推送到 GitHub 後，工作流程會安裝 Android SDK 36、執行測試、建立 Debug APK，並用 `zipalign -P 16` 檢查 16 KB 對齊。

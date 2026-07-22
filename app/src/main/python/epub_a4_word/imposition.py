@@ -42,6 +42,10 @@ def _build_signature16(page_count: int) -> ImpositionPlan:
     padded = signature_count * 16
     sides: list[SideSlots] = []
 
+    # Each signature contains four A5 folios. Two folio fronts share one A4
+    # side, their backs share the reverse side. After duplex printing on the
+    # long edge and cutting horizontally, the four folios can be folded and
+    # nested in the order whose cover pages are 1, 3, 5 and 7.
     relative_sides = (
         (16, 1, 14, 3),
         (2, 15, 4, 13),
