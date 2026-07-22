@@ -5,7 +5,12 @@ on:
   push:
     branches: [main]
     paths:
-      - "android-source.zip"
+      - "app/**"
+      - "python-tests/**"
+      - "scripts/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
       - ".github/workflows/android.yml"
 
 permissions:
@@ -18,16 +23,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Extract Android source
-        run: |
-          rm -rf project
-          mkdir project
-          unzip -q android-source.zip -d project
-          SOURCE_DIR=$(find project -mindepth 1 -maxdepth 1 -type d | head -n 1)
-          test -n "$SOURCE_DIR"
-          cp -a "$SOURCE_DIR"/. project-root/
-        shell: bash
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -47,7 +42,6 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
 
       - name: Verify Python core
-        working-directory: project-root
         run: |
           python -m pip install --upgrade pip
           python -m pip install pytest beautifulsoup4==4.13.4 lxml==5.3.0 Pillow==11.0.0 python-docx==1.1.2
@@ -61,13 +55,11 @@ jobs:
           gradle-version: "8.13"
 
       - name: Build tests and debug APK
-        working-directory: project-root
         env:
           CHAQUOPY_PYTHON: python3.13
         run: gradle --no-daemon testDebugUnitTest assembleDebug --stacktrace
 
       - name: Verify 16 KB APK alignment
-        working-directory: project-root
         run: |
           ZIPALIGN=$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name zipalign | sort -V | tail -1)
           test -n "$ZIPALIGN"
@@ -77,5 +69,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: EPUB-Word-Android-debug
-          path: project-root/app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
