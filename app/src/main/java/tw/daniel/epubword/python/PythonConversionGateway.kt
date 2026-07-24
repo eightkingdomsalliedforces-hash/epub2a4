@@ -4,17 +4,35 @@ import android.content.Context
 import com.chaquo.python.PyException
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import tw.daniel.epubword.model.ConversionOptions
 import tw.daniel.epubword.model.ConversionResult
 import java.io.File
 import java.util.concurrent.CancellationException
+import java.util.concurrent.Executors
+import java.util.concurrent.ThreadFactory
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
-class PythonConversionGateway(context: Context) {
+class PythonConversionGateway(context: Context) : AutoCloseable {
     private val appContext = context.applicationContext
+    private val conversionDispatcher = Executors
+        .newSingleThreadExecutor(LargeStackThreadFactory())
+        .asCoroutineDispatcher()
 
-    fun convert(
+    suspend fun convert(
+        input: File,
+        output: File,
+        options: ConversionOptions,
+        cancellation: AtomicBoolean,
+        onProgress: (Int, String) -> Unit,
+    ): ConversionResult = withContext(conversionDispatcher) {
+        convertBlocking(input, output, options, cancellation, onProgress)
+    }
+
+    private fun convertBlocking(
         input: File,
         output: File,
         options: ConversionOptions,
@@ -43,6 +61,10 @@ class PythonConversionGateway(context: Context) {
             }
             throw ConversionFailure(classifyError(exception.message.orEmpty()), exception)
         }
+    }
+
+    override fun close() {
+        conversionDispatcher.close()
     }
 
     private fun parseResult(payload: String): ConversionResult {
@@ -97,6 +119,19 @@ class PythonConversionGateway(context: Context) {
         @Suppress("unused")
         fun isCancelled(): Boolean = cancellation.get()
     }
+}
+
+internal class LargeStackThreadFactory(
+    private val stackSizeBytes: Long = 8L * 1024L * 1024L,
+) : ThreadFactory {
+    private val sequence = AtomicInteger(1)
+
+    override fun newThread(runnable: Runnable): Thread = Thread(
+        null,
+        runnable,
+        "epub-word-python-${sequence.getAndIncrement()}",
+        stackSizeBytes,
+    )
 }
 
 class ConversionFailure(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
