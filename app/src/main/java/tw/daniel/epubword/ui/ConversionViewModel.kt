@@ -2,12 +2,11 @@ package tw.daniel.epubword.ui
 
 import android.app.Application
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import tw.daniel.epubword.data.DocumentRepository
 import tw.daniel.epubword.model.ConversionOptions
 import tw.daniel.epubword.model.ConversionResult
@@ -130,18 +129,16 @@ class ConversionViewModel(application: Application) : AndroidViewModel(applicati
                 pendingOutputName = null,
             )
             try {
-                val result = withContext(Dispatchers.IO) {
-                    gateway.convert(
-                        input = input.localFile,
-                        output = output,
-                        options = _uiState.value.options.normalizedFor(input.kind),
-                        cancellation = cancellation,
-                    ) { percent, message ->
-                        _uiState.value = _uiState.value.copy(
-                            progress = percent,
-                            statusMessage = message,
-                        )
-                    }
+                val result = gateway.convert(
+                    input = input.localFile,
+                    output = output,
+                    options = _uiState.value.options.normalizedFor(input.kind),
+                    cancellation = cancellation,
+                ) { percent, message ->
+                    _uiState.value = _uiState.value.copy(
+                        progress = percent,
+                        statusMessage = message,
+                    )
                 }
                 val name = repository.suggestedOutputName(input, _uiState.value.options.outputMode)
                 _uiState.value = _uiState.value.copy(
@@ -162,6 +159,7 @@ class ConversionViewModel(application: Application) : AndroidViewModel(applicati
                     pendingOutputName = null,
                 )
             } catch (failure: Throwable) {
+                Log.e(TAG, "Conversion failed", failure)
                 repository.delete(output)
                 pendingOutput = null
                 _uiState.value = _uiState.value.copy(
@@ -236,6 +234,11 @@ class ConversionViewModel(application: Application) : AndroidViewModel(applicati
         repository.delete(pendingOutput)
         repository.delete(stagedInput?.localFile)
         repository.clearWorkingFiles()
+        gateway.close()
         super.onCleared()
+    }
+
+    private companion object {
+        const val TAG = "EpubWordConversion"
     }
 }
