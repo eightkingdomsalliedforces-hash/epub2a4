@@ -34,9 +34,9 @@ gradle --no-daemon testDebugUnitTest assembleDebug
 ## 本機驗證
 
 ```bash
-python3.13 -m pip install pytest beautifulsoup4==4.13.4 lxml==5.3.0 Pillow==11.0.0 python-docx==1.1.2
-PYTHONPATH=app/src/main/python python3.13 -m pytest python-tests -q
-PYTHONPATH=app/src/main/python python3.13 -m compileall -q app/src/main/python
+python3.13 -m pip install -e '.[test]'
+PYTHONPATH=python/src:app/src/main/python python3.13 -m pytest python-tests -q
+PYTHONPATH=python/src:app/src/main/python python3.13 -m compileall -q python/src app/src/main/python
 python3.13 scripts/verify_project.py
 ```
 

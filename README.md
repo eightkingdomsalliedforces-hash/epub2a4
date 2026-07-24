@@ -46,3 +46,17 @@ DOCX 模式直接修改 Word 文件的頁面尺寸與可流動版面；原始 `w
 - SVG 若需要 CairoSVG 才能轉換，Android 第一版會列出警告並略過該 SVG；一般 JPEG、PNG、GIF、WebP 可使用 Pillow。
 - 浮動 Word 圖形、文字方塊與絕對定位物件在縮小紙張後可能需要人工微調。
 - 應用程式被系統終止後，不恢復正在執行的轉換。
+
+## Cross-platform cover core (Tasks 1–10)
+
+The canonical `epub_a4_word.cover` package now includes schema-v1 project JSON, EPUB/DOCX/PDF metadata inspection, spine and A4 geometry, deterministic templates, Pillow preview rendering, exact A4 PDF export, editable A4 DOCX export, a unified service API, Android JSON wrappers, and golden structural acceptance tooling through Task 10.
+
+Core QA commands:
+
+```bash
+PYTHONPATH=python/src:app/src/main/python python3.13 -m pytest python-tests -q
+python3.13 scripts/inspect_cover_exports.py PROJECT.json COVER.pdf COVER.docx
+python3.13 scripts/compare_cover_geometry.py LEFT.json RIGHT.json --tolerance-mm 0.05
+```
+
+Desktop UI and Android UI work are intentionally outside this completed core scope.

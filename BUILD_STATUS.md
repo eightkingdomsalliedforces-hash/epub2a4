@@ -15,3 +15,9 @@
 目前執行環境沒有 Android SDK、Gradle 發行版或 Android 模擬器，因此尚未在此環境產生 APK，也尚未聲稱完成實機驗證。
 
 專案附有 GitHub Actions 工作流程。將原始碼推送到 GitHub 後，工作流程會安裝 Android SDK 36、執行測試、建立 Debug APK，並用 `zipalign -P 16` 檢查 16 KB 對齊。
+
+## Cover core Task 10 status
+
+Tasks 1–10 of the shared cover core and export plan are implemented and covered by Python acceptance tests. The completed scope includes editable OOXML DOCX sections, unified service and Android JSON bridge APIs, golden PDF/DOCX structure checks, geometry comparison, and CoverProject schema-v1 documentation.
+
+Not started by this plan: desktop application/UI and Android UI integration. The existing Android conversion application constraints remain API 24–36, arm64-v8a only, offline, and without broad storage permissions.
