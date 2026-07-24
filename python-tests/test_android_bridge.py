@@ -25,7 +25,7 @@ def test_probe_lists_android_supported_modes():
     result = android_bridge.probe()
 
     assert result["bridge_version"] == "1.0"
-    assert result["python_core_version"] == "0.5.0"
+    assert result["python_core_version"] == "0.6.0"
     assert result["supported_inputs"] == ["epub", "docx"]
     assert result["supported_modes"]["docx"] == ["single_a5", "single_4x6"]
 
@@ -189,3 +189,47 @@ def test_real_epub_fixture_keeps_image_and_outputs_4x6(tmp_path: Path):
     assert result["source_format"] == "epub"
     assert result["image_count"] == 1
     assert result["mini_page_count"] >= 1
+
+
+def test_cover_bridge_wrappers_return_compact_json(monkeypatch, tmp_path: Path):
+    import android_bridge
+
+    monkeypatch.setattr(
+        android_bridge.cover_service,
+        "inspect_source",
+        lambda source_path: {"source_type": "epub", "title": "中文"},
+    )
+    monkeypatch.setattr(
+        android_bridge.cover_service,
+        "new_project",
+        lambda source_path, settings_json: '{"schema_version":1}',
+    )
+    monkeypatch.setattr(
+        android_bridge.cover_service,
+        "apply_template",
+        lambda project_json, template_id: '{"template":"minimal_text"}',
+    )
+    monkeypatch.setattr(
+        android_bridge.cover_service,
+        "render_preview",
+        lambda project_json, output_png, max_px=1600: {
+            "path": output_png,
+            "width_px": 800,
+            "height_px": 600,
+        },
+    )
+    monkeypatch.setattr(
+        android_bridge.cover_service,
+        "export_cover",
+        lambda project_json, pdf_path, docx_path, dpi=300: {
+            "pdf": {"path": pdf_path},
+            "docx": {"path": docx_path},
+            "dpi": dpi,
+        },
+    )
+
+    assert json.loads(android_bridge.cover_inspect_source_json("book.epub"))["title"] == "中文"
+    assert json.loads(android_bridge.cover_new_project_json("book.epub", "{}"))["schema_version"] == 1
+    assert json.loads(android_bridge.cover_apply_template_json("{}", "minimal_text"))["template"] == "minimal_text"
+    assert json.loads(android_bridge.cover_render_preview_json("{}", str(tmp_path / "p.png"), 900))["width_px"] == 800
+    assert json.loads(android_bridge.cover_export_json("{}", "a.pdf", "a.docx", 200))["dpi"] == 200

@@ -68,6 +68,11 @@ val configuredPython = providers.gradleProperty("chaquopyBuildPython").orNull
     ?: providers.environmentVariable("CHAQUOPY_PYTHON").orNull
 
 chaquopy {
+    sourceSets {
+        getByName("main") {
+            srcDir("../python/src")
+        }
+    }
     defaultConfig {
         version = "3.13"
         if (!configuredPython.isNullOrBlank()) {
@@ -78,6 +83,7 @@ chaquopy {
             install("lxml==5.3.0")
             install("Pillow==11.0.0")
             install("python-docx==1.1.2")
+            install("pypdf==6.14.2")
         }
     }
 }

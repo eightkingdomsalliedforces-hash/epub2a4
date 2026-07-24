@@ -13,3 +13,21 @@ def test_android_bridge_imports_canonical_core() -> None:
     result = android_bridge.probe()
     assert result["python_core_version"]
     assert result["bridge_version"] == "1.0"
+
+
+def test_python_package_version_matches_pyproject() -> None:
+    import tomllib
+
+    from epub_a4_word import __version__
+
+    root = Path(__file__).resolve().parents[1]
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    assert __version__ == project["project"]["version"]
+
+
+def test_chaquopy_uses_canonical_python_source_set() -> None:
+    root = Path(__file__).resolve().parents[1]
+    gradle = (root / "app/build.gradle.kts").read_text(encoding="utf-8")
+    chaquopy_block = gradle.split("chaquopy {", 1)[1]
+    assert 'sourceSets {' in chaquopy_block
+    assert 'srcDir("../python/src")' in chaquopy_block

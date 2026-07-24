@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "source_file": "body.epub",
+  "source_type": "epub",
+  "working_dir": ".",
+  "metadata": {
+    "title": "黃金範例書",
+    "author": "範例作者",
+    "description": "這是一份用於驗證 PDF 與可編輯 DOCX 結構的固定封底簡介。",
+    "isbn": "9780000000000",
+    "publisher": "範例出版社",
+    "language": "zh-TW",
+    "page_count_is_estimate": false,
+    "embedded_images": []
+  },
+  "trim_size": {
+    "width_mm": 148.0,
+    "height_mm": 210.0
+  },
+  "page_count": 160,
+  "paper_caliper_mm": 0.1,
+  "manual_spine_width_mm": null,
+  "bleed_mm": 3.0,
+  "overlap_mm": 5.0,
+  "image_mode": "full_spread",
+  "background": {},
+  "elements": [
+    {
+      "id": "golden-background",
+      "kind": "image",
+      "region": "spread",
+      "transform": {
+        "x_mm": 0.0,
+        "y_mm": 0.0,
+        "width_mm": 310.0,
+        "height_mm": 216.0,
+        "rotation_deg": 0.0
+      },
+      "z_index": -20,
+      "opacity": 1.0,
+      "content": {
+        "path": "golden-background.png",
+        "fit": "cover"
+      }
+    },
+    {
+      "id": "front-title",
+      "kind": "text",
+      "region": "front",
+      "transform": {
+        "x_mm": 162.0,
+        "y_mm": 28.0,
+        "width_mm": 140.0,
+        "height_mm": 48.0,
+        "rotation_deg": 0.0
+      },
+      "z_index": 10,
+      "opacity": 1.0,
+      "content": {
+        "text": "黃金範例書",
+        "font_family": "sans-serif",
+        "font_size_pt": 24.0,
+        "color": "#111111",
+        "align": "center",
+        "line_spacing": 1.15
+      }
+    },
+    {
+      "id": "front-author",
+      "kind": "text",
+      "region": "front",
+      "transform": {
+        "x_mm": 162.0,
+        "y_mm": 112.0,
+        "width_mm": 140.0,
+        "height_mm": 20.0,
+        "rotation_deg": 0.0
+      },
+      "z_index": 10,
+      "opacity": 1.0,
+      "content": {
+        "text": "範例作者",
+        "font_family": "sans-serif",
+        "font_size_pt": 12.0,
+        "color": "#111111",
+        "align": "center",
+        "line_spacing": 1.15
+      }
+    },
+    {
+      "id": "back-description",
+      "kind": "text",
+      "region": "back",
+      "transform": {
+        "x_mm": 8.0,
+        "y_mm": 20.0,
+        "width_mm": 140.0,
+        "height_mm": 110.0,
+        "rotation_deg": 0.0
+      },
+      "z_index": 10,
+      "opacity": 1.0,
+      "content": {
+        "text": "這是一份用於驗證 PDF 與可編輯 DOCX 結構的固定封底簡介。",
+        "font_family": "sans-serif",
+        "font_size_pt": 10.0,
+        "color": "#111111",
+        "align": "left",
+        "line_spacing": 1.15
+      }
+    },
+    {
+      "id": "back-publisher",
+      "kind": "text",
+      "region": "back",
+      "transform": {
+        "x_mm": 8.0,
+        "y_mm": 170.0,
+        "width_mm": 90.0,
+        "height_mm": 15.0,
+        "rotation_deg": 0.0
+      },
+      "z_index": 10,
+      "opacity": 1.0,
+      "content": {
+        "text": "範例出版社",
+        "font_family": "sans-serif",
+        "font_size_pt": 8.0,
+        "color": "#111111",
+        "align": "left",
+        "line_spacing": 1.0
+      }
+    },
+    {
+      "id": "back-isbn",
+      "kind": "barcode_placeholder",
+      "region": "back",
+      "transform": {
+        "x_mm": 103.0,
+        "y_mm": 176.0,
+        "width_mm": 38.0,
+        "height_mm": 20.0,
+        "rotation_deg": 0.0
+      },
+      "z_index": 10,
+      "opacity": 1.0,
+      "content": {
+        "text": "ISBN 9780000000000",
+        "font_family": "sans-serif",
+        "font_size_pt": 7.0,
+        "color": "#111111",
+        "align": "center",
+        "line_spacing": 1.0,
+        "fill": "#FFFFFF",
+        "stroke": "#111111"
+      }
+    },
+    {
+      "id": "spine-title",
+      "kind": "text",
+      "region": "spine",
+      "transform": {
+        "x_mm": 154.0,
+        "y_mm": 18.0,
+        "width_mm": 2.0,
+        "height_mm": 150.0,
+        "rotation_deg": 90.0
+      },
+      "z_index": 10,
+      "opacity": 1.0,
+      "content": {
+        "text": "黃金範例書",
+        "font_family": "sans-serif",
+        "font_size_pt": 8.0,
+        "color": "#111111",
+        "align": "center",
+        "line_spacing": 1.0
+      }
+    },
+    {
+      "id": "spine-author",
+      "kind": "text",
+      "region": "spine",
+      "transform": {
+        "x_mm": 154.0,
+        "y_mm": 172.0,
+        "width_mm": 2.0,
+        "height_mm": 28.0,
+        "rotation_deg": 90.0
+      },
+      "z_index": 10,
+      "opacity": 1.0,
+      "content": {
+        "text": "範例作者",
+        "font_family": "sans-serif",
+        "font_size_pt": 6.0,
+        "color": "#111111",
+        "align": "center",
+        "line_spacing": 1.0
+      }
+    }
+  ],
+  "export_settings": {
+    "dpi": 300,
+    "show_crop_marks": true,
+    "show_assembly_marks": true
+  }
+}

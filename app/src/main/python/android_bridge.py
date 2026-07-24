@@ -1,5 +1,7 @@
 """Chaquopy-facing bridge for the offline Android application.
 
+The conversion core is loaded from the repository-level ``python/src`` tree.
+
 The public API intentionally uses only strings, primitive values and JSON so
 it remains stable across the Kotlin/Python boundary.
 """
@@ -13,6 +15,7 @@ from typing import Any
 from epub_a4_word import __version__ as CORE_VERSION
 from epub_a4_word.converter import convert_input
 from epub_a4_word.pagination import LayoutSettings
+from epub_a4_word.cover import service as cover_service
 
 BRIDGE_VERSION = "1.0"
 _SUPPORTED_INPUTS = {".epub": "epub", ".docx": "docx"}
@@ -145,6 +148,45 @@ def convert_file_json(
 ) -> str:
     return json.dumps(
         convert_file(input_path, output_path, options_json, progress_callback),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def cover_inspect_source_json(source_path: str) -> str:
+    return json.dumps(
+        cover_service.inspect_source(source_path),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def cover_new_project_json(source_path: str, settings_json: str) -> str:
+    return cover_service.new_project(source_path, settings_json)
+
+
+def cover_apply_template_json(project_json: str, template_id: str) -> str:
+    return cover_service.apply_template(project_json, template_id)
+
+
+def cover_render_preview_json(
+    project_json: str, output_png: str, max_px: int = 1600
+) -> str:
+    return json.dumps(
+        cover_service.render_preview(project_json, output_png, max_px),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def cover_export_json(
+    project_json: str,
+    pdf_path: str,
+    docx_path: str,
+    dpi: int = 300,
+) -> str:
+    return json.dumps(
+        cover_service.export_cover(project_json, pdf_path, docx_path, dpi),
         ensure_ascii=False,
         separators=(",", ":"),
     )
