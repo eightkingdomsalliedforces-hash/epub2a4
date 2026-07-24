@@ -12,6 +12,7 @@ on:
       - "app/src/main/python/**"
       - "scripts/**"
       - "pyproject.toml"
+      - ".github/workflows/desktop.yml"
   pull_request:
     branches:
       - main
@@ -22,6 +23,7 @@ on:
       - "app/src/main/python/**"
       - "scripts/**"
       - "pyproject.toml"
+      - ".github/workflows/desktop.yml"
 
 permissions:
   contents: read
@@ -43,6 +45,7 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
       PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: python/src:app/src/main/python
 
     steps:
       - name: Checkout
@@ -58,12 +61,21 @@ jobs:
       - name: Upgrade packaging tools
         run: python -m pip install --upgrade pip setuptools wheel
 
-      - name: Install project and desktop test dependencies
-        run: python -m pip install -e ".[desktop,test]"
+      - name: Install shared project and test dependencies
+        run: python -m pip install -e ".[test]"
 
-      - name: Verify desktop dependencies
+      - name: Install desktop bootstrap dependencies
         run: >-
-          python -c "import PySide6, PySide6.QtWidgets, pytestqt, keyring, platformdirs;
+          python -m pip install
+          "PySide6==6.11.1"
+          "pytest-qt>=4.4,<5"
+          "keyring==25.7.0"
+          "platformdirs==4.10.1"
+
+      - name: Verify shared and desktop dependencies
+        run: >-
+          python -c "import pypdf, PySide6, PySide6.QtWidgets, pytestqt, keyring, platformdirs;
+          print('pypdf', pypdf.__version__);
           print('PySide6', PySide6.__version__);
           print('platformdirs', platformdirs.__version__)"
 
