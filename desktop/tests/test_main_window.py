@@ -24,6 +24,8 @@ def test_navigation_switches_to_cover_page(qtbot) -> None:
 def test_home_buttons_open_converter_and_cover(qtbot) -> None:
     window = MainWindow()
     qtbot.addWidget(window)
+    window.show()
+    qtbot.waitUntil(window.isVisible)
 
     qtbot.mouseClick(window.home_page.converter_button, Qt.MouseButton.LeftButton)
     assert window.current_route is AppRoute.CONVERTER
