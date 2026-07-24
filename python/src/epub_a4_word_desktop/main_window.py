@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from pathlib import Path
 from typing import Any
 
 from PySide6.QtWidgets import QMainWindow, QStackedWidget
@@ -76,7 +75,7 @@ class MainWindow(QMainWindow):
             raise ValueError("封面交接成品尺寸無效。")
 
         normalized: dict[str, Any] = dict(payload)
-        normalized["source_path"] = str(Path(source_path))
+        normalized["source_path"] = source_path
         normalized["page_count"] = page_count
         normalized["trim_size_mm"] = {
             "width_mm": width_mm,
