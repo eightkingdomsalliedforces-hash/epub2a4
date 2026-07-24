@@ -109,11 +109,11 @@ class PythonConversionGateway(context: Context) : AutoCloseable {
 
     class ProgressProxy(
         private val cancellation: AtomicBoolean,
-        private val onProgress: (Int, String) -> Unit,
+        private val progressCallback: (Int, String) -> Unit,
     ) {
         @Suppress("unused")
         fun onProgress(percent: Int, message: String) {
-            onProgress(percent.coerceIn(0, 100), message)
+            progressCallback(percent.coerceIn(0, 100), message)
         }
 
         @Suppress("unused")
