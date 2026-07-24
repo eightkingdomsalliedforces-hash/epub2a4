@@ -25,11 +25,13 @@ class HomePage(QWidget):
 
         self.converter_button = QPushButton("轉換 EPUB／Word", self)
         self.converter_button.setObjectName("open-converter-button")
-        self.converter_button.clicked.connect(self.open_converter.emit)
+        self.converter_button.clicked.connect(
+            lambda _checked=False: self.open_converter.emit()
+        )
 
         self.cover_button = QPushButton("封面工具", self)
         self.cover_button.setObjectName("open-cover-button")
-        self.cover_button.clicked.connect(self.open_cover.emit)
+        self.cover_button.clicked.connect(lambda _checked=False: self.open_cover.emit())
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(96, 72, 96, 72)
