@@ -222,6 +222,12 @@ def _spine_elements(
     return tuple(elements), ()
 
 
+def _source_cover_only(
+    project: CoverProject, layout: CoverLayout
+) -> tuple[CoverElement, ...]:
+    return ()
+
+
 def _minimal_text(project: CoverProject, layout: CoverLayout) -> tuple[CoverElement, ...]:
     return ()
 
@@ -292,6 +298,7 @@ def _top_bottom_blocks(project: CoverProject, layout: CoverLayout) -> tuple[Cove
 
 
 _BUILDERS = {
+    "source_cover_only": _source_cover_only,
     "minimal_text": _minimal_text,
     "front_image_plain_back": _front_image_plain_back,
     "full_spread": _full_spread,
@@ -299,7 +306,7 @@ _BUILDERS = {
 }
 
 _TEMPLATE_ALIASES = {
-    "minimal": "front_image_plain_back",
+    "minimal": "source_cover_only",
     "classic_book": "minimal_text",
     "full_bleed_image": "full_spread",
 }
@@ -324,10 +331,10 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
         standard_elements = tuple(
             element for element in standard_elements if element.region is Region.BACK
         )
-    elif canonical_template_id == "full_spread":
+    elif canonical_template_id in {"source_cover_only", "full_spread"}:
         standard_elements = ()
 
-    if canonical_template_id == "full_spread":
+    if canonical_template_id in {"source_cover_only", "full_spread"}:
         spine_elements, new_warnings = (), ()
     else:
         spine_elements, new_warnings = _spine_elements(project, layout)

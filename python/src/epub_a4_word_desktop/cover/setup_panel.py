@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from epub_a4_word.cover.models import ImageMode
+from epub_a4_word.cover.service import inspect_source
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ class CoverSetupValues:
 
 class CoverSetupPanel(QWidget):
     create_requested = Signal(object)
+    error = Signal(str)
 
     PAPER_PRESETS = (
         ("70 gsm", 0.09),
@@ -111,15 +113,18 @@ class CoverSetupPanel(QWidget):
         self.bleed_spin = QDoubleSpinBox(self)
         self.bleed_spin.setRange(0.0, 10.0)
         self.bleed_spin.setDecimals(2)
-        self.bleed_spin.setValue(3.0)
+        self.bleed_spin.setValue(0.0)
         self.bleed_spin.setSuffix(" mm")
+        self.bleed_spin.setToolTip(
+            "裁切外延只用於印刷廠裁切時避免白邊，與圖片產生無關；家用列印可保持 0 mm。"
+        )
 
         self.image_mode_combo = QComboBox(self)
         self.image_mode_combo.addItem("只有正面圖片", ImageMode.FRONT_ONLY.value)
         self.image_mode_combo.addItem("完整展開圖片", ImageMode.FULL_SPREAD.value)
 
         self.template_combo = QComboBox(self)
-        self.template_combo.addItem("極簡", "minimal")
+        self.template_combo.addItem("原始封面（不加文字）", "minimal")
         self.template_combo.addItem("上下色塊", "top_bottom_blocks")
         self.template_combo.addItem("全圖覆蓋", "full_bleed_image")
         self.template_combo.addItem("經典書籍", "classic_book")
@@ -137,7 +142,7 @@ class CoverSetupPanel(QWidget):
         form.addRow("自動書脊", self.spine_label)
         form.addRow("", self.manual_spine_enabled)
         form.addRow("手動書脊", self.manual_spine_spin)
-        form.addRow("出血", self.bleed_spin)
+        form.addRow("裁切外延（出血）", self.bleed_spin)
         form.addRow("圖片模式", self.image_mode_combo)
         form.addRow("初始模板", self.template_combo)
         layout = QVBoxLayout(self)
@@ -156,6 +161,7 @@ class CoverSetupPanel(QWidget):
         self.source_edit.textChanged.connect(self._update_create_enabled)
         self.page_count_confirmed.toggled.connect(self._update_create_enabled)
         self.page_count_spin.valueChanged.connect(self._update_spine)
+        self.trim_combo.currentIndexChanged.connect(self._trim_changed)
         self.paper_combo.currentIndexChanged.connect(self._paper_changed)
         self.caliper_spin.valueChanged.connect(self._update_spine)
         self.manual_spine_enabled.toggled.connect(self.manual_spine_spin.setEnabled)
@@ -188,7 +194,29 @@ class CoverSetupPanel(QWidget):
             "支援文件 (*.epub *.docx *.pdf)",
         )
         if path:
-            self.set_source(path)
+            try:
+                self.inspect_source_path(path)
+            except Exception as exc:
+                self.set_source(path)
+                self.page_count_note.setText(f"無法自動取得頁數：{exc}")
+                self.error.emit(str(exc))
+
+    def inspect_source_path(self, source_path: Path | str) -> None:
+        trim = self.trim_combo.currentData()
+        inspection = inspect_source(
+            str(Path(source_path)), float(trim[0]), float(trim[1])
+        )
+        self.load_inspection(inspection)
+
+    def _trim_changed(self, _index: int) -> None:
+        source = self.source_path
+        if source is None or not source.is_file():
+            return
+        try:
+            self.inspect_source_path(source)
+        except Exception as exc:
+            self.page_count_note.setText(f"無法重新估算頁數：{exc}")
+            self.error.emit(str(exc))
 
     def _update_create_enabled(self, _value: object = None) -> None:
         self.create_button.setEnabled(
@@ -214,7 +242,7 @@ class CoverSetupPanel(QWidget):
         source = inspection.get("source_path")
         if source:
             self.source_edit.setText(str(source))
-        count = inspection.get("fixed_page_count", inspection.get("page_count"))
+        count = inspection.get("fixed_page_count") or inspection.get("page_count")
         metadata = inspection.get("metadata")
         estimated = False
         if isinstance(metadata, dict):
@@ -222,8 +250,15 @@ class CoverSetupPanel(QWidget):
         estimated = bool(inspection.get("page_count_estimated", estimated))
         if count is not None:
             self.page_count_spin.setValue(int(count))
-        self.page_count_confirmed.setChecked(False)
-        self.page_count_note.setText("估算頁數，請核對後勾選確認。" if estimated else "請確認頁數。")
+            self.page_count_confirmed.setChecked(True)
+            self.page_count_note.setText(
+                "已依目前成品尺寸自動估算，可自行修改。"
+                if estimated
+                else "已自動取得文件頁數，可自行修改。"
+            )
+        else:
+            self.page_count_confirmed.setChecked(False)
+            self.page_count_note.setText("無法自動取得頁數，請手動輸入並確認。")
         self._update_create_enabled()
 
     def set_trim_size(self, width_mm: float, height_mm: float) -> None:

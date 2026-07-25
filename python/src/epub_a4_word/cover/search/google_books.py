@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit, urlunsplit
 
+from .errors import SearchCredentialError
 from .models import CandidateCategory, CoverSearchRequest, SearchCandidate, SearchKind, SearchResponse
 
 BASE_URL = "https://www.googleapis.com/books/v1/volumes"
@@ -9,10 +10,15 @@ _IMAGE_PRIORITIES = ("extraLarge", "large", "medium", "small", "thumbnail", "sma
 
 
 class GoogleBooksProvider:
-    def __init__(self, http_client) -> None:
+    def __init__(self, http_client, api_key: str = "") -> None:
         self.http = http_client
+        self.api_key = str(api_key).strip()
 
     def search(self, request: CoverSearchRequest) -> SearchResponse:
+        if not self.api_key:
+            raise SearchCredentialError(
+                "Google Books 需要 Google API Key；未設定時已跳過此來源。"
+            )
         if request.isbn.strip():
             query = f"isbn:{request.isbn.strip()}"
         else:
@@ -26,6 +32,7 @@ class GoogleBooksProvider:
             "q": query,
             "maxResults": min(request.max_results, 40),
             "langRestrict": request.locale.split("-")[0],
+            "key": self.api_key,
         }
         payload = self.http.get_json(BASE_URL, params)
         candidates: list[SearchCandidate] = []

@@ -24,6 +24,8 @@ PHOTO_4X6_WIDTH_CM = 10.16
 PHOTO_4X6_HEIGHT_CM = 15.24
 A4_PAGE_PREFIX_HEIGHT_CM = 0.50
 SINGLE_PAGE_PREFIX_HEIGHT_CM = 0.30
+B6_WORD_RENDERING_SAFETY_PT = 42.0
+B6_CONTENT_MARGIN_CM = 0.30
 
 
 @dataclass(frozen=True)
@@ -153,14 +155,38 @@ def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
         cell_width = ((paper_width - 2 * outer) / grid_cols if settings.cell_width_cm is None else settings.cell_width_cm)
         cell_height = ((paper_height - 2 * outer - prefix_height) / grid_rows if settings.cell_height_cm is None else settings.cell_height_cm)
 
-    cell_outer = preset.cell_outer_margin_cm if settings.cell_outer_margin_cm is None else settings.cell_outer_margin_cm
+    if exact_b6:
+        cell_outer = (
+            B6_CONTENT_MARGIN_CM
+            if settings.cell_outer_margin_cm is None
+            else settings.cell_outer_margin_cm
+        )
+        vertical = (
+            B6_CONTENT_MARGIN_CM
+            if settings.cell_vertical_margin_cm is None
+            else settings.cell_vertical_margin_cm
+        )
+        pagination_safety = max(
+            settings.pagination_safety_pt, B6_WORD_RENDERING_SAFETY_PT
+        )
+    else:
+        cell_outer = (
+            preset.cell_outer_margin_cm
+            if settings.cell_outer_margin_cm is None
+            else settings.cell_outer_margin_cm
+        )
+        vertical = (
+            preset.cell_vertical_margin_cm
+            if settings.cell_vertical_margin_cm is None
+            else settings.cell_vertical_margin_cm
+        )
+        pagination_safety = settings.pagination_safety_pt
     gutter = preset.gutter_margin_cm if settings.gutter_margin_cm is None else settings.gutter_margin_cm
-    vertical = preset.cell_vertical_margin_cm if settings.cell_vertical_margin_cm is None else settings.cell_vertical_margin_cm
     footer = settings.page_number_footer_pt if settings.page_numbers else 0.0
     horizontal_cell_margins = 2 * cell_outer if grid_cols == 1 else cell_outer + gutter
     content_width = max(40.0, (cell_width - horizontal_cell_margins) * PT_PER_CM) if settings.content_width_pt is None else settings.content_width_pt
     content_height = (
-        max(60.0, (cell_height - 2 * vertical) * PT_PER_CM - footer - settings.pagination_safety_pt)
+        max(60.0, (cell_height - 2 * vertical) * PT_PER_CM - footer - pagination_safety)
         if settings.content_height_pt is None else settings.content_height_pt
     )
     max_image_width = content_width if settings.max_image_width_pt is None else settings.max_image_width_pt

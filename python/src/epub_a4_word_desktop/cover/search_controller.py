@@ -43,13 +43,19 @@ def _message_for(exc: Exception) -> str:
 class SharedSearchFacade:
     def __init__(self, http_client: JsonHttpClient | None = None) -> None:
         self.http = http_client or JsonHttpClient()
-        self.public = PublicBookSearch(
-            (GoogleBooksProvider(self.http), OpenLibraryProvider(self.http))
-        )
+        self.open_library = OpenLibraryProvider(self.http)
         self.general = GeneralCoverSearch(GoogleCustomSearchProvider(self.http))
 
-    def search_public(self, metadata: Mapping[str, object]):
-        return self.public.search(
+    def search_public(
+        self,
+        metadata: Mapping[str, object],
+        credential: ProviderCredential | None = None,
+    ):
+        api_key = credential.api_key if credential is not None else ""
+        public = PublicBookSearch(
+            (GoogleBooksProvider(self.http, api_key=api_key), self.open_library)
+        )
+        return public.search(
             CoverSearchRequest(
                 kind=SearchKind.FRONT,
                 isbn=str(metadata.get("isbn", "")),
@@ -141,7 +147,10 @@ class SearchController(QObject):
             self.credential_store.clear()
 
     def search_public(self, metadata: Mapping[str, object]) -> None:
-        self._start_search("public", lambda: self.service.search_public(metadata))
+        credential = self.stored_credential()
+        self._start_search(
+            "public", lambda: self.service.search_public(metadata, credential)
+        )
 
     def search_general(
         self,

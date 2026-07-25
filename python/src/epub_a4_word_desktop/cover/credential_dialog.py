@@ -37,7 +37,7 @@ class CredentialDialog(QDialog):
 
         self.api_key = QLineEdit(initial.api_key if initial else "", self)
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key.setPlaceholderText("Google Custom Search API Key")
+        self.api_key.setPlaceholderText("Google API Key（Books 與圖片搜尋共用）")
         self.search_engine_id = QLineEdit(
             initial.search_engine_id if initial else "", self
         )
