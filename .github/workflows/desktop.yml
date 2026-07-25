@@ -108,56 +108,11 @@ jobs:
 
       - name: Write desktop Part 3 test report
         if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          import platform
-          import xml.etree.ElementTree as ET
-          import PySide6
-          import keyring
-          import platformdirs
-          import pytestqt
-
-          def summary(path):
-              root = ET.parse(path).getroot()
-              suites = [root] if root.tag == "testsuite" else list(root.findall("testsuite"))
-              return {
-                  key: sum(int(suite.attrib.get(key, "0")) for suite in suites)
-                  for key in ("tests", "failures", "errors", "skipped")
-              }
-
-          core = summary("core-test-results.xml")
-          desktop = summary("desktop-test-results.xml")
-          total = core["tests"] + desktop["tests"]
-          report = f"""# Desktop PySide6 Tasks 8–10 test results
-
-          - Commit: `${{{{ github.sha }}}}`
-          - Runner: Ubuntu / Python {platform.python_version()}
-          - PySide6: {PySide6.__version__}
-          - pytest-qt: {getattr(pytestqt, '__version__', 'installed')}
-          - keyring: {getattr(keyring, '__version__', '25.7.0')}
-          - platformdirs: {platformdirs.__version__}
-
-          ## Automated gates
-
-          - Shared Python tests: {core['tests']} tests, {core['failures']} failures, {core['errors']} errors, {core['skipped']} skipped
-          - Desktop tests: {desktop['tests']} tests, {desktop['failures']} failures, {desktop['errors']} errors, {desktop['skipped']} skipped
-          - Combined tests: {total}
-          - `scripts/desktop_smoke.py --offscreen`: PASS
-          - `compileall`: PASS
-          - `scripts/verify_project.py`: PASS
-          - Matrix: Ubuntu, Windows, macOS / Python 3.13
-
-          ## Limitations
-
-          - Qt is tested with the offscreen platform in CI; visual appearance on physical displays still needs manual review.
-          - Native file dialogs are not interactively exercised in headless CI.
-          - PDF is the print reference; Word and LibreOffice can differ slightly for floating text boxes and substituted fonts.
-          - Android cover UI, online image search, installers, signing, notarization, and update delivery are outside this completed desktop scope.
-          """
-          Path("desktop-part3-test-results.md").write_text(report, "utf-8")
-          PY
+        run: >-
+          python scripts/write_desktop_test_report.py
+          core-test-results.xml
+          desktop-test-results.xml
+          desktop-part3-test-results.md
 
       - name: Package verified desktop Tasks 8–10 source
         if: runner.os == 'Linux'
