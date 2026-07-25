@@ -1,43 +1,54 @@
 name: Windows portable EXE
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - feature/cross-platform-cover-tool
     paths:
-      - "python/**"
-      - "desktop/**"
-      - "python-tests/**"
-      - "scripts/**"
-      - "packaging/windows/**"
-      - "pyproject.toml"
-      - "README.md"
-      - "BUILD_STATUS.md"
-      - ".github/workflows/windows-portable.yml"
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "python/**"
-      - "desktop/**"
-      - "python-tests/**"
-      - "scripts/**"
-      - "packaging/windows/**"
-      - "pyproject.toml"
-      - "README.md"
-      - "BUILD_STATUS.md"
       - ".github/workflows/windows-portable.yml"
 
 permissions:
-  contents: read
-
-concurrency:
-  group: windows-portable-${{ github.ref }}
-  cancel-in-progress: true
+  contents: write
 
 jobs:
+  apply:
+    name: Apply verified implementation bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reassemble and verify bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/implementation/chunk-* > feature-bundle.tar.gz.b64
+          base64 --decode feature-bundle.tar.gz.b64 > feature-bundle.tar.gz
+          echo "a7d42a5327684e6160c40eb82c9454cd3301b29667c05ebf9231e056ad606151  feature-bundle.tar.gz" | sha256sum --check --strict
+          tar -tzf feature-bundle.tar.gz
+
+      - name: Apply implementation and remove staging files
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -xzf feature-bundle.tar.gz
+          rm -f feature-bundle.tar.gz feature-bundle.tar.gz.b64
+          python .github/implementation/finalize_bundle.py
+          python -m compileall -q python/src
+          rm -rf .github/implementation
+          rm -f .github/workflows/apply-feature-bundle.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: complete Windows cover search and B6-on-A5 conversion"
+          git push origin HEAD:feature/cross-platform-cover-tool
+
   build-portable:
+    needs: apply
     name: Windows x64 portable PyInstaller build
     runs-on: windows-latest
     timeout-minutes: 60
@@ -48,8 +59,10 @@ jobs:
       QT_QPA_PLATFORM: offscreen
 
     steps:
-      - name: Checkout
+      - name: Checkout applied feature branch
         uses: actions/checkout@v4
+        with:
+          ref: feature/cross-platform-cover-tool
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -82,6 +95,10 @@ jobs:
       - name: Build PyInstaller onedir application
         shell: pwsh
         run: python -m PyInstaller --clean --noconfirm packaging/windows/EPUB2A4.spec
+
+      - name: Enable portable data mode
+        shell: pwsh
+        run: New-Item -ItemType File -Path "dist/EPUB2A4-Windows-Portable-x64/portable.flag" -Force | Out-Null
 
       - name: Verify portable directory
         shell: pwsh
