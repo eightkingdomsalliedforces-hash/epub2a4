@@ -99,6 +99,9 @@ class MainActivity : ComponentActivity() {
                     onCancelConversion = conversionViewModel::cancelConversion,
                     onSaveConversion = conversionViewModel::requestSave,
                     onDismissConversionError = conversionViewModel::dismissError,
+                    onRequestCoverHandoff = conversionViewModel::requestCoverHandoff,
+                    onOpenCoverHandoff = coverViewModel::openHandoff,
+                    onMarkCoverHandoffHandled = conversionViewModel::markCoverHandoffHandled,
                     coverState = coverState,
                     coverCallbacks = CoverSetupCallbacks(
                         onChooseSource = {
