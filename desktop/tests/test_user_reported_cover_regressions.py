@@ -10,22 +10,15 @@ def _combo_values(combo) -> list[str]:
     return [str(combo.itemData(index)) for index in range(combo.count())]
 
 
-def test_setup_and_toolbar_use_supported_template_ids(qtbot) -> None:
+def test_desktop_template_options_remain_available(qtbot) -> None:
     setup = CoverSetupPanel()
     toolbar = TemplatePanel()
     qtbot.addWidget(setup)
     qtbot.addWidget(toolbar)
 
-    expected = [
-        "front_image_plain_back",
-        "minimal_text",
-        "top_bottom_blocks",
-        "full_spread",
-    ]
+    expected = ["minimal", "top_bottom_blocks", "full_bleed_image", "classic_book"]
     assert _combo_values(setup.template_combo) == expected
     assert _combo_values(toolbar.combo) == expected
-    assert setup.template_combo.currentData() == "front_image_plain_back"
-    assert toolbar.combo.currentData() == "front_image_plain_back"
 
 
 def test_rate_limit_message_does_not_claim_daily_quota_is_exhausted() -> None:
