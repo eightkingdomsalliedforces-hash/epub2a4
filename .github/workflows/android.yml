@@ -81,7 +81,7 @@ jobs:
           python -c "import pypdf, epub_a4_word; print('pypdf', pypdf.__version__); print('epub_a4_word', epub_a4_word.__version__)"
 
       - name: Run shared Python tests
-        run: python -m pytest python-tests -q
+        run: python -m pytest python-tests -q --junitxml=python-test-results.xml
 
       - name: Compile and verify shared Python project
         run: |
@@ -100,8 +100,19 @@ jobs:
           "$ZIPALIGN" -c -P 16 -v 4 app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload debug APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: EPUB-Word-Android-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Upload Android verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-verification-reports
+          path: |
+            python-test-results.xml
+            app/build/test-results/testDebugUnitTest/*.xml
+          if-no-files-found: ignore
