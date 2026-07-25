@@ -9,6 +9,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import tw.daniel.epubword.cover.ui.CoverSetupCallbacks
+import tw.daniel.epubword.cover.ui.CoverViewModel
 import tw.daniel.epubword.ui.AppRoot
 import tw.daniel.epubword.ui.ConversionViewModel
 import tw.daniel.epubword.ui.theme.EpubWordTheme
@@ -18,45 +20,73 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             EpubWordTheme {
-                val viewModel: ConversionViewModel = viewModel()
-                val state by viewModel.uiState.collectAsStateWithLifecycle()
+                val conversionViewModel: ConversionViewModel = viewModel()
+                val conversionState by conversionViewModel.uiState.collectAsStateWithLifecycle()
+                val coverViewModel: CoverViewModel = viewModel()
+                val coverState by coverViewModel.uiState.collectAsStateWithLifecycle()
 
                 val inputLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument(),
                 ) { uri ->
-                    if (uri != null) viewModel.selectInput(uri)
+                    if (uri != null) conversionViewModel.selectInput(uri)
                 }
                 val outputLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.CreateDocument(DOCX_MIME),
                 ) { uri ->
-                    viewModel.saveOutput(uri)
+                    conversionViewModel.saveOutput(uri)
+                }
+                val coverSourceLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument(),
+                ) { uri ->
+                    if (uri != null) coverViewModel.selectSource(uri)
                 }
 
-                LaunchedEffect(state.saveRequestId, state.pendingOutputName) {
-                    val pendingName = state.pendingOutputName
-                    if (state.saveRequestId > state.handledSaveRequestId && pendingName != null) {
-                        val requestId = state.saveRequestId
-                        viewModel.markSaveDialogHandled(requestId)
+                LaunchedEffect(conversionState.saveRequestId, conversionState.pendingOutputName) {
+                    val pendingName = conversionState.pendingOutputName
+                    if (
+                        conversionState.saveRequestId > conversionState.handledSaveRequestId &&
+                        pendingName != null
+                    ) {
+                        val requestId = conversionState.saveRequestId
+                        conversionViewModel.markSaveDialogHandled(requestId)
                         outputLauncher.launch(pendingName)
                     }
                 }
 
                 AppRoot(
-                    conversionState = state,
+                    conversionState = conversionState,
                     onChooseConversionSource = {
                         inputLauncher.launch(arrayOf(EPUB_MIME, DOCX_MIME, "application/octet-stream"))
                     },
-                    onOutputMode = viewModel::setOutputMode,
-                    onMarginMode = viewModel::setMarginMode,
-                    onFontName = viewModel::setFontName,
-                    onBodyFontSize = viewModel::setBodyFontPt,
-                    onHeadingFontSize = viewModel::setHeadingFontPt,
-                    onPageNumbers = viewModel::setPageNumbers,
-                    onCutGuides = viewModel::setCutGuides,
-                    onConvert = viewModel::convert,
-                    onCancelConversion = viewModel::cancelConversion,
-                    onSaveConversion = viewModel::requestSave,
-                    onDismissConversionError = viewModel::dismissError,
+                    onOutputMode = conversionViewModel::setOutputMode,
+                    onMarginMode = conversionViewModel::setMarginMode,
+                    onFontName = conversionViewModel::setFontName,
+                    onBodyFontSize = conversionViewModel::setBodyFontPt,
+                    onHeadingFontSize = conversionViewModel::setHeadingFontPt,
+                    onPageNumbers = conversionViewModel::setPageNumbers,
+                    onCutGuides = conversionViewModel::setCutGuides,
+                    onConvert = conversionViewModel::convert,
+                    onCancelConversion = conversionViewModel::cancelConversion,
+                    onSaveConversion = conversionViewModel::requestSave,
+                    onDismissConversionError = conversionViewModel::dismissError,
+                    coverState = coverState,
+                    coverCallbacks = CoverSetupCallbacks(
+                        onChooseSource = {
+                            coverSourceLauncher.launch(
+                                arrayOf(EPUB_MIME, DOCX_MIME, PDF_MIME, "application/octet-stream"),
+                            )
+                        },
+                        onTrimPreset = coverViewModel::setTrimPreset,
+                        onPageCount = coverViewModel::setPageCount,
+                        onConfirmPageCount = coverViewModel::confirmPageCount,
+                        onPaperPreset = coverViewModel::setPaperPreset,
+                        onCaliper = coverViewModel::setCaliper,
+                        onManualSpine = coverViewModel::setManualSpine,
+                        onBleed = coverViewModel::setBleed,
+                        onImageMode = coverViewModel::setImageMode,
+                        onTemplate = coverViewModel::setTemplate,
+                        onCreateProject = coverViewModel::createProject,
+                    ),
                 )
             }
         }
@@ -65,5 +95,6 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val EPUB_MIME = "application/epub+zip"
         const val DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        const val PDF_MIME = "application/pdf"
     }
 }
