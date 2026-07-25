@@ -50,18 +50,26 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Run Kotlin unit tests first
+        run: gradle --no-daemon testDebugUnitTest --stacktrace
+
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: pyproject.toml
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK 36
-        run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
 
       - name: Install and verify Python core
         run: |
@@ -73,15 +81,10 @@ jobs:
           python -m compileall -q python/src app/src/main/python
           python scripts/verify_project.py
 
-      - name: Set up Gradle 8.13
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.13"
-
-      - name: Build tests and debug APK
+      - name: Compile Android tests and build debug APK
         env:
           CHAQUOPY_PYTHON: python3.13
-        run: gradle --no-daemon testDebugUnitTest assembleDebug --stacktrace
+        run: gradle --no-daemon compileDebugAndroidTestKotlin assembleDebug --stacktrace
 
       - name: Verify 16 KB APK alignment
         run: |
