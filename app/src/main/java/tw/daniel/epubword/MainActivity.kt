@@ -9,8 +9,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import tw.daniel.epubword.ui.AppRoot
 import tw.daniel.epubword.ui.ConversionViewModel
-import tw.daniel.epubword.ui.ConverterScreen
 import tw.daniel.epubword.ui.theme.EpubWordTheme
 
 class MainActivity : ComponentActivity() {
@@ -31,6 +31,18 @@ class MainActivity : ComponentActivity() {
                 ) { uri ->
                     viewModel.saveOutput(uri)
                 }
+                val coverSourceLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument(),
+                ) { _ ->
+                    // Cover source handoff is added by the cover setup task. The launcher
+                    // remains activity-owned so the UI never handles Activity contracts.
+                }
+                val coverImageLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument(),
+                ) { _ -> }
+                val coverDirectoryLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocumentTree(),
+                ) { _ -> }
 
                 LaunchedEffect(state.saveRequestId, state.pendingOutputName) {
                     val pendingName = state.pendingOutputName
@@ -44,9 +56,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                ConverterScreen(
-                    state = state,
-                    onChooseInput = {
+                AppRoot(
+                    conversionState = state,
+                    onChooseConversionSource = {
                         inputLauncher.launch(
                             arrayOf(
                                 EPUB_MIME,
@@ -63,9 +75,16 @@ class MainActivity : ComponentActivity() {
                     onPageNumbers = viewModel::setPageNumbers,
                     onCutGuides = viewModel::setCutGuides,
                     onConvert = viewModel::convert,
-                    onCancel = viewModel::cancelConversion,
-                    onSave = viewModel::requestSave,
-                    onDismissError = viewModel::dismissError,
+                    onCancelConversion = viewModel::cancelConversion,
+                    onSaveConversion = viewModel::requestSave,
+                    onDismissConversionError = viewModel::dismissError,
+                    onChooseCoverSource = {
+                        coverSourceLauncher.launch(
+                            arrayOf(EPUB_MIME, DOCX_MIME, PDF_MIME, "application/octet-stream")
+                        )
+                    },
+                    onChooseCoverImage = { coverImageLauncher.launch(arrayOf("image/*")) },
+                    onChooseCoverDirectory = { coverDirectoryLauncher.launch(null) },
                 )
             }
         }
@@ -74,5 +93,6 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val EPUB_MIME = "application/epub+zip"
         const val DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        const val PDF_MIME = "application/pdf"
     }
 }
