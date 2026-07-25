@@ -8,6 +8,7 @@ from epub_a4_word_desktop.__main__ import main
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = ROOT / "packaging/windows/EPUB2A4.spec"
+LAUNCHER = ROOT / "packaging/windows/launcher.py"
 WORKFLOW = ROOT / ".github/workflows/windows-portable.yml"
 ENTRY = ROOT / "python/src/epub_a4_word_desktop/__main__.py"
 
@@ -19,6 +20,15 @@ def test_portable_spec_is_onedir_gui_build() -> None:
     assert "console=False" in text
     assert "COLLECT(" in text
     assert "onefile" not in text.lower()
+
+
+def test_frozen_build_uses_package_safe_absolute_import_launcher() -> None:
+    spec = SPEC.read_text(encoding="utf-8").replace("\\", "/")
+    launcher = LAUNCHER.read_text(encoding="utf-8")
+
+    assert "packaging/windows/launcher.py" in spec
+    assert "from epub_a4_word_desktop.__main__ import main" in launcher
+    assert "from ." not in launcher
 
 
 def test_windows_workflow_builds_smokes_and_archives_portable_app() -> None:
@@ -57,3 +67,5 @@ def test_workflow_runs_packaged_executable_not_only_python_sources() -> None:
     assert "EPUB2A4.exe" in text
     assert "dist/EPUB2A4-Windows-Portable-x64" in text
     assert "verify_windows_portable.py" in text
+    assert "WaitForExit(30000)" in text
+    assert "cancel-in-progress: true" in text
