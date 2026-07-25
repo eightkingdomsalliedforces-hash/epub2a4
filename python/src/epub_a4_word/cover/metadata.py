@@ -239,17 +239,13 @@ def _first_local_text(root: etree._Element | None, local_name: str) -> str:
 def _epub_identifier(
     package: etree._Element, metadata_node: etree._Element | None
 ) -> str:
+    del package  # The EPUB unique identifier is often a UUID, not an ISBN.
     identifiers = list(_iter_local(metadata_node, "identifier"))
-    unique_id = package.get("unique-identifier", "")
-    if unique_id:
-        for node in identifiers:
-            if node.get("id") == unique_id:
-                return _normalize_identifier(_first_node_text(node))
     for node in identifiers:
         value = _normalize_identifier(_first_node_text(node))
         if re.fullmatch(r"(?:97[89])?\d{9}[\dXx]", value):
             return value
-    return _normalize_identifier(_first_node_text(identifiers[0])) if identifiers else ""
+    return ""
 
 
 def _first_node_text(node: etree._Element) -> str:

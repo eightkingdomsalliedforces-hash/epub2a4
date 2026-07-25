@@ -29,13 +29,14 @@ from ..settings.credentials import LayeredCredentialStore
 
 ERROR_MESSAGES = {
     SearchCredentialError: "Google 圖片搜尋憑證無效，請重新設定。",
-    SearchQuotaError: "搜尋配額已用完，請稍後重試或更換 API Key。",
     SearchTimeoutError: "搜尋逾時，請檢查網路後重試。",
     ImageDownloadError: "選取的圖片無法下載或格式不受支援。",
 }
 
 
 def _message_for(exc: Exception) -> str:
+    if isinstance(exc, SearchQuotaError):
+        return str(exc) or "搜尋服務暫時限制請求，請稍後重試。"
     return next((text for kind, text in ERROR_MESSAGES.items() if isinstance(exc, kind)), str(exc))
 
 
