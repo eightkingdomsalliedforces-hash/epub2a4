@@ -64,6 +64,7 @@ def run_smoke(output_dir: Path | str) -> dict[str, Any]:
 
     project_json = _fixture_project(destination)
     cover_page = window.pages[AppRoute.COVER]
+    cover_page.controller.auto_preview = False
     cover_page.controller.replace_project(project_json, clear_history=True)
     preview_path = destination / "desktop-smoke-preview.png"
     preview = cover_service.render_preview(
@@ -86,6 +87,14 @@ def run_smoke(output_dir: Path | str) -> dict[str, Any]:
     return result
 
 
+def _verify_result(result: dict[str, Any]) -> None:
+    if result.get("route") != "cover":
+        raise RuntimeError(f"desktop smoke wrong route: {result.get('route')}")
+    for key in ("preview_path", "pdf_path", "docx_path"):
+        if not Path(str(result[key])).is_file():
+            raise RuntimeError(f"desktop smoke missing {key}: {result[key]}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the PySide6 desktop smoke gate.")
     parser.add_argument("--offscreen", action="store_true")
@@ -96,12 +105,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.output_dir is not None:
         result = run_smoke(args.output_dir)
+        _verify_result(result)
     else:
         with tempfile.TemporaryDirectory(prefix="epub2a4-desktop-smoke-") as value:
             result = run_smoke(Path(value))
-    for key in ("preview_path", "pdf_path", "docx_path"):
-        if not Path(result[key]).is_file():
-            raise RuntimeError(f"desktop smoke missing {key}: {result[key]}")
+            _verify_result(result)
     print("desktop smoke: PASS")
     return 0
 
