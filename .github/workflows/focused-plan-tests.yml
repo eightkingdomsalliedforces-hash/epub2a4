@@ -38,10 +38,11 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -e ".[test]"
 
-      - name: Run focused tests
-        run: |
-          python -m pytest \
-            python-tests/test_b6_on_a5_mode.py \
-            python-tests/test_b6_on_a5_geometry.py \
-            python-tests/cover/search/test_contracts.py \
-            -q
+      - name: Test B6 mode contract
+        run: python -m pytest python-tests/test_b6_on_a5_mode.py -q
+
+      - name: Test B6 geometry
+        run: python -m pytest python-tests/test_b6_on_a5_geometry.py -q
+
+      - name: Test cover search contracts
+        run: python -m pytest python-tests/cover/search/test_contracts.py -q
