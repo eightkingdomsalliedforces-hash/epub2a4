@@ -4,9 +4,11 @@ from dataclasses import dataclass
 
 from docx.oxml import OxmlElement
 from docx.shared import Cm, Pt
+from lxml import etree
 
 _PT_PER_CM = 72.0 / 2.54
 _MM_PER_CM = 10.0
+_VML_NS = "urn:schemas-microsoft-com:vml"
 
 
 @dataclass(frozen=True)
@@ -68,7 +70,7 @@ def _append_vml_line(
         from_y, to_y = 21600, 0
 
     pict = OxmlElement("w:pict")
-    line = OxmlElement("v:line")
+    line = etree.Element(f"{{{_VML_NS}}}line", nsmap={"v": _VML_NS})
     line.set("from", f"{from_x},{from_y}")
     line.set("to", f"{to_x},{to_y}")
     line.set("strokecolor", "#000000")
