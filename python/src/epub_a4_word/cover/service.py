@@ -52,6 +52,21 @@ _ALLOWED_SETTINGS = {
 }
 
 
+def _layout_mode_for_trim(
+    trim_width_mm: float | None, trim_height_mm: float | None
+) -> str:
+    if trim_width_mm is None or trim_height_mm is None:
+        return "single_a5"
+    target = (float(trim_width_mm), float(trim_height_mm))
+    if all(abs(a - b) < 1e-6 for a, b in zip(target, (128.0, 182.0))):
+        return "b6_on_a5"
+    if all(abs(a - b) < 1e-6 for a, b in zip(target, (101.6, 152.4))):
+        return "single_4x6"
+    if all(abs(a - b) < 1e-6 for a, b in zip(target, (105.0, 148.0))):
+        return "signature16"
+    return "single_a5"
+
+
 def _json_object(json_text: str, label: str) -> dict[str, Any]:
     try:
         value = json.loads(json_text)
@@ -126,7 +141,12 @@ def _resolve_page_count(
         return (
             estimate_epub_page_count(
                 source_path,
-                LayoutSettings(imposition_mode="single_a5"),
+                LayoutSettings(
+                    imposition_mode=_layout_mode_for_trim(
+                        settings.get("trim_width_mm"),
+                        settings.get("trim_height_mm"),
+                    )
+                ),
             ),
             True,
         )
@@ -212,14 +232,31 @@ def _result_dict(result: ExportResult) -> dict[str, Any]:
     }
 
 
-def inspect_source(source_path: str) -> dict[str, Any]:
+def inspect_source(
+    source_path: str,
+    trim_width_mm: float | None = None,
+    trim_height_mm: float | None = None,
+) -> dict[str, Any]:
     source = Path(source_path).expanduser().resolve()
     inspection = inspect_metadata(source)
+    page_count = inspection.fixed_page_count
+    estimated = False
+    if page_count is None and inspection.source_type == "epub":
+        page_count = estimate_epub_page_count(
+            source,
+            LayoutSettings(
+                imposition_mode=_layout_mode_for_trim(trim_width_mm, trim_height_mm)
+            ),
+        )
+        estimated = True
+    metadata = replace(inspection.metadata, page_count_is_estimate=estimated)
     return {
         "source_path": str(source),
         "source_type": inspection.source_type,
-        "metadata": asdict(inspection.metadata),
+        "metadata": asdict(metadata),
         "fixed_page_count": inspection.fixed_page_count,
+        "page_count": page_count,
+        "page_count_estimated": estimated,
         "warnings": list(inspection.warnings),
     }
 
