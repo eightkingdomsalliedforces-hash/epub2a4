@@ -45,93 +45,14 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -e ".[test,desktop]"
 
-      - name: Diagnose EPUB-only mode registration
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          from epub_a4_word_desktop.conversion.legacy_adapter import allowed_modes_for_path
-
-          assert "b6_on_a5" in allowed_modes_for_path(Path("book.epub"))
-          assert "b6_on_a5" not in allowed_modes_for_path(Path("book.docx"))
-          PY
-
-      - name: Diagnose B6 single-page imposition
-        run: |
-          python - <<'PY'
-          from epub_a4_word.imposition import build_imposition
-
-          assert build_imposition(3, "b6_on_a5").sides == ((1,), (2,), (3,))
-          PY
-
-      - name: Diagnose B6 trim handoff
-        run: |
-          python - <<'PY'
-          from epub_a4_word_desktop.conversion.models import trim_size_for_mode
-
-          assert trim_size_for_mode("b6_on_a5") == (128.0, 182.0)
-          PY
-
-      - name: Diagnose request mark propagation
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          from tempfile import TemporaryDirectory
-          from epub_a4_word_desktop.conversion.models import ConversionRequest
-
-          with TemporaryDirectory() as directory:
-              root = Path(directory)
-              source = root / "book.epub"
-              source.write_bytes(b"placeholder")
-              request = ConversionRequest(
-                  input_path=source,
-                  output_path=root / "book.docx",
-                  imposition_mode="b6_on_a5",
-                  output_mark_mode="crop_marks",
-              )
-              request.validate()
-              assert request.to_layout_settings().output_mark_mode == "crop_marks"
-          PY
-
-      - name: Diagnose rejected B6 mark values
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          from tempfile import TemporaryDirectory
-          from epub_a4_word_desktop.conversion.models import ConversionRequest
-
-          with TemporaryDirectory() as directory:
-              root = Path(directory)
-              source = root / "book.epub"
-              source.write_bytes(b"placeholder")
-              for value in ("", "marks", "crop"):
-                  request = ConversionRequest(
-                      input_path=source,
-                      output_path=root / "book.docx",
-                      imposition_mode="b6_on_a5",
-                      output_mark_mode=value,
-                  )
-                  try:
-                      request.validate()
-                  except ValueError as exc:
-                      assert "列印標記" in str(exc), (value, str(exc))
-                  else:
-                      raise AssertionError(f"invalid mark value accepted: {value!r}")
-          PY
-
-      - name: Test B6 primary contract
-        run: >-
-          python -m pytest
-          python-tests/test_b6_on_a5_mode.py::test_b6_on_a5_is_epub_only_single_page_mode
-          -q
-
-      - name: Test B6 invalid-mark contract
-        run: >-
-          python -m pytest
-          python-tests/test_b6_on_a5_mode.py::test_conversion_request_rejects_unknown_output_mark_mode
-          -q
+      - name: Test B6 mode contract
+        run: python -m pytest python-tests/test_b6_on_a5_mode.py -q
 
       - name: Test B6 geometry
         run: python -m pytest python-tests/test_b6_on_a5_geometry.py -q
+
+      - name: Test B6 DOCX output
+        run: python -m pytest python-tests/test_b6_on_a5_docx.py -q
 
       - name: Test cover search contracts
         run: python -m pytest python-tests/cover/search/test_contracts.py -q
