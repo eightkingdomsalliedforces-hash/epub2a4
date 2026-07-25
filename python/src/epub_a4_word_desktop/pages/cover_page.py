@@ -8,6 +8,7 @@ from uuid import uuid4
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -30,8 +31,13 @@ from epub_a4_word_desktop.cover.assets_panel import AssetsPanel
 from epub_a4_word_desktop.cover.canvas import CoverCanvas
 from epub_a4_word_desktop.cover.controller import CoverController
 from epub_a4_word_desktop.cover.crop_dialog import CropDialog
+from epub_a4_word_desktop.cover.export_worker import ExportWorker, export_paths
 from epub_a4_word_desktop.cover.inspector import ElementInspector
 from epub_a4_word_desktop.cover.layers_panel import LayersPanel
+from epub_a4_word_desktop.cover.project_files import (
+    open_project_bundle,
+    save_project_bundle,
+)
 from epub_a4_word_desktop.cover.setup_panel import CoverSetupPanel, CoverSetupValues
 
 
@@ -60,17 +66,45 @@ class TemplatePanel(QGroupBox):
 
 
 class ExportPanel(QGroupBox):
-    """Export controls are activated by desktop Part 3."""
+    export_requested = Signal(object, int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("輸出", parent)
-        self.note = QLabel("PDF／DOCX 輸出將在下一階段連接共用核心。", self)
-        self.note.setWordWrap(True)
+        self.output_dir: Path | None = None
+        self.output_label = QLabel("尚未選擇輸出資料夾", self)
+        self.output_label.setWordWrap(True)
+        self.choose_button = QPushButton("選擇輸出資料夾", self)
+        self.dpi_combo = QComboBox(self)
+        self.dpi_combo.addItem("200 DPI", 200)
+        self.dpi_combo.addItem("300 DPI", 300)
+        self.dpi_combo.setCurrentIndex(1)
         self.export_button = QPushButton("輸出 PDF＋DOCX", self)
         self.export_button.setEnabled(False)
         layout = QVBoxLayout(self)
-        layout.addWidget(self.note)
+        layout.addWidget(self.output_label)
+        layout.addWidget(self.choose_button)
+        layout.addWidget(self.dpi_combo)
         layout.addWidget(self.export_button)
+        self.choose_button.clicked.connect(self._choose_output_dir)
+        self.export_button.clicked.connect(self._request_export)
+
+    def set_project_loaded(self, loaded: bool) -> None:
+        self.export_button.setEnabled(loaded and self.output_dir is not None)
+
+    def set_output_dir(self, path: Path | str) -> None:
+        self.output_dir = Path(path).expanduser().resolve()
+        self.output_label.setText(str(self.output_dir))
+        self.export_button.setEnabled(True)
+
+    def _choose_output_dir(self) -> None:
+        selected = QFileDialog.getExistingDirectory(self, "選擇封面輸出資料夾")
+        if selected:
+            self.set_output_dir(selected)
+
+    def _request_export(self) -> None:
+        if self.output_dir is None:
+            return
+        self.export_requested.emit(self.output_dir, int(self.dpi_combo.currentData()))
 
 
 class CoverPage(QWidget):
@@ -86,13 +120,18 @@ class CoverPage(QWidget):
         self.setObjectName("cover-page")
         self.controller = controller or CoverController(parent=self)
         self.conversion_payload: dict[str, object] | None = None
+        self._export_workers: set[ExportWorker] = set()
 
         self.back_button = QPushButton("返回首頁", self)
+        self.open_button = QPushButton("開啟專案", self)
+        self.save_button = QPushButton("儲存專案", self)
         self.undo_button = QPushButton("復原", self)
         self.redo_button = QPushButton("重做", self)
         self.status_label = QLabel("請先選擇來源並確認正文頁數。", self)
         toolbar = QHBoxLayout()
         toolbar.addWidget(self.back_button)
+        toolbar.addWidget(self.open_button)
+        toolbar.addWidget(self.save_button)
         toolbar.addWidget(self.undo_button)
         toolbar.addWidget(self.redo_button)
         toolbar.addStretch(1)
@@ -142,6 +181,8 @@ class CoverPage(QWidget):
         self.back_button.clicked.connect(
             lambda _checked=False: self.back_requested.emit()
         )
+        self.open_button.clicked.connect(self._choose_open_project)
+        self.save_button.clicked.connect(self._choose_save_project)
         self.undo_button.clicked.connect(
             lambda _checked=False: self.controller.undo()
         )
@@ -154,6 +195,7 @@ class CoverPage(QWidget):
         self.assets_panel.add_text_requested.connect(self._add_text)
         self.assets_panel.crop_requested.connect(self._crop_asset)
         self.assets_panel.error.connect(self._show_error)
+        self.export_panel.export_requested.connect(self._start_export)
         self.layers_panel.selection_changed.connect(self.canvas.select_element)
         self.layers_panel.delete_requested.connect(self.controller.remove_element)
         self.layers_panel.z_order_requested.connect(self._change_z_order)
@@ -174,6 +216,57 @@ class CoverPage(QWidget):
         )
         self.undo_button.setEnabled(False)
         self.redo_button.setEnabled(False)
+        self.save_button.setEnabled(False)
+
+    def save_project(self, path: Path | str) -> Path:
+        if not self.controller.project_json:
+            raise RuntimeError("尚未載入封面專案。")
+        saved = save_project_bundle(self.controller.project_json, path)
+        self.status_label.setText(f"已儲存封面專案：{saved}")
+        return saved
+
+    def open_project(self, path: Path | str) -> str:
+        project_json = open_project_bundle(path)
+        project = loads_project(project_json)
+        self.controller.working_dir = Path(project.working_dir).resolve()
+        self.controller.replace_project(project_json, clear_history=True)
+        self.status_label.setText(f"已開啟封面專案：{Path(path).resolve()}")
+        return project_json
+
+    def _choose_save_project(self) -> None:
+        if not self.controller.project_json:
+            self._show_error("尚未載入封面專案。")
+            return
+        project = loads_project(self.controller.project_json)
+        base = project.metadata.title or Path(project.source_file).stem or "cover"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "儲存封面專案",
+            f"{base}.cover.json",
+            "封面專案 (*.cover.json)",
+        )
+        if not path:
+            return
+        if not path.endswith(".cover.json"):
+            path += ".cover.json"
+        try:
+            self.save_project(path)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _choose_open_project(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "開啟封面專案",
+            "",
+            "封面專案 (*.cover.json)",
+        )
+        if not path:
+            return
+        try:
+            self.open_project(path)
+        except Exception as exc:
+            self._show_error(str(exc))
 
     def open_from_conversion(self, payload: Mapping[str, object]) -> None:
         normalized = dict(payload)
@@ -236,7 +329,11 @@ class CoverPage(QWidget):
                 element
                 for element in project.elements
                 if element.kind is ElementKind.IMAGE
-                and str(Path(str(element.content.get("path", ""))).expanduser().resolve())
+                and str(
+                    Path(str(element.content.get("path", "")))
+                    .expanduser()
+                    .resolve()
+                )
                 == resolved_path
             ),
             None,
@@ -259,6 +356,54 @@ class CoverPage(QWidget):
                 target.id,
                 {"content": dialog.crop_margins()},
             )
+
+    def _set_editor_mutations_enabled(self, enabled: bool) -> None:
+        for widget in (
+            self.template_panel,
+            self.assets_panel,
+            self.layers_panel,
+            self.inspector,
+            self.setup_panel,
+            self.open_button,
+            self.save_button,
+            self.undo_button,
+            self.redo_button,
+        ):
+            widget.setEnabled(enabled)
+        self.export_panel.setEnabled(enabled)
+
+    def _start_export(self, output_dir: Path | str, dpi: int) -> None:
+        if not self.controller.project_json:
+            self._show_error("尚未載入封面專案。")
+            return
+        pdf, docx = export_paths(self.controller.project_json, output_dir)
+        worker = ExportWorker(self.controller.project_json, pdf, docx, dpi)
+        self._export_workers.add(worker)
+        self._set_editor_mutations_enabled(False)
+        worker.signals.progress.connect(self.status_label.setText)
+        worker.signals.completed.connect(
+            lambda result, current=worker: self._export_completed(current, result)
+        )
+        worker.signals.failed.connect(
+            lambda message, current=worker: self._export_failed(current, message)
+        )
+        self.controller.pool.start(worker)
+
+    def _export_completed(self, worker: ExportWorker, result: dict) -> None:
+        self._export_workers.discard(worker)
+        self._set_editor_mutations_enabled(True)
+        pdf = result.get("pdf", {}).get("path", "")
+        docx = result.get("docx", {}).get("path", "")
+        self.status_label.setText(f"封面輸出完成：{pdf}｜{docx}")
+        if self.isVisible():
+            QMessageBox.information(
+                self, "封面輸出完成", f"PDF：{pdf}\nDOCX：{docx}"
+            )
+
+    def _export_failed(self, worker: ExportWorker, message: str) -> None:
+        self._export_workers.discard(worker)
+        self._set_editor_mutations_enabled(True)
+        self._show_error(message)
 
     def _add_text(self, region: Region) -> None:
         if not self.controller.project_json:
@@ -330,6 +475,8 @@ class CoverPage(QWidget):
         self.canvas.set_project(project_json)
         self.layers_panel.set_project(project_json)
         self.assets_panel.refresh_from_project(project_json)
+        self.save_button.setEnabled(True)
+        self.export_panel.set_project_loaded(True)
         self.inspector.set_element(None)
         project = loads_project(project_json)
         self.status_label.setText(
