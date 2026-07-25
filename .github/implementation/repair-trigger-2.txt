@@ -1,2 +1,0 @@
-Start the one-time pull-request repair workflow.
-Final run: verified six-chunk bundle, code-only automated commit, then one Windows portable build.

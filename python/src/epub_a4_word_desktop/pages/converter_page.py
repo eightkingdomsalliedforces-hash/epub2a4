@@ -21,20 +21,25 @@ from PySide6.QtWidgets import (
 )
 
 from ..conversion.controller import ConversionController
+from ..conversion.layout_preview import B6OnA5Preview
 from ..conversion.legacy_adapter import allowed_modes_for_path
 from ..conversion.models import ConversionCompletion, ConversionRequest
-
 
 _MODE_LABELS = {
     "signature16": "A6 書帖（16 頁一組）",
     "four_up": "A4 四格 A6",
     "single_a5": "A5 單頁",
     "single_4x6": "4×6 英吋單頁",
+    "b6_on_a5": "B6 內容置於 A5 紙張",
 }
 _MARGIN_LABELS = {
     "safe": "安全邊界",
     "maximized": "最大化內容",
     "borderless": "無外邊界",
+}
+_MARK_LABELS = {
+    "normal": "普通列印",
+    "crop_marks": "附裁切標記",
 }
 
 
@@ -56,7 +61,6 @@ class ConverterPage(QWidget):
         self.source_edit.setObjectName("conversion-source")
         self.source_button = QPushButton("選擇來源", self)
         self.source_button.clicked.connect(self._choose_source)
-
         self.output_edit = QLineEdit(self)
         self.output_edit.setObjectName("conversion-output")
         self.output_button = QPushButton("選擇輸出", self)
@@ -67,6 +71,10 @@ class ConverterPage(QWidget):
         self.margin_combo = QComboBox(self)
         for value, label in _MARGIN_LABELS.items():
             self.margin_combo.addItem(label, value)
+        self.output_mark_combo = QComboBox(self)
+        self.output_mark_combo.setObjectName("conversion-output-marks")
+        for value, label in _MARK_LABELS.items():
+            self.output_mark_combo.addItem(label, value)
 
         self.font_edit = QLineEdit("Noto Serif CJK TC", self)
         self.body_size = QDoubleSpinBox(self)
@@ -81,6 +89,7 @@ class ConverterPage(QWidget):
         self.page_numbers.setChecked(True)
         self.cut_guides = QCheckBox("顯示裁切／折線", self)
         self.cut_guides.setChecked(True)
+        self.b6_preview = B6OnA5Preview(self)
 
         self.start_button = QPushButton("開始轉換", self)
         self.start_button.clicked.connect(self._start_conversion)
@@ -104,7 +113,6 @@ class ConverterPage(QWidget):
         source_layout.setContentsMargins(0, 0, 0, 0)
         source_layout.addWidget(self.source_edit, 1)
         source_layout.addWidget(self.source_button)
-
         output_row = QWidget(self)
         output_layout = QHBoxLayout(output_row)
         output_layout.setContentsMargins(0, 0, 0, 0)
@@ -116,6 +124,8 @@ class ConverterPage(QWidget):
         form.addRow("輸出 DOCX", output_row)
         form.addRow("輸出模式", self.mode_combo)
         form.addRow("邊界模式", self.margin_combo)
+        form.addRow("B6 輸出", self.output_mark_combo)
+        form.addRow("版面預覽", self.b6_preview)
         form.addRow("字型", self.font_edit)
         form.addRow("內文字級", self.body_size)
         form.addRow("標題字級", self.heading_size)
@@ -128,7 +138,6 @@ class ConverterPage(QWidget):
         action_layout.addWidget(self.cancel_button)
         action_layout.addWidget(self.start_button)
         action_layout.addWidget(self.cover_button)
-
         layout = QVBoxLayout(self)
         title = QLabel("EPUB／Word 轉換工具", self)
         title.setObjectName("converter-title")
@@ -144,7 +153,10 @@ class ConverterPage(QWidget):
         self.controller.failed.connect(self._on_failed)
         self.controller.cancelled.connect(self._on_cancelled)
         self.source_edit.editingFinished.connect(self._sync_source_from_text)
+        self.mode_combo.currentIndexChanged.connect(self._sync_mode_controls)
+        self.output_mark_combo.currentIndexChanged.connect(self._sync_mode_controls)
         self._populate_modes(Path("book.epub"))
+        self._sync_mode_controls()
         self._set_running(False)
 
     def _populate_modes(self, source: Path) -> None:
@@ -155,6 +167,17 @@ class ConverterPage(QWidget):
             self.mode_combo.addItem(_MODE_LABELS[value], value)
         if selected in modes:
             self.mode_combo.setCurrentIndex(self.mode_combo.findData(selected))
+        self._sync_mode_controls()
+
+    def _sync_mode_controls(self, _value: object = None) -> None:
+        is_b6 = self.mode_combo.currentData() == "b6_on_a5"
+        self.output_mark_combo.setEnabled(is_b6)
+        self.output_mark_combo.setVisible(is_b6)
+        self.b6_preview.setVisible(is_b6)
+        self.cut_guides.setEnabled(not is_b6)
+        if not is_b6:
+            self.output_mark_combo.setCurrentIndex(self.output_mark_combo.findData("normal"))
+        self.b6_preview.set_crop_marks(self.output_mark_combo.currentData() == "crop_marks")
 
     def set_source_path(self, source: Path | str) -> None:
         path = Path(source).expanduser()
@@ -167,16 +190,12 @@ class ConverterPage(QWidget):
     def _sync_source_from_text(self) -> None:
         text = self.source_edit.text().strip()
         if text:
-            path = Path(text).expanduser()
-            self._populate_modes(path)
+            self._populate_modes(Path(text).expanduser())
 
     @Slot()
     def _choose_source(self) -> None:
         value, _ = QFileDialog.getOpenFileName(
-            self,
-            "選擇 EPUB 或 DOCX",
-            "",
-            "EPUB／Word (*.epub *.docx)",
+            self, "選擇 EPUB 或 DOCX", "", "EPUB／Word (*.epub *.docx)"
         )
         if value:
             self.set_source_path(value)
@@ -184,10 +203,7 @@ class ConverterPage(QWidget):
     @Slot()
     def _choose_output(self) -> None:
         value, _ = QFileDialog.getSaveFileName(
-            self,
-            "選擇輸出 DOCX",
-            self.output_edit.text(),
-            "Word 文件 (*.docx)",
+            self, "選擇輸出 DOCX", self.output_edit.text(), "Word 文件 (*.docx)"
         )
         if value:
             path = Path(value)
@@ -196,18 +212,22 @@ class ConverterPage(QWidget):
             self.output_edit.setText(str(path))
 
     def _build_request(self) -> ConversionRequest:
-        mode = self.mode_combo.currentData()
-        margin = self.margin_combo.currentData()
+        mode = str(self.mode_combo.currentData() or "")
         return ConversionRequest(
             input_path=Path(self.source_edit.text().strip()).expanduser(),
             output_path=Path(self.output_edit.text().strip()).expanduser(),
-            imposition_mode=str(mode or ""),
-            margin_mode=str(margin or ""),
+            imposition_mode=mode,
+            margin_mode=str(self.margin_combo.currentData() or ""),
             font_name=self.font_edit.text(),
             body_font_pt=self.body_size.value(),
             heading_font_pt=self.heading_size.value(),
             page_numbers=self.page_numbers.isChecked(),
-            cut_guides=self.cut_guides.isChecked(),
+            cut_guides=self.cut_guides.isChecked() if mode != "b6_on_a5" else False,
+            output_mark_mode=(
+                str(self.output_mark_combo.currentData() or "normal")
+                if mode == "b6_on_a5"
+                else "normal"
+            ),
         )
 
     @Slot()
@@ -262,6 +282,5 @@ class ConverterPage(QWidget):
 
     @Slot()
     def _emit_cover_payload(self) -> None:
-        if self._completion is None:
-            return
-        self.open_cover_requested.emit(self._completion.to_cover_payload())
+        if self._completion is not None:
+            self.open_cover_requested.emit(self._completion.to_cover_payload())

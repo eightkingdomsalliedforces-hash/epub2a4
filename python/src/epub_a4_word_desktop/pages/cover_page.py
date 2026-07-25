@@ -8,6 +8,7 @@ from uuid import uuid4
 from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -15,10 +16,12 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from epub_a4_word.cover.composition import compose_full_spread
 from epub_a4_word.cover.geometry import calculate_layout
 from epub_a4_word.cover.models import (
     CoverElement,
@@ -29,16 +32,23 @@ from epub_a4_word.cover.models import (
 from epub_a4_word.cover.project_io import dumps_project, loads_project
 from epub_a4_word_desktop.cover.assets_panel import AssetsPanel
 from epub_a4_word_desktop.cover.canvas import CoverCanvas
+from epub_a4_word_desktop.cover.composition_dialog import CompositionDialog
 from epub_a4_word_desktop.cover.controller import CoverController
 from epub_a4_word_desktop.cover.crop_dialog import CropDialog
 from epub_a4_word_desktop.cover.export_worker import ExportWorker, export_paths
 from epub_a4_word_desktop.cover.inspector import ElementInspector
 from epub_a4_word_desktop.cover.layers_panel import LayersPanel
-from epub_a4_word_desktop.cover.project_files import (
-    open_project_bundle,
-    save_project_bundle,
-)
+from epub_a4_word_desktop.cover.project_files import open_project_bundle, save_project_bundle
+from epub_a4_word_desktop.cover.search_controller import SearchController
+from epub_a4_word_desktop.cover.search_panel import CoverSearchPanel
 from epub_a4_word_desktop.cover.setup_panel import CoverSetupPanel, CoverSetupValues
+from epub_a4_word_desktop.settings.credentials import (
+    KeyringCredentialStore,
+    LayeredCredentialStore,
+    PortableCredentialStore,
+    SessionCredentialStore,
+)
+from epub_a4_word_desktop.settings.paths import RuntimePaths
 
 
 class TemplatePanel(QGroupBox):
@@ -59,9 +69,7 @@ class TemplatePanel(QGroupBox):
         layout.addWidget(self.combo)
         layout.addWidget(self.apply_button)
         self.apply_button.clicked.connect(
-            lambda _checked=False: self.template_selected.emit(
-                str(self.combo.currentData())
-            )
+            lambda _checked=False: self.template_selected.emit(str(self.combo.currentData()))
         )
 
 
@@ -102,9 +110,8 @@ class ExportPanel(QGroupBox):
             self.set_output_dir(selected)
 
     def _request_export(self) -> None:
-        if self.output_dir is None:
-            return
-        self.export_requested.emit(self.output_dir, int(self.dpi_combo.currentData()))
+        if self.output_dir is not None:
+            self.export_requested.emit(self.output_dir, int(self.dpi_combo.currentData()))
 
 
 class CoverPage(QWidget):
@@ -115,12 +122,42 @@ class CoverPage(QWidget):
         parent: QWidget | None = None,
         *,
         controller: CoverController | None = None,
+        runtime_paths: RuntimePaths | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("cover-page")
-        self.controller = controller or CoverController(parent=self)
+        self.runtime_paths = runtime_paths
+        working_dir = runtime_paths.data_dir if runtime_paths is not None else None
+        self.controller = controller or CoverController(working_dir=working_dir, parent=self)
         self.conversion_payload: dict[str, object] | None = None
         self._export_workers: set[ExportWorker] = set()
+
+        persistent = None
+        persistent_available = False
+        portable = bool(runtime_paths and runtime_paths.portable)
+        if runtime_paths is not None:
+            if portable:
+                persistent = PortableCredentialStore(
+                    runtime_paths.config_dir / "google-image-search-credentials.json"
+                )
+                persistent_available = True
+            else:
+                try:
+                    candidate = KeyringCredentialStore()
+                    candidate.load()
+                except Exception:
+                    persistent = None
+                else:
+                    persistent = candidate
+                    persistent_available = True
+        credential_store = LayeredCredentialStore(
+            persistent,
+            SessionCredentialStore(),
+        )
+        self.search_controller = SearchController(
+            credential_store=credential_store,
+            parent=self,
+        )
 
         self.back_button = QPushButton("返回首頁", self)
         self.open_button = QPushButton("開啟專案", self)
@@ -144,6 +181,13 @@ class CoverPage(QWidget):
         self.inspector = ElementInspector(self)
         self.setup_panel = CoverSetupPanel(self)
         self.export_panel = ExportPanel(self)
+        self.search_panel = CoverSearchPanel(
+            self.search_controller,
+            portable=portable,
+            persistent_available=persistent_available,
+            auto_search=runtime_paths is not None,
+            parent=self,
+        )
 
         left = QWidget(self)
         left_layout = QVBoxLayout(left)
@@ -152,11 +196,14 @@ class CoverPage(QWidget):
         left_layout.addWidget(self.assets_panel)
         left_layout.addWidget(self.layers_panel, 1)
 
-        center = QWidget(self)
-        center_layout = QVBoxLayout(center)
-        center_layout.setContentsMargins(0, 0, 0, 0)
-        center_layout.addWidget(self.canvas, 1)
-        center_layout.addWidget(self.canvas.zoom_controls)
+        editor = QWidget(self)
+        editor_layout = QVBoxLayout(editor)
+        editor_layout.setContentsMargins(0, 0, 0, 0)
+        editor_layout.addWidget(self.canvas, 1)
+        editor_layout.addWidget(self.canvas.zoom_controls)
+        self.center_tabs = QTabWidget(self)
+        self.center_tabs.addTab(editor, "封面編輯")
+        self.center_tabs.addTab(self.search_panel, "搜尋封面")
 
         right = QWidget(self)
         right_layout = QVBoxLayout(right)
@@ -167,7 +214,7 @@ class CoverPage(QWidget):
 
         self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.splitter.addWidget(left)
-        self.splitter.addWidget(center)
+        self.splitter.addWidget(self.center_tabs)
         self.splitter.addWidget(right)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
@@ -178,17 +225,11 @@ class CoverPage(QWidget):
         layout.addLayout(toolbar)
         layout.addWidget(self.splitter, 1)
 
-        self.back_button.clicked.connect(
-            lambda _checked=False: self.back_requested.emit()
-        )
+        self.back_button.clicked.connect(lambda _checked=False: self.back_requested.emit())
         self.open_button.clicked.connect(self._choose_open_project)
         self.save_button.clicked.connect(self._choose_save_project)
-        self.undo_button.clicked.connect(
-            lambda _checked=False: self.controller.undo()
-        )
-        self.redo_button.clicked.connect(
-            lambda _checked=False: self.controller.redo()
-        )
+        self.undo_button.clicked.connect(lambda _checked=False: self.controller.undo())
+        self.redo_button.clicked.connect(lambda _checked=False: self.controller.redo())
         self.setup_panel.create_requested.connect(self._create_project)
         self.template_panel.template_selected.connect(self._apply_template)
         self.assets_panel.image_imported.connect(self._add_image)
@@ -201,19 +242,16 @@ class CoverPage(QWidget):
         self.layers_panel.z_order_requested.connect(self._change_z_order)
         self.layers_panel.visibility_requested.connect(self._change_visibility)
         self.canvas.element_selected.connect(self._select_element)
-        self.canvas.element_transform_requested.connect(
-            self._commit_canvas_transform
-        )
+        self.canvas.element_transform_requested.connect(self._commit_canvas_transform)
         self.inspector.patch_requested.connect(self.controller.update_element)
         self.controller.project_changed.connect(self._project_changed)
         self.controller.preview_ready.connect(self.canvas.set_preview)
         self.controller.error.connect(self._show_error)
-        self.controller.undo_stack.canUndoChanged.connect(
-            self.undo_button.setEnabled
-        )
-        self.controller.undo_stack.canRedoChanged.connect(
-            self.redo_button.setEnabled
-        )
+        self.controller.undo_stack.canUndoChanged.connect(self.undo_button.setEnabled)
+        self.controller.undo_stack.canRedoChanged.connect(self.redo_button.setEnabled)
+        self.search_panel.apply_requested.connect(self._begin_search_application)
+        self.search_controller.download_ready.connect(self._search_download_ready)
+        self.search_controller.download_failed.connect(self._show_error)
         self.undo_button.setEnabled(False)
         self.redo_button.setEnabled(False)
         self.save_button.setEnabled(False)
@@ -230,6 +268,7 @@ class CoverPage(QWidget):
         project = loads_project(project_json)
         self.controller.working_dir = Path(project.working_dir).resolve()
         self.controller.replace_project(project_json, clear_history=True)
+        self.search_panel.bind_project(self.controller.project_json)
         self.status_label.setText(f"已開啟封面專案：{Path(path).resolve()}")
         return project_json
 
@@ -240,10 +279,7 @@ class CoverPage(QWidget):
         project = loads_project(self.controller.project_json)
         base = project.metadata.title or Path(project.source_file).stem or "cover"
         path, _ = QFileDialog.getSaveFileName(
-            self,
-            "儲存封面專案",
-            f"{base}.cover.json",
-            "封面專案 (*.cover.json)",
+            self, "儲存封面專案", f"{base}.cover.json", "封面專案 (*.cover.json)"
         )
         if not path:
             return
@@ -256,17 +292,13 @@ class CoverPage(QWidget):
 
     def _choose_open_project(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self,
-            "開啟封面專案",
-            "",
-            "封面專案 (*.cover.json)",
+            self, "開啟封面專案", "", "封面專案 (*.cover.json)"
         )
-        if not path:
-            return
-        try:
-            self.open_project(path)
-        except Exception as exc:
-            self._show_error(str(exc))
+        if path:
+            try:
+                self.open_project(path)
+            except Exception as exc:
+                self._show_error(str(exc))
 
     def open_from_conversion(self, payload: Mapping[str, object]) -> None:
         normalized = dict(payload)
@@ -276,19 +308,14 @@ class CoverPage(QWidget):
         trim = normalized["trim_size_mm"]
         if not isinstance(trim, Mapping):
             raise ValueError("轉換結果的成品尺寸無效。")
-        self.setup_panel.set_trim_size(
-            float(trim["width_mm"]),
-            float(trim["height_mm"]),
-        )
+        self.setup_panel.set_trim_size(float(trim["width_mm"]), float(trim["height_mm"]))
         self.setup_panel.set_source(
             source_path,
             page_count=page_count,
             estimated=False,
             confirmed=True,
         )
-        self.status_label.setText(
-            "已帶入轉換後的實際頁數，請確認設定後建立封面。"
-        )
+        self.status_label.setText("已帶入轉換後的實際頁數，請確認設定後建立封面。")
 
     def _create_project(self, values: CoverSetupValues) -> None:
         try:
@@ -297,6 +324,7 @@ class CoverPage(QWidget):
                 values.settings(self.controller.working_dir),
             )
             self.controller.apply_template(values.template_id)
+            self.search_panel.bind_project(self.controller.project_json)
         except Exception as exc:
             self._show_error(str(exc))
 
@@ -319,6 +347,47 @@ class CoverPage(QWidget):
         except Exception as exc:
             self._show_error(str(exc))
 
+    def _begin_search_application(self, mode: str, selected: dict) -> None:
+        if not self.controller.project_json:
+            self._show_error("請先建立封面專案。")
+            return
+        if not selected:
+            self._show_error("尚未選擇搜尋圖片。")
+            return
+        self.status_label.setText("正在下載並驗證選取的原始圖片…")
+        self.search_controller.download_selected(
+            selected,
+            self.controller.working_dir / "assets",
+            mode,
+        )
+
+    def _search_download_ready(self, mode: str, paths: dict) -> None:
+        dialog = CompositionDialog(paths, mode=mode, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.status_label.setText("已取消套用搜尋圖片。")
+            return
+        try:
+            selections = dialog.selections()
+            if mode == "segmented":
+                element_ids = self.controller.add_downloaded_images(selections)
+                if element_ids:
+                    self.canvas.select_element(element_ids[-1])
+                self.status_label.setText("已將搜尋圖片加入正面／背面／書脊，可繼續裁切與移動。")
+            else:
+                project = loads_project(self.controller.project_json)
+                destination = (
+                    self.controller.working_dir
+                    / "assets"
+                    / f"composed-spread-{uuid4().hex}.png"
+                )
+                compose_full_spread(project, selections, destination, dpi=300)
+                element_id = self.controller.add_composed_spread(destination)
+                self.canvas.select_element(element_id)
+                self.status_label.setText("已合成並套用完整書衣。")
+            self.center_tabs.setCurrentIndex(0)
+        except Exception as exc:
+            self._show_error(str(exc))
+
     def _crop_asset(self, path: str) -> None:
         if not self.controller.project_json:
             return
@@ -329,11 +398,7 @@ class CoverPage(QWidget):
                 element
                 for element in project.elements
                 if element.kind is ElementKind.IMAGE
-                and str(
-                    Path(str(element.content.get("path", "")))
-                    .expanduser()
-                    .resolve()
-                )
+                and str(Path(str(element.content.get("path", ""))).expanduser().resolve())
                 == resolved_path
             ),
             None,
@@ -352,10 +417,7 @@ class CoverPage(QWidget):
             self,
         )
         if dialog.exec():
-            self.controller.update_element(
-                target.id,
-                {"content": dialog.crop_margins()},
-            )
+            self.controller.update_element(target.id, {"content": dialog.crop_margins()})
 
     def _set_editor_mutations_enabled(self, enabled: bool) -> None:
         for widget in (
@@ -396,9 +458,7 @@ class CoverPage(QWidget):
         docx = result.get("docx", {}).get("path", "")
         self.status_label.setText(f"封面輸出完成：{pdf}｜{docx}")
         if self.isVisible():
-            QMessageBox.information(
-                self, "封面輸出完成", f"PDF：{pdf}\nDOCX：{docx}"
-            )
+            QMessageBox.information(self, "封面輸出完成", f"PDF：{pdf}\nDOCX：{docx}")
 
     def _export_failed(self, worker: ExportWorker, message: str) -> None:
         self._export_workers.discard(worker)
@@ -444,31 +504,19 @@ class CoverPage(QWidget):
             },
         )
         candidate = replace(project, elements=project.elements + (element,))
-        self.controller.replace_project(
-            dumps_project(candidate), label="加入文字"
-        )
+        self.controller.replace_project(dumps_project(candidate), label="加入文字")
         self.canvas.select_element(element_id)
 
     def _change_z_order(self, element_id: str, delta: int) -> None:
         if not self.controller.project_json:
             return
-        element = loads_project(self.controller.project_json).elements_by_id[
-            element_id
-        ]
-        self.controller.update_element(
-            element_id,
-            {"z_index": element.z_index + int(delta)},
-        )
+        element = loads_project(self.controller.project_json).elements_by_id[element_id]
+        self.controller.update_element(element_id, {"z_index": element.z_index + int(delta)})
 
     def _change_visibility(self, element_id: str, visible: bool) -> None:
-        self.controller.update_element(
-            element_id,
-            {"opacity": 1.0 if visible else 0.0},
-        )
+        self.controller.update_element(element_id, {"opacity": 1.0 if visible else 0.0})
 
-    def _commit_canvas_transform(
-        self, element_id: str, transform: dict
-    ) -> None:
+    def _commit_canvas_transform(self, element_id: str, transform: dict) -> None:
         self.controller.update_element(element_id, {"transform": dict(transform)})
 
     def _project_changed(self, project_json: str) -> None:
@@ -480,9 +528,9 @@ class CoverPage(QWidget):
         self.inspector.set_element(None)
         project = loads_project(project_json)
         self.status_label.setText(
-            f"{project.metadata.title or Path(project.source_file).name}｜"
-            f"{project.page_count} 頁"
+            f"{project.metadata.title or Path(project.source_file).name}｜{project.page_count} 頁"
         )
+        self.search_panel.bind_project(project_json)
 
     def _select_element(self, element_id: object) -> None:
         identifier = None if element_id is None else str(element_id)

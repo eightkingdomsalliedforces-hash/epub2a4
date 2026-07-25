@@ -5,7 +5,6 @@ import hashlib
 import json
 from pathlib import Path, PurePosixPath
 import re
-import shutil
 from typing import Any
 from zipfile import BadZipFile, ZipFile
 
@@ -30,9 +29,9 @@ from .project_io import CoverValidationError, dumps_project, loads_project
 from .render import render_preview as _render_preview
 from .templates import apply_template as _apply_template
 
-
 _SUPPORTED_TRIMS = (
     (148.0, 210.0),
+    (128.0, 182.0),
     (105.0, 148.0),
     (101.6, 152.4),
 )
@@ -151,8 +150,7 @@ def _write_asset_bytes(data: bytes, source_name: str, assets_dir: Path) -> Path:
 def _copy_asset(source: Path, assets_dir: Path) -> Path:
     if not source.is_file():
         raise CoverValidationError(f"找不到封面圖片：{source}")
-    data = source.read_bytes()
-    return _write_asset_bytes(data, source.name, assets_dir)
+    return _write_asset_bytes(source.read_bytes(), source.name, assets_dir)
 
 
 def _extract_epub_cover(
@@ -196,8 +194,11 @@ def _cover_asset(
 def _trim_size(settings: dict[str, Any]) -> TrimSize:
     width = _required_number(settings, "trim_width_mm")
     height = _required_number(settings, "trim_height_mm")
-    if not any(abs(width - item[0]) < 1e-6 and abs(height - item[1]) < 1e-6 for item in _SUPPORTED_TRIMS):
-        raise CoverValidationError("裁切尺寸只支援 A5、A6 或 4×6 英吋。")
+    if not any(
+        abs(width - item[0]) < 1e-6 and abs(height - item[1]) < 1e-6
+        for item in _SUPPORTED_TRIMS
+    ):
+        raise CoverValidationError("裁切尺寸只支援 A5、B6、A6 或 4×6 英吋。")
     return TrimSize(width, height)
 
 
@@ -280,11 +281,7 @@ def new_project(source_path: str, settings_json: str) -> str:
 
 
 def extract_embedded_asset(project_json: str, asset_id: str) -> dict[str, Any]:
-    """Extract one manifest-declared EPUB image into the project assets folder.
-
-    The caller supplies the stable manifest item id returned by metadata
-    inspection. The archive member path is never accepted directly from UI.
-    """
+    """Extract one manifest-declared EPUB image into the project assets folder."""
     if not isinstance(asset_id, str) or not asset_id.strip():
         raise CoverValidationError("內嵌圖片 ID 不可為空。")
     project = loads_project(project_json)
@@ -348,4 +345,87 @@ def export_cover(
         "pdf": _result_dict(pdf_result),
         "docx": _result_dict(docx_result),
         "dpi": dpi,
+    }
+
+
+def search_covers(request_json: str) -> str:
+    """JSON boundary used by desktop/Android callers without retaining credentials."""
+    from .search import (
+        GeneralCoverSearch,
+        GoogleBooksProvider,
+        GoogleCustomSearchProvider,
+        JsonHttpClient,
+        OpenLibraryProvider,
+        ProviderCredential,
+        PublicBookSearch,
+        SearchKind,
+    )
+    from .search.models import CoverSearchRequest
+
+    try:
+        raw = json.loads(request_json)
+    except json.JSONDecodeError as exc:
+        raise CoverValidationError(f"搜尋 JSON 無效：{exc.msg}") from exc
+    if not isinstance(raw, dict):
+        raise CoverValidationError("搜尋 JSON 必須是物件。")
+    mode = str(raw.get("mode", "public_books"))
+    request = CoverSearchRequest(
+        kind=SearchKind(str(raw.get("kind", "front"))),
+        query=str(raw.get("query", "")),
+        isbn=str(raw.get("isbn", "")),
+        title=str(raw.get("title", "")),
+        author=str(raw.get("author", "")),
+        locale=str(raw.get("locale", "zh-TW")),
+        max_results=int(raw.get("max_results", 20)),
+        safe_search=bool(raw.get("safe_search", True)),
+    )
+    http = JsonHttpClient()
+    if mode == "public_books":
+        response = PublicBookSearch(
+            (GoogleBooksProvider(http), OpenLibraryProvider(http))
+        ).search(request)
+    elif mode == "general_images":
+        credential_raw = raw.get("credential")
+        credential_raw = credential_raw if isinstance(credential_raw, dict) else {}
+        credential = ProviderCredential(
+            str(credential_raw.get("api_key", "")),
+            str(credential_raw.get("search_engine_id", "")),
+        )
+        response = GeneralCoverSearch(GoogleCustomSearchProvider(http)).search_all(
+            title=request.title,
+            author=request.author,
+            isbn=request.isbn,
+            locale=request.locale,
+            credential=credential,
+            max_results=min(request.max_results, 10),
+        )
+    else:
+        raise CoverValidationError("搜尋模式無效。")
+    return json.dumps(response.to_dict(), ensure_ascii=False)
+
+
+def download_search_candidate(
+    candidate_json: str,
+    destination_path: str,
+) -> dict[str, object]:
+    from .search import JsonHttpClient, SearchCandidate, download_candidate
+
+    try:
+        raw = json.loads(candidate_json)
+    except json.JSONDecodeError as exc:
+        raise CoverValidationError(f"候選圖片 JSON 無效：{exc.msg}") from exc
+    if not isinstance(raw, dict):
+        raise CoverValidationError("候選圖片 JSON 必須是物件。")
+    result = download_candidate(
+        SearchCandidate.from_dict(raw),
+        Path(destination_path),
+        JsonHttpClient(),
+    )
+    return {
+        "path": str(result.path),
+        "content_type": result.content_type,
+        "byte_count": result.byte_count,
+        "width": result.width,
+        "height": result.height,
+        "sha256": result.sha256,
     }

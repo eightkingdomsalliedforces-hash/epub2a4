@@ -62,11 +62,8 @@ def convert_epub(
     _notify(progress, 5, "正在讀取 EPUB…")
     book = parse_epub(source)
     warnings = list(book.warnings)
-
     referenced_images = {
-        block.resource_path
-        for block in book.blocks
-        if isinstance(block, ImageBlock)
+        block.resource_path for block in book.blocks if isinstance(block, ImageBlock)
     }
     image_sizes: dict[str, tuple[int, int]] = {}
     total_images = max(1, len(referenced_images))
@@ -77,9 +74,7 @@ def convert_epub(
             continue
         try:
             image_sizes[resource_path] = _image_size(
-                data,
-                book.media_types.get(resource_path, ""),
-                resource_path,
+                data, book.media_types.get(resource_path, ""), resource_path
             )
         except Exception as exc:
             warnings.append(f"無法測量圖片 {resource_path}：{exc}")
@@ -91,10 +86,10 @@ def convert_epub(
         "four_up": "A6 四格小頁",
         "single_a5": "A5 單頁",
         "single_4x6": "4×6 英吋單頁",
+        "b6_on_a5": "B6 內容頁（A5 紙張）",
     }
     _notify(progress, 35, f"正在將內容分成{page_labels[settings.imposition_mode]}…")
     pages = paginate(book.blocks, settings, image_sizes)
-
     _notify(progress, 65, "正在建立 Word 版面…")
     warnings.extend(
         write_docx(
@@ -109,9 +104,7 @@ def convert_epub(
         )
     )
     _notify(progress, 100, "轉換完成。")
-
     plan = build_imposition(len(pages), settings.imposition_mode)
-
     return ConversionResult(
         output_path=output,
         title=book.title,
@@ -134,15 +127,11 @@ def convert_input(
     progress: ProgressCallback | None = None,
 ) -> ConversionResult:
     """Convert an EPUB or reflow an existing DOCX based on its extension."""
-
     source = Path(input_path)
     suffix = source.suffix.lower()
     if suffix == ".epub":
         return convert_epub(source, output_path, settings, progress)
     if suffix == ".docx":
-        # Local import avoids a module cycle: word_reflow uses the shared
-        # ConversionResult declared in this module.
         from .word_reflow import convert_docx
-
         return convert_docx(source, output_path, settings, progress)
     raise ValueError("輸入檔案只支援 EPUB 或 DOCX。")

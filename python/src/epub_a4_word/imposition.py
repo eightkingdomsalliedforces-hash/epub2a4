@@ -3,7 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-ImpositionMode = Literal["four_up", "signature16", "single_a5", "single_4x6"]
+ImpositionMode = Literal[
+    "four_up",
+    "signature16",
+    "single_a5",
+    "single_4x6",
+    "b6_on_a5",
+]
 PageSlot = int | None
 SideSlots = tuple[PageSlot, ...]
 
@@ -41,11 +47,6 @@ def _build_signature16(page_count: int) -> ImpositionPlan:
     signature_count = max(1, (page_count + 15) // 16)
     padded = signature_count * 16
     sides: list[SideSlots] = []
-
-    # Each signature contains four A5 folios. Two folio fronts share one A4
-    # side, their backs share the reverse side. After duplex printing on the
-    # long edge and cutting horizontally, the four folios can be folded and
-    # nested in the order whose cover pages are 1, 3, 5 and 7.
     relative_sides = (
         (16, 1, 14, 3),
         (2, 15, 4, 13),
@@ -56,7 +57,6 @@ def _build_signature16(page_count: int) -> ImpositionPlan:
         base = signature_index * 16
         for relative in relative_sides:
             sides.append(tuple(_visible_page(base + page, page_count) for page in relative))
-
     return ImpositionPlan(
         mode="signature16",
         sides=tuple(sides),
@@ -67,7 +67,9 @@ def _build_signature16(page_count: int) -> ImpositionPlan:
 
 
 def _build_single_page(page_count: int, mode: ImpositionMode) -> ImpositionPlan:
-    sides: tuple[SideSlots, ...] = tuple((page_number,) for page_number in range(1, page_count + 1))
+    sides: tuple[SideSlots, ...] = tuple(
+        (page_number,) for page_number in range(1, page_count + 1)
+    )
     return ImpositionPlan(
         mode=mode,
         sides=sides,
@@ -84,6 +86,6 @@ def build_imposition(page_count: int, mode: ImpositionMode = "four_up") -> Impos
         return _build_four_up(page_count)
     if mode == "signature16":
         return _build_signature16(page_count)
-    if mode in {"single_a5", "single_4x6"}:
+    if mode in {"single_a5", "single_4x6", "b6_on_a5"}:
         return _build_single_page(page_count, mode)
     raise ValueError(f"Unsupported imposition mode: {mode}")

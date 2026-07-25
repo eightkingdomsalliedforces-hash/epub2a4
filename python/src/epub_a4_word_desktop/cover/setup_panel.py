@@ -63,6 +63,7 @@ class CoverSetupPanel(QWidget):
     )
     TRIM_PRESETS = (
         ("A5", (148.0, 210.0)),
+        ("B6", (128.0, 182.0)),
         ("A6", (105.0, 148.0)),
         ("4×6 英吋", (101.6, 152.4)),
     )
@@ -122,7 +123,6 @@ class CoverSetupPanel(QWidget):
         self.template_combo.addItem("上下色塊", "top_bottom_blocks")
         self.template_combo.addItem("全圖覆蓋", "full_bleed_image")
         self.template_combo.addItem("經典書籍", "classic_book")
-
         self.create_button = QPushButton("建立／更新封面專案", self)
         self.create_button.setEnabled(False)
 
@@ -140,13 +140,11 @@ class CoverSetupPanel(QWidget):
         form.addRow("出血", self.bleed_spin)
         form.addRow("圖片模式", self.image_mode_combo)
         form.addRow("初始模板", self.template_combo)
-
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.addLayout(form)
         layout.addWidget(self.create_button)
 
-        # Compatibility aliases used by the approved design document.
         self.page_count = self.page_count_spin
         self.page_confirmed = self.page_count_confirmed
         self.trim = self.trim_combo
@@ -171,8 +169,7 @@ class CoverSetupPanel(QWidget):
 
     @property
     def automatic_spine_width_mm(self) -> float:
-        sheets = math.ceil(self.page_count_spin.value() / 2)
-        return sheets * self.caliper_spin.value()
+        return math.ceil(self.page_count_spin.value() / 2) * self.caliper_spin.value()
 
     def _update_spine(self, _value: object = None) -> None:
         self.spine_label.setText(f"{self.automatic_spine_width_mm:.3f} mm")
@@ -233,7 +230,9 @@ class CoverSetupPanel(QWidget):
         target = (float(width_mm), float(height_mm))
         for index in range(self.trim_combo.count()):
             current = self.trim_combo.itemData(index)
-            if current and all(abs(float(a) - float(b)) < 1e-6 for a, b in zip(current, target)):
+            if current and all(
+                abs(float(a) - float(b)) < 1e-6 for a, b in zip(current, target)
+            ):
                 self.trim_combo.setCurrentIndex(index)
                 return
         raise ValueError("不支援的封面成品尺寸。")
@@ -247,11 +246,7 @@ class CoverSetupPanel(QWidget):
         if not self.page_count_confirmed.isChecked():
             raise ValueError("請確認正文頁數。")
         trim = self.trim_combo.currentData()
-        manual = (
-            self.manual_spine_spin.value()
-            if self.manual_spine_enabled.isChecked()
-            else None
-        )
+        manual = self.manual_spine_spin.value() if self.manual_spine_enabled.isChecked() else None
         return CoverSetupValues(
             source_path=source,
             trim_size_mm=(float(trim[0]), float(trim[1])),
