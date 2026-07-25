@@ -9,15 +9,23 @@
 - Kotlin 的資料模型 smoke test 通過。
 - 全部 Kotlin 應用程式原始碼已用 Android／Compose／Chaquopy API stub 做型別編譯檢查。
 - 專案只設定 `arm64-v8a`，且 Manifest 不要求網路或傳統全域儲存權限。
+- 共用封面核心 Tasks 1–10 已通過 CoverProject schema、PDF／DOCX 結構、golden geometry 與 service bridge 驗收。
+- 桌面 PySide6 Tasks 1–10 由 GitHub Actions 在 Ubuntu、Windows、macOS 的 Python 3.13 與 `QT_QPA_PLATFORM=offscreen` 執行。
+- 桌面驗收涵蓋預設 PySide6／legacy Tkinter 分流、完整轉換模式、HOME／CONVERTER／COVER 導覽、毫米畫布、封面素材與裁切、可攜式專案，以及獨立 PDF／DOCX 匯出。
+- `scripts/desktop_smoke.py --offscreen` 會實際建立主視窗、走過轉換與封面路由、渲染預覽並驗證雙格式輸出。
 
-## 尚待外部 Android 建置環境驗證
+## GitHub Actions 驗證
 
-目前執行環境沒有 Android SDK、Gradle 發行版或 Android 模擬器，因此尚未在此環境產生 APK，也尚未聲稱完成實機驗證。
+- `Desktop PySide6 tests`：Python 3.13，Ubuntu／Windows／macOS，正式安裝 PySide6 6.11.1、pytest-qt、keyring、platformdirs。
+- `Android debug APK`：安裝 Android SDK 36、執行測試、建立 Debug APK，並執行 16 KB 對齊檢查。
+- 經驗證的桌面 Tasks 8–10 原始碼與 SHA-256 會由 Linux job 以 workflow artifact 交付。
 
-專案附有 GitHub Actions 工作流程。將原始碼推送到 GitHub 後，工作流程會安裝 Android SDK 36、執行測試、建立 Debug APK，並用 `zipalign -P 16` 檢查 16 KB 對齊。
+## 尚待驗證或後續計畫
 
-## Cover core Task 10 status
+- 尚未進行 Android 封面編輯 UI。
+- 尚未加入封面網路搜尋。
+- 尚未執行桌面安裝程式、簽章、公證或自動更新等 release packaging。
+- 無顯示的 CI 使用 Qt offscreen 平台；實體螢幕上的視覺細節、系統字型差異與原生檔案選擇器仍需人工桌面驗收。
+- PDF 是列印基準；Word 與 LibreOffice 對部分浮動文字框、字型替代及絕對定位的呈現可能略有差異。
 
-Tasks 1–10 of the shared cover core and export plan are implemented and covered by Python acceptance tests. The completed scope includes editable OOXML DOCX sections, unified service and Android JSON bridge APIs, golden PDF/DOCX structure checks, geometry comparison, and CoverProject schema-v1 documentation.
-
-Not started by this plan: desktop application/UI and Android UI integration. The existing Android conversion application constraints remain API 24–36, arm64-v8a only, offline, and without broad storage permissions.
+Android 轉換應用程式仍維持 API 24–36、arm64-v8a、離線且不要求傳統全域儲存權限。
