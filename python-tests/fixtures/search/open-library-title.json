@@ -1,0 +1,22 @@
+{
+  "numFound": 2,
+  "start": 0,
+  "docs": [
+    {
+      "key": "/works/OL-EXACT-W",
+      "title": "範例書",
+      "author_name": ["作者"],
+      "isbn": ["9780000000001", "0000000001"],
+      "cover_i": 101,
+      "edition_key": ["OL-EXACT-M"]
+    },
+    {
+      "key": "/works/OL-OTHER-W",
+      "title": "範例書續集",
+      "author_name": ["作者"],
+      "isbn": ["9780000000003"],
+      "cover_i": 303,
+      "edition_key": ["OL-OTHER-M"]
+    }
+  ]
+}
