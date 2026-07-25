@@ -15,12 +15,13 @@ from epub_a4_word_desktop.conversion.legacy_adapter import (
 )
 
 
-def test_legacy_epub_modes_are_preserved() -> None:
+def test_legacy_epub_modes_include_b6_on_a5() -> None:
     assert allowed_modes_for_path(Path("book.epub")) == (
         "signature16",
         "four_up",
         "single_a5",
         "single_4x6",
+        "b6_on_a5",
     )
 
 
