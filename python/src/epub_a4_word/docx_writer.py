@@ -294,27 +294,76 @@ def write_docx(
 
     warnings: list[str] = []
     plan = build_imposition(len(pages), imposition_mode)
-    first_prefix = document.add_paragraph()
-    for side_index, slots in enumerate(plan.sides):
-        prefix = first_prefix if side_index == 0 else document.add_paragraph()
-        _configure_page_prefix(prefix, page_break_before=side_index > 0)
-        table = document.add_table(rows=settings.grid_rows, cols=settings.grid_cols)
+
+    def configure_table(table) -> None:
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         table.autofit = False
         _set_fixed_layout(table)
         _set_table_width(table, settings.cell_width_cm * settings.grid_cols)
-        _set_table_borders(table, settings.cut_guides and (settings.grid_rows > 1 or settings.grid_cols > 1))
-        for row in table.rows:
-            row.height = Cm(settings.cell_height_cm)
-            row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
-            tr_pr = row._tr.get_or_add_trPr()
-            cant_split = OxmlElement("w:cantSplit")
-            tr_pr.append(cant_split)
-            for cell in row.cells:
-                cell.width = Cm(settings.cell_width_cm)
-        for slot, physical_page_number in enumerate(slots):
-            cell = table.cell(slot // settings.grid_cols, slot % settings.grid_cols)
-            page = pages[physical_page_number - 1] if physical_page_number is not None else None
-            warnings.extend(_populate_cell(cell, page, slot, settings.grid_cols, settings, resources, media_types))
+        _set_table_borders(
+            table,
+            settings.cut_guides and (settings.grid_rows > 1 or settings.grid_cols > 1),
+        )
+
+    def configure_row(row) -> None:
+        row.height = Cm(settings.cell_height_cm)
+        row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
+        tr_pr = row._tr.get_or_add_trPr()
+        cant_split = OxmlElement("w:cantSplit")
+        tr_pr.append(cant_split)
+        for cell in row.cells:
+            cell.width = Cm(settings.cell_width_cm)
+
+    if imposition_mode == "b6_on_a5":
+        if plan.sides:
+            table = document.add_table(rows=len(plan.sides), cols=1)
+            configure_table(table)
+            for side_index, slots in enumerate(plan.sides):
+                row = table.rows[side_index]
+                configure_row(row)
+                physical_page_number = slots[0]
+                page = (
+                    pages[physical_page_number - 1]
+                    if physical_page_number is not None
+                    else None
+                )
+                warnings.extend(
+                    _populate_cell(
+                        row.cells[0],
+                        page,
+                        0,
+                        1,
+                        settings,
+                        resources,
+                        media_types,
+                    )
+                )
+    else:
+        first_prefix = document.add_paragraph()
+        for side_index, slots in enumerate(plan.sides):
+            prefix = first_prefix if side_index == 0 else document.add_paragraph()
+            _configure_page_prefix(prefix, page_break_before=side_index > 0)
+            table = document.add_table(rows=settings.grid_rows, cols=settings.grid_cols)
+            configure_table(table)
+            for row in table.rows:
+                configure_row(row)
+            for slot, physical_page_number in enumerate(slots):
+                cell = table.cell(slot // settings.grid_cols, slot % settings.grid_cols)
+                page = (
+                    pages[physical_page_number - 1]
+                    if physical_page_number is not None
+                    else None
+                )
+                warnings.extend(
+                    _populate_cell(
+                        cell,
+                        page,
+                        slot,
+                        settings.grid_cols,
+                        settings,
+                        resources,
+                        media_types,
+                    )
+                )
     document.save(output)
     return warnings
