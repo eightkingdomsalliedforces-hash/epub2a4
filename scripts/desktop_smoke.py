@@ -40,7 +40,7 @@ def _fixture_project(output_dir: Path) -> str:
         image_mode=ImageMode.FRONT_ONLY,
         working_dir=str(output_dir),
     )
-    return dumps_project(apply_template(project, "minimal"))
+    return dumps_project(apply_template(project, "minimal_text"))
 
 
 def run_smoke(output_dir: Path | str) -> dict[str, Any]:
