@@ -18,12 +18,13 @@
 
 - `Desktop PySide6 tests`：Python 3.13，Ubuntu／Windows／macOS，正式安裝 PySide6 6.11.1、pytest-qt、keyring、platformdirs。
 - `Android debug APK`：安裝 Android SDK 36、執行測試、建立 Debug APK，並執行 16 KB 對齊檢查。
-- `Windows portable EXE`：Windows Python 3.13 執行共用與桌面測試、建立 PyInstaller onedir、檢查 Qt `qwindows.dll`，並實際執行封裝後的 `EPUB2A4.exe --portable-smoke-test`。
-- Windows portable job 交付 `EPUB2A4-Windows-Portable-x64.zip` 與 SHA-256 檔案；解壓後可直接雙擊執行，不需要安裝 Python。
+- `Windows portable EXE`：Windows Python 3.13 將執行共用與桌面測試、建立 PyInstaller onedir、檢查 Qt `qwindows.dll`，並實際執行封裝後的 `EPUB2A4.exe --portable-smoke-test`；只有完整 workflow GREEN 才視為已驗證。
+- workflow 成功後交付 `EPUB2A4-Windows-Portable-x64.zip` 與 SHA-256 檔案；解壓後可直接雙擊執行，不需要安裝 Python。
 - 經驗證的桌面 Tasks 8–10 原始碼與 SHA-256 會由 Linux job 以 workflow artifact 交付。
 
 ## 尚待驗證或後續計畫
 
+- Android UI 的實體裝置人工驗收仍待完成；Windows portable 工作不修改 Android UI。
 - 尚未加入封面網路搜尋。
 - 尚未執行 Windows Authenticode 簽章、安裝程式、自動更新或 macOS 公證。
 - 無顯示的 CI 使用 Qt offscreen 平台；實體螢幕上的視覺細節、系統字型差異與原生檔案選擇器仍需人工桌面驗收。
