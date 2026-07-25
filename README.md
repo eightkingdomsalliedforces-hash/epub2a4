@@ -101,4 +101,22 @@ epub2a4-desktop --legacy-gui
 
 PDF 是列印基準。DOCX 保留錨定圖片、真正文字框、裁切線、拼接標記與 A4 sections，方便後續編輯；Word 與 LibreOffice 對部分浮動文字框、字型替代及絕對定位的呈現可能略有差異，列印前應以輸出的 PDF 對照。
 
-封面網路搜尋、Android 封面 UI 與桌面後續發行封裝不屬於目前完成的桌面 Tasks 1–10。
+## Windows 可攜式版本
+
+GitHub Actions 的 `Windows portable EXE` 工作流程會在 `windows-latest` 與 Python 3.13 上測試原始碼、以 PyInstaller onedir 模式建立程式、實際啟動封裝後的 EXE，並上傳 artifact：
+
+```text
+EPUB2A4-Windows-Portable-x64.zip
+EPUB2A4-Windows-Portable-x64.zip.sha256
+```
+
+使用方式：
+
+1. 從 GitHub Actions 下載 `EPUB2A4-Windows-Portable-x64` artifact。
+2. 將 ZIP 完整解壓縮。
+3. 進入 `EPUB2A4-Windows-Portable-x64` 資料夾。
+4. 雙擊 `EPUB2A4.exe`。
+
+此版本不需要另外安裝 Python 或 PySide6。不可只複製 `EPUB2A4.exe`，也不可刪除旁邊的 `_internal` 或 Qt runtime 檔案。第一版未使用 Windows Authenticode 簽章，因此 SmartScreen 可能顯示未知發行者；可以核對同一 artifact 中的 SHA-256 檔案。
+
+封面網路搜尋與安裝程式／自動更新不屬於目前的 Windows portable 範圍。
