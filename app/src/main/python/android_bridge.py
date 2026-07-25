@@ -169,6 +169,14 @@ def cover_apply_template_json(project_json: str, template_id: str) -> str:
     return cover_service.apply_template(project_json, template_id)
 
 
+def cover_extract_embedded_asset_json(project_json: str, asset_id: str) -> str:
+    return json.dumps(
+        cover_service.extract_embedded_asset(project_json, asset_id),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
 def cover_render_preview_json(
     project_json: str, output_png: str, max_px: int = 1600
 ) -> str:
