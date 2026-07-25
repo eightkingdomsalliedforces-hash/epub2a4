@@ -63,6 +63,8 @@ data class CoverUiState(
     val exportPdfPath: String? = null,
     val exportDocxPath: String? = null,
     val exportDpi: Int = 300,
+    val exportDirectoryRequestId: Long = 0L,
+    val handledExportDirectoryRequestId: Long = 0L,
     val saveMessage: String? = null,
     val errorMessage: String? = null,
 ) {
@@ -85,4 +87,9 @@ data class CoverUiState(
 
     val canExport: Boolean get() =
         project != null && projectJson.isNotBlank() && pageCountConfirmed && status == CoverStatus.EDITING
+
+    val canChooseExportDirectory: Boolean get() =
+        status == CoverStatus.READY_TO_SAVE &&
+            !exportPdfPath.isNullOrBlank() &&
+            !exportDocxPath.isNullOrBlank()
 }
