@@ -88,17 +88,32 @@ def test_inspector_emits_exact_mm_patch(qtbot, tmp_path: Path) -> None:
     assert signal.args == ["front-title", {"transform": {"x_mm": 12.75}}]
 
 
-def test_layers_panel_emits_selection_and_deletion(qtbot, tmp_path: Path) -> None:
+def test_layers_panel_emits_selection_deletion_order_and_visibility(
+    qtbot, tmp_path: Path
+) -> None:
     panel = LayersPanel()
     qtbot.addWidget(panel)
     panel.set_project(_project_json(tmp_path))
     selected: list[object] = []
     deleted: list[str] = []
+    reordered: list[tuple[str, int]] = []
+    visibility: list[tuple[str, bool]] = []
     panel.selection_changed.connect(selected.append)
     panel.delete_requested.connect(deleted.append)
+    panel.z_order_requested.connect(lambda element_id, delta: reordered.append((element_id, delta)))
+    panel.visibility_requested.connect(
+        lambda element_id, visible: visibility.append((element_id, visible))
+    )
 
     panel.list_widget.setCurrentRow(0)
     assert selected[-1] == "front-title"
+    qtbot.mouseClick(panel.raise_button, Qt.MouseButton.LeftButton)
+    assert reordered == [("front-title", 1)]
+
+    item = panel.list_widget.currentItem()
+    item.setCheckState(Qt.CheckState.Unchecked)
+    assert visibility[-1] == ("front-title", False)
+
     qtbot.mouseClick(panel.delete_button, Qt.MouseButton.LeftButton)
     assert deleted == ["front-title"]
 
@@ -151,3 +166,22 @@ def test_project_changes_update_canvas_layers_and_inspector(
         .transform.x_mm
         == 14.0
     )
+
+
+def test_add_text_button_creates_undoable_front_text(qtbot, tmp_path: Path) -> None:
+    controller = CoverController(working_dir=tmp_path, auto_preview=False)
+    page = CoverPage(controller=controller)
+    qtbot.addWidget(page)
+    controller.replace_project(_project_json(tmp_path), clear_history=True)
+    before_ids = set(loads_project(controller.project_json).elements_by_id)
+
+    qtbot.mouseClick(page.assets_panel.add_text_button, Qt.MouseButton.LeftButton)
+
+    project = loads_project(controller.project_json)
+    new_ids = set(project.elements_by_id) - before_ids
+    assert len(new_ids) == 1
+    created = project.elements_by_id[new_ids.pop()]
+    assert created.kind is ElementKind.TEXT
+    assert created.region is Region.FRONT
+    controller.undo()
+    assert set(loads_project(controller.project_json).elements_by_id) == before_ids
