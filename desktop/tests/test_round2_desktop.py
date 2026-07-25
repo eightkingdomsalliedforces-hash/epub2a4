@@ -32,6 +32,7 @@ def test_browsed_epub_automatically_populates_and_confirms_page_count(
         "inspect_source",
         lambda path, width, height: {
             "source_path": str(path),
+            "fixed_page_count": None,
             "page_count": 123,
             "page_count_estimated": True,
             "metadata": {},
