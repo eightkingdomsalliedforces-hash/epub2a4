@@ -1,6 +1,5 @@
 package tw.daniel.epubword.cover.ui
 
-import android.net.Uri
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,13 +25,23 @@ class CoverExportStateTest {
 
     @Test
     fun partialSaveNamesTheSuccessfulFile() {
-        val result = SavedCoverFiles(pdfUri = Uri.EMPTY, docxUri = null)
+        val result = SavedCoverFiles(
+            pdfUri = null,
+            docxUri = null,
+            pdfSaved = true,
+            docxSaved = false,
+        )
         assertEquals("PDF 已儲存；DOCX 儲存失敗，可重試。", result.userMessage)
     }
 
     @Test
     fun completeSaveNamesBothFiles() {
-        val result = SavedCoverFiles(pdfUri = Uri.EMPTY, docxUri = Uri.EMPTY)
+        val result = SavedCoverFiles(
+            pdfUri = null,
+            docxUri = null,
+            pdfSaved = true,
+            docxSaved = true,
+        )
         assertEquals("PDF 與 DOCX 已儲存。", result.userMessage)
     }
 }
