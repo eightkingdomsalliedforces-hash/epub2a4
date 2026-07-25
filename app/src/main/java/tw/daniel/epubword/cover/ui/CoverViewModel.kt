@@ -4,11 +4,13 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import tw.daniel.epubword.cover.data.CoverDocumentRepository
 import tw.daniel.epubword.cover.data.StagedCoverSource
@@ -23,22 +25,23 @@ class CoverViewModel @JvmOverloads constructor(
 ) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(CoverUiState())
     val uiState: StateFlow<CoverUiState> = _uiState.asStateFlow()
-
     private var stagedSource: StagedCoverSource? = null
-    private var currentProjectJson: String? = null
 
     fun selectSource(uri: Uri) {
         if (_uiState.value.isBusy) return
         viewModelScope.launch {
             _uiState.update { it.copy(status = CoverStatus.STAGING, errorMessage = null) }
             runCatching {
-                val staged = repository.stageSource(uri)
-                _uiState.update { it.copy(status = CoverStatus.INSPECTING) }
-                staged to gateway.inspectSource(staged.localFile)
+                withContext(Dispatchers.IO) {
+                    val staged = repository.stageSource(uri)
+                    staged to gateway.inspectSource(staged.localFile)
+                }
             }.onSuccess { (staged, inspection) ->
                 stagedSource = staged
                 val metadata = inspection.optJSONObject("metadata") ?: JSONObject()
-                val fixedPages = if (inspection.isNull("fixed_page_count")) 0 else inspection.optInt("fixed_page_count")
+                val fixedPages = if (
+                    !inspection.has("fixed_page_count") || inspection.isNull("fixed_page_count")
+                ) 0 else inspection.getInt("fixed_page_count")
                 _uiState.update {
                     it.copy(
                         status = CoverStatus.SETUP,
@@ -55,16 +58,12 @@ class CoverViewModel @JvmOverloads constructor(
                         pageCountEstimated = fixedPages <= 0,
                         pageCountConfirmed = false,
                         warnings = inspection.stringList("warnings"),
+                        project = null,
+                        projectJson = "",
+                        previewPath = null,
                     )
                 }
-            }.onFailure { failure ->
-                _uiState.update {
-                    it.copy(
-                        status = CoverStatus.ERROR,
-                        errorMessage = failure.message ?: "無法讀取來源文件。",
-                    )
-                }
-            }
+            }.onFailure(::showError)
         }
     }
 
@@ -83,15 +82,21 @@ class CoverViewModel @JvmOverloads constructor(
     }
 
     fun setCaliper(value: Double) {
-        if (value > 0.0) _uiState.update { it.copy(paperCaliperMm = value) }
+        if (value > 0.0 && value.isFinite()) {
+            _uiState.update { it.copy(paperCaliperMm = value, errorMessage = null) }
+        }
     }
 
     fun setManualSpine(value: Double?) {
-        if (value == null || value > 0.0) _uiState.update { it.copy(manualSpineWidthMm = value) }
+        if (value == null || (value > 0.0 && value.isFinite())) {
+            _uiState.update { it.copy(manualSpineWidthMm = value, errorMessage = null) }
+        }
     }
 
     fun setBleed(value: Double) {
-        if (value in 0.0..10.0) _uiState.update { it.copy(bleedMm = value) }
+        if (value in 0.0..10.0 && value.isFinite()) {
+            _uiState.update { it.copy(bleedMm = value, errorMessage = null) }
+        }
     }
 
     fun setImageMode(value: ImageMode) = _uiState.update { it.copy(imageMode = value) }
@@ -107,47 +112,65 @@ class CoverViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(status = CoverStatus.CREATING, errorMessage = null) }
             runCatching {
-                val settings = JSONObject()
-                    .put("working_dir", staged.workingFiles.root.absolutePath)
-                    .put("trim_width_mm", state.trimPreset.widthMm)
-                    .put("trim_height_mm", state.trimPreset.heightMm)
-                    .put("page_count", state.pageCount)
-                    .put("paper_caliper_mm", state.paperCaliperMm)
-                    .put("manual_spine_width_mm", state.manualSpineWidthMm ?: JSONObject.NULL)
-                    .put("bleed_mm", state.bleedMm)
-                    .put("overlap_mm", 5.0)
-                    .put("image_mode", state.imageMode.wire)
-                val created = gateway.newProject(staged.localFile, settings)
-                val templated = gateway.applyTemplate(created, state.templateId)
-                val previewFile = repository.createPreviewFile()
-                val preview = gateway.renderPreview(templated, previewFile, 1600)
-                Triple(CoverProjectJson.decode(templated), templated, preview.getString("path"))
-            }.onSuccess { (project, json, previewPath) ->
-                currentProjectJson = json
+                withContext(Dispatchers.IO) {
+                    val settings = JSONObject()
+                        .put("working_dir", staged.workingFiles.root.absolutePath)
+                        .put("trim_width_mm", state.trimPreset.widthMm)
+                        .put("trim_height_mm", state.trimPreset.heightMm)
+                        .put("page_count", state.pageCount)
+                        .put("paper_caliper_mm", state.paperCaliperMm)
+                        .put(
+                            "manual_spine_width_mm",
+                            state.manualSpineWidthMm ?: JSONObject.NULL,
+                        )
+                        .put("bleed_mm", state.bleedMm)
+                        .put("overlap_mm", 5.0)
+                        .put("image_mode", state.imageMode.wire)
+                    val created = gateway.newProject(staged.localFile, settings)
+                    val templated = gateway.applyTemplate(created, state.templateId)
+                    val preview = gateway.renderPreview(
+                        templated,
+                        repository.createPreviewFile(),
+                        1600,
+                    )
+                    Triple(
+                        CoverProjectJson.decode(templated),
+                        templated,
+                        preview.getString("path"),
+                    )
+                }
+            }.onSuccess { (project, projectJson, previewPath) ->
                 _uiState.update {
                     it.copy(
                         status = CoverStatus.EDITING,
                         project = project,
+                        projectJson = projectJson,
                         previewPath = previewPath,
                         errorMessage = null,
                     )
                 }
-            }.onFailure { failure ->
-                _uiState.update {
-                    it.copy(
-                        status = CoverStatus.ERROR,
-                        errorMessage = failure.message ?: "建立封面失敗。",
-                    )
-                }
-            }
+            }.onFailure(::showError)
         }
     }
 
     fun dismissError() = _uiState.update {
         it.copy(
-            status = if (it.project != null) CoverStatus.EDITING else if (it.sourcePath != null) CoverStatus.SETUP else CoverStatus.IDLE,
+            status = when {
+                it.project != null -> CoverStatus.EDITING
+                it.sourcePath != null -> CoverStatus.SETUP
+                else -> CoverStatus.IDLE
+            },
             errorMessage = null,
         )
+    }
+
+    private fun showError(failure: Throwable) {
+        _uiState.update {
+            it.copy(
+                status = CoverStatus.ERROR,
+                errorMessage = failure.message ?: "封面處理失敗。",
+            )
+        }
     }
 
     override fun onCleared() {
