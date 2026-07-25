@@ -33,7 +33,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf '%s\n' .github/implementation/chunk-*
           cat .github/implementation/chunk-* > feature-bundle.tar.gz.b64
           test -s feature-bundle.tar.gz.b64
 
@@ -51,28 +50,57 @@ jobs:
           set -euo pipefail
           actual="$(sha256sum feature-bundle.tar.gz | cut -d' ' -f1)"
           echo "actual=$actual" >> "$GITHUB_OUTPUT"
-          echo "$actual  feature-bundle.tar.gz"
 
       - name: Bundle SHA ${{ steps.digest.outputs.actual }}
-        shell: bash
-        run: |
-          echo "Expected historical SHA: a7d42a5327684e6160c40eb82c9454cd3301b29667c05ebf9231e056ad606151"
-          echo "Actual repository SHA:  ${{ steps.digest.outputs.actual }}"
+        run: echo "Decoded repository bundle"
 
-      - name: Verify feature bundle structure
+      - name: Read tar manifest
         shell: bash
         run: |
           set -euo pipefail
           tar -tzf feature-bundle.tar.gz > /tmp/feature-bundle-files.txt
-          test "$(wc -l < /tmp/feature-bundle-files.txt)" -eq 40
+          sort /tmp/feature-bundle-files.txt > /tmp/feature-bundle-files.sorted.txt
+          cat /tmp/feature-bundle-files.sorted.txt
+
+      - name: Count tar entries
+        id: entries
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(wc -l < /tmp/feature-bundle-files.txt | tr -d ' ')"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      - name: Bundle entry count ${{ steps.entries.outputs.count }}
+        run: echo "Manifest contains ${{ steps.entries.outputs.count }} entries"
+
+      - name: Require 40 tar entries
+        shell: bash
+        run: test "${{ steps.entries.outputs.count }}" -eq 40
+
+      - name: Verify shared search and composition paths
+        shell: bash
+        run: |
+          set -euo pipefail
           grep -Fxq 'python/src/epub_a4_word/cover/search/google_books.py' /tmp/feature-bundle-files.txt
           grep -Fxq 'python/src/epub_a4_word/cover/search/google_custom.py' /tmp/feature-bundle-files.txt
           grep -Fxq 'python/src/epub_a4_word/cover/composition.py' /tmp/feature-bundle-files.txt
           grep -Fxq 'python/src/epub_a4_word/crop_marks.py' /tmp/feature-bundle-files.txt
+
+      - name: Verify desktop paths
+        shell: bash
+        run: |
+          set -euo pipefail
           grep -Fxq 'python/src/epub_a4_word_desktop/cover/search_panel.py' /tmp/feature-bundle-files.txt
           grep -Fxq 'python/src/epub_a4_word_desktop/conversion/layout_preview.py' /tmp/feature-bundle-files.txt
+          grep -Fxq 'python/src/epub_a4_word_desktop/pages/cover_page.py' /tmp/feature-bundle-files.txt
+
+      - name: Verify tests and formal workflow paths
+        shell: bash
+        run: |
+          set -euo pipefail
           grep -Fxq 'python-tests/cover/search/test_windows_search_core.py' /tmp/feature-bundle-files.txt
           grep -Fxq 'python-tests/test_b6_on_a5.py' /tmp/feature-bundle-files.txt
+          grep -Fxq 'python-tests/cover/test_composition.py' /tmp/feature-bundle-files.txt
           grep -Fxq '.github/workflows/windows-portable.yml' /tmp/feature-bundle-files.txt
 
       - name: Extract implementation bundle
