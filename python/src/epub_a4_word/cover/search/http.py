@@ -45,7 +45,9 @@ class JsonHttpClient:
             if exc.code in {401, 403}:
                 raise SearchCredentialError("搜尋憑證遭拒絕。") from exc
             if exc.code == 429:
-                raise SearchQuotaError("搜尋配額已用完。") from exc
+                raise SearchQuotaError(
+                    "搜尋服務暫時限制請求（HTTP 429），可能是短期限流，不一定代表每日額度已用完。"
+                ) from exc
             raise SearchTransportError(
                 f"搜尋服務回傳 HTTP {exc.code}。", url=url, params=params
             ) from exc
