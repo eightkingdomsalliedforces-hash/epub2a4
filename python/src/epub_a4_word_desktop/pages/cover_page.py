@@ -1,0 +1,327 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import replace
+from pathlib import Path
+from uuid import uuid4
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
+
+from epub_a4_word.cover.geometry import calculate_layout
+from epub_a4_word.cover.models import (
+    CoverElement,
+    ElementKind,
+    ElementTransform,
+    Region,
+)
+from epub_a4_word.cover.project_io import dumps_project, loads_project
+from epub_a4_word_desktop.cover.canvas import CoverCanvas
+from epub_a4_word_desktop.cover.controller import CoverController
+from epub_a4_word_desktop.cover.inspector import ElementInspector
+from epub_a4_word_desktop.cover.layers_panel import LayersPanel
+from epub_a4_word_desktop.cover.setup_panel import CoverSetupPanel, CoverSetupValues
+
+
+class TemplatePanel(QGroupBox):
+    template_selected = Signal(str)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("模板", parent)
+        self.combo = QComboBox(self)
+        for label, template_id in (
+            ("極簡", "minimal"),
+            ("上下色塊", "top_bottom_blocks"),
+            ("全圖覆蓋", "full_bleed_image"),
+            ("經典書籍", "classic_book"),
+        ):
+            self.combo.addItem(label, template_id)
+        self.apply_button = QPushButton("套用模板", self)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.combo)
+        layout.addWidget(self.apply_button)
+        self.apply_button.clicked.connect(
+            lambda _checked=False: self.template_selected.emit(str(self.combo.currentData()))
+        )
+
+
+class AssetsPanel(QGroupBox):
+    image_imported = Signal(str, object)
+    add_text_requested = Signal(object)
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("素材", parent)
+        self.region_combo = QComboBox(self)
+        self.region_combo.addItem("正面", Region.FRONT.value)
+        self.region_combo.addItem("封底", Region.BACK.value)
+        self.region_combo.addItem("書脊", Region.SPINE.value)
+        self.region_combo.addItem("完整展開", Region.SPREAD.value)
+        self.add_image_button = QPushButton("加入本機圖片", self)
+        self.add_text_button = QPushButton("加入文字", self)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.region_combo)
+        layout.addWidget(self.add_image_button)
+        layout.addWidget(self.add_text_button)
+        self.add_image_button.clicked.connect(self._pick_image)
+        self.add_text_button.clicked.connect(
+            lambda _checked=False: self.add_text_requested.emit(self.current_region)
+        )
+
+    @property
+    def current_region(self) -> Region:
+        return Region(str(self.region_combo.currentData()))
+
+    def _pick_image(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "選擇封面圖片",
+            "",
+            "圖片 (*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)",
+        )
+        if path:
+            self.image_imported.emit(path, self.current_region)
+
+
+class ExportPanel(QGroupBox):
+    """Export controls are activated by desktop Part 3."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__("輸出", parent)
+        self.note = QLabel("PDF／DOCX 輸出將在下一階段連接共用核心。", self)
+        self.note.setWordWrap(True)
+        self.export_button = QPushButton("輸出 PDF＋DOCX", self)
+        self.export_button.setEnabled(False)
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.note)
+        layout.addWidget(self.export_button)
+
+
+class CoverPage(QWidget):
+    back_requested = Signal()
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        controller: CoverController | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("cover-page")
+        self.controller = controller or CoverController(parent=self)
+        self.conversion_payload: dict[str, object] | None = None
+
+        self.back_button = QPushButton("返回首頁", self)
+        self.undo_button = QPushButton("復原", self)
+        self.redo_button = QPushButton("重做", self)
+        self.status_label = QLabel("請先選擇來源並確認正文頁數。", self)
+        toolbar = QHBoxLayout()
+        toolbar.addWidget(self.back_button)
+        toolbar.addWidget(self.undo_button)
+        toolbar.addWidget(self.redo_button)
+        toolbar.addStretch(1)
+        toolbar.addWidget(self.status_label)
+
+        self.template_panel = TemplatePanel(self)
+        self.assets_panel = AssetsPanel(self)
+        self.layers_panel = LayersPanel(self)
+        self.canvas = CoverCanvas(self)
+        self.inspector = ElementInspector(self)
+        self.setup_panel = CoverSetupPanel(self)
+        self.export_panel = ExportPanel(self)
+
+        left = QWidget(self)
+        left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.addWidget(self.template_panel)
+        left_layout.addWidget(self.assets_panel)
+        left_layout.addWidget(self.layers_panel, 1)
+
+        center = QWidget(self)
+        center_layout = QVBoxLayout(center)
+        center_layout.setContentsMargins(0, 0, 0, 0)
+        center_layout.addWidget(self.canvas, 1)
+        center_layout.addWidget(self.canvas.zoom_controls)
+
+        right = QWidget(self)
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.addWidget(self.setup_panel)
+        right_layout.addWidget(self.inspector, 1)
+        right_layout.addWidget(self.export_panel)
+
+        self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self.splitter.addWidget(left)
+        self.splitter.addWidget(center)
+        self.splitter.addWidget(right)
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        self.splitter.setStretchFactor(2, 0)
+        self.splitter.setSizes([250, 760, 330])
+
+        layout = QVBoxLayout(self)
+        layout.addLayout(toolbar)
+        layout.addWidget(self.splitter, 1)
+
+        self.back_button.clicked.connect(lambda _checked=False: self.back_requested.emit())
+        self.undo_button.clicked.connect(lambda _checked=False: self.controller.undo())
+        self.redo_button.clicked.connect(lambda _checked=False: self.controller.redo())
+        self.setup_panel.create_requested.connect(self._create_project)
+        self.template_panel.template_selected.connect(self._apply_template)
+        self.assets_panel.image_imported.connect(self._add_image)
+        self.assets_panel.add_text_requested.connect(self._add_text)
+        self.layers_panel.selection_changed.connect(self.canvas.select_element)
+        self.layers_panel.delete_requested.connect(self.controller.remove_element)
+        self.layers_panel.z_order_requested.connect(self._change_z_order)
+        self.layers_panel.visibility_requested.connect(self._change_visibility)
+        self.canvas.element_selected.connect(self._select_element)
+        self.canvas.element_transform_requested.connect(self._commit_canvas_transform)
+        self.inspector.patch_requested.connect(self.controller.update_element)
+        self.controller.project_changed.connect(self._project_changed)
+        self.controller.preview_ready.connect(self.canvas.set_preview)
+        self.controller.error.connect(self._show_error)
+        self.controller.undo_stack.canUndoChanged.connect(self.undo_button.setEnabled)
+        self.controller.undo_stack.canRedoChanged.connect(self.redo_button.setEnabled)
+        self.undo_button.setEnabled(False)
+        self.redo_button.setEnabled(False)
+
+    def open_from_conversion(self, payload: Mapping[str, object]) -> None:
+        normalized = dict(payload)
+        self.conversion_payload = normalized
+        source_path = Path(str(normalized["source_path"]))
+        page_count = int(normalized["page_count"])
+        trim = normalized["trim_size_mm"]
+        if not isinstance(trim, Mapping):
+            raise ValueError("轉換結果的成品尺寸無效。")
+        self.setup_panel.set_trim_size(
+            float(trim["width_mm"]),
+            float(trim["height_mm"]),
+        )
+        self.setup_panel.set_source(
+            source_path,
+            page_count=page_count,
+            estimated=False,
+            confirmed=True,
+        )
+        self.status_label.setText("已帶入轉換後的實際頁數，請確認設定後建立封面。")
+
+    def _create_project(self, values: CoverSetupValues) -> None:
+        try:
+            self.controller.load_source(
+                values.source_path,
+                values.settings(self.controller.working_dir),
+            )
+            self.controller.apply_template(values.template_id)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _apply_template(self, template_id: str) -> None:
+        if not self.controller.project_json:
+            self.status_label.setText("請先建立封面專案。")
+            return
+        try:
+            self.controller.apply_template(template_id)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _add_image(self, path: str, region: Region) -> None:
+        if not self.controller.project_json:
+            self.status_label.setText("請先建立封面專案。")
+            return
+        try:
+            element_id = self.controller.add_local_image(path, region)
+            self.canvas.select_element(element_id)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _add_text(self, region: Region) -> None:
+        if not self.controller.project_json:
+            self.status_label.setText("請先建立封面專案。")
+            return
+        project = loads_project(self.controller.project_json)
+        target = {
+            Region.FRONT: calculate_layout(project).front_safe_rect,
+            Region.BACK: calculate_layout(project).back_safe_rect,
+            Region.SPINE: calculate_layout(project).spine_safe_rect,
+            Region.SPREAD: calculate_layout(project).spread_rect,
+        }[region]
+        width = max(1.0, min(target.width_mm, 80.0))
+        height = max(1.0, min(target.height_mm, 20.0))
+        element_id = f"local-text-{uuid4().hex}"
+        highest_z = max((element.z_index for element in project.elements), default=0)
+        element = CoverElement(
+            id=element_id,
+            kind=ElementKind.TEXT,
+            region=region,
+            transform=ElementTransform(
+                target.x_mm + max(0.0, (target.width_mm - width) / 2.0),
+                target.y_mm + max(0.0, (target.height_mm - height) / 2.0),
+                width,
+                height,
+            ),
+            z_index=highest_z + 1,
+            content={
+                "text": "新文字",
+                "font_family": "Sans Serif",
+                "font_size_pt": 18.0,
+                "font_weight": 400,
+                "color": "#111827",
+                "align": "center",
+                "line_spacing": 1.2,
+                "direction": "horizontal",
+            },
+        )
+        candidate = replace(project, elements=project.elements + (element,))
+        self.controller.replace_project(dumps_project(candidate), label="加入文字")
+        self.canvas.select_element(element_id)
+
+    def _change_z_order(self, element_id: str, delta: int) -> None:
+        if not self.controller.project_json:
+            return
+        element = loads_project(self.controller.project_json).elements_by_id[element_id]
+        self.controller.update_element(
+            element_id,
+            {"z_index": element.z_index + int(delta)},
+        )
+
+    def _change_visibility(self, element_id: str, visible: bool) -> None:
+        self.controller.update_element(
+            element_id,
+            {"opacity": 1.0 if visible else 0.0},
+        )
+
+    def _commit_canvas_transform(self, element_id: str, transform: dict) -> None:
+        self.controller.update_element(element_id, {"transform": dict(transform)})
+
+    def _project_changed(self, project_json: str) -> None:
+        self.canvas.set_project(project_json)
+        self.layers_panel.set_project(project_json)
+        self.inspector.set_element(None)
+        project = loads_project(project_json)
+        self.status_label.setText(
+            f"{project.metadata.title or Path(project.source_file).name}｜{project.page_count} 頁"
+        )
+
+    def _select_element(self, element_id: object) -> None:
+        identifier = None if element_id is None else str(element_id)
+        self.layers_panel.select_element(identifier)
+        if identifier is None or not self.controller.project_json:
+            self.inspector.set_element(None)
+            return
+        project = loads_project(self.controller.project_json)
+        self.inspector.set_element(project.elements_by_id.get(identifier))
+
+    def _show_error(self, message: str) -> None:
+        self.status_label.setText(message)
+        if self.isVisible():
+            QMessageBox.critical(self, "封面工具", message)
