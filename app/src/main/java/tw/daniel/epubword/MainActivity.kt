@@ -1,5 +1,6 @@
 package tw.daniel.epubword
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -38,6 +39,22 @@ class MainActivity : ComponentActivity() {
                 val coverImageLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument(),
                 ) { uri -> if (uri != null) coverViewModel.importLocalImage(uri) }
+                val coverDirectoryLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocumentTree(),
+                ) { uri ->
+                    if (uri == null) {
+                        coverViewModel.exportDirectoryCancelled()
+                    } else {
+                        runCatching {
+                            contentResolver.takePersistableUriPermission(
+                                uri,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                            )
+                        }
+                        coverViewModel.saveExports(uri)
+                    }
+                }
 
                 LaunchedEffect(conversionState.saveRequestId, conversionState.pendingOutputName) {
                     val pendingName = conversionState.pendingOutputName
@@ -48,6 +65,21 @@ class MainActivity : ComponentActivity() {
                         val requestId = conversionState.saveRequestId
                         conversionViewModel.markSaveDialogHandled(requestId)
                         outputLauncher.launch(pendingName)
+                    }
+                }
+
+                LaunchedEffect(
+                    coverState.exportDirectoryRequestId,
+                    coverState.handledExportDirectoryRequestId,
+                ) {
+                    if (
+                        coverState.exportDirectoryRequestId >
+                        coverState.handledExportDirectoryRequestId &&
+                        coverState.canChooseExportDirectory
+                    ) {
+                        val requestId = coverState.exportDirectoryRequestId
+                        coverViewModel.markExportDirectoryRequestHandled(requestId)
+                        coverDirectoryLauncher.launch(null)
                     }
                 }
 
@@ -90,9 +122,13 @@ class MainActivity : ComponentActivity() {
                         onRedo = coverViewModel::redo,
                         onApplyTemplate = coverViewModel::applyTemplate,
                         onAddImage = { coverImageLauncher.launch(arrayOf("image/*")) },
+                        onSelectEmbeddedImage = coverViewModel::selectEmbeddedImage,
                         onAddText = coverViewModel::addText,
                         onToggleGuides = coverViewModel::toggleGuides,
+                        onPrepareExport = coverViewModel::prepareExport,
+                        onRequestExportDirectory = coverViewModel::requestExportDirectoryAgain,
                         onSelectElement = coverViewModel::selectElement,
+                        onSelectAtMm = coverViewModel::selectElementAt,
                         onPatchElement = coverViewModel::patchElement,
                         onDeleteElement = coverViewModel::removeElement,
                         onTransformElement = coverViewModel::applyTransformPatch,
