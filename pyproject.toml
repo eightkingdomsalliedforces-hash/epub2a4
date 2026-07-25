@@ -24,6 +24,9 @@ desktop = [
   "keyring==25.7.0",
   "platformdirs==4.10.1",
 ]
+portable = [
+  "PyInstaller>=6.14,<7",
+]
 
 [project.scripts]
 epub2a4-desktop = "epub_a4_word_desktop.__main__:main"
