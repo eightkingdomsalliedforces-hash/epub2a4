@@ -14,6 +14,7 @@ enum class CoverStatus {
     EXPORTING,
     READY_TO_SAVE,
     SAVING,
+    COMPLETED,
     ERROR,
 }
 
@@ -86,7 +87,8 @@ data class CoverUiState(
         !sourcePath.isNullOrBlank() && pageCount > 0 && pageCountConfirmed && status == CoverStatus.SETUP
 
     val canExport: Boolean get() =
-        project != null && projectJson.isNotBlank() && pageCountConfirmed && status == CoverStatus.EDITING
+        project != null && projectJson.isNotBlank() && pageCountConfirmed &&
+            status in setOf(CoverStatus.EDITING, CoverStatus.COMPLETED)
 
     val canChooseExportDirectory: Boolean get() =
         status == CoverStatus.READY_TO_SAVE &&
