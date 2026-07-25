@@ -9,10 +9,12 @@ on:
       - "python/src/epub_a4_word/**"
       - "python/src/epub_a4_word_desktop/conversion/**"
       - "python/src/epub_a4_word_desktop/pages/converter_page.py"
+      - "python/src/epub_a4_word_desktop/cover/setup_panel.py"
       - "python-tests/test_b6_on_a5_*.py"
       - "python-tests/cover/search/**"
       - "python-tests/fixtures/search/**"
       - "desktop/tests/test_b6_converter_page.py"
+      - "desktop/tests/test_cover_page.py"
   workflow_dispatch:
 
 permissions:
@@ -58,6 +60,12 @@ jobs:
 
       - name: Test B6 converter UI
         run: python -m pytest desktop/tests/test_b6_converter_page.py -q
+
+      - name: Test B6 cover handoff
+        run: >-
+          python -m pytest
+          desktop/tests/test_cover_page.py::test_b6_conversion_payload_selects_b6_cover_trim
+          -q
 
       - name: Test cover search contracts
         run: python -m pytest python-tests/cover/search/test_contracts.py -q
