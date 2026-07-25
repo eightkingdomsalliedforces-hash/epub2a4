@@ -10,6 +10,7 @@ on:
       - "python/src/epub_a4_word_desktop/conversion/**"
       - "python-tests/test_b6_on_a5_*.py"
       - "python-tests/cover/search/**"
+      - "python-tests/fixtures/search/**"
   workflow_dispatch:
 
 permissions:
@@ -117,33 +118,13 @@ jobs:
                       raise AssertionError(f"invalid mark value accepted: {value!r}")
           PY
 
-      - name: Capture B6 primary contract output
-        id: primary_contract
-        continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          python -m pytest \
-            python-tests/test_b6_on_a5_mode.py::test_b6_on_a5_is_epub_only_single_page_mode \
-            -vv --tb=long > b6-primary-contract.log 2>&1
-          code=$?
-          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
-          exit "$code"
+      - name: Test B6 primary contract
+        run: >-
+          python -m pytest
+          python-tests/test_b6_on_a5_mode.py::test_b6_on_a5_is_epub_only_single_page_mode
+          -q
 
-      - name: Upload B6 primary traceback
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: b6-primary-contract-traceback
-          path: b6-primary-contract.log
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Require B6 primary contract
-        if: always()
-        run: test "${{ steps.primary_contract.outputs.exit_code }}" = "0"
-
-      - name: Test B6 invalid-mark contract node
+      - name: Test B6 invalid-mark contract
         run: >-
           python -m pytest
           python-tests/test_b6_on_a5_mode.py::test_conversion_request_rejects_unknown_output_mark_mode
@@ -154,3 +135,6 @@ jobs:
 
       - name: Test cover search contracts
         run: python -m pytest python-tests/cover/search/test_contracts.py -q
+
+      - name: Test public book search
+        run: python -m pytest python-tests/cover/search/test_public_search.py -q
