@@ -1,0 +1,1 @@
+Apply the verified Windows cover search and B6-on-A5 implementation bundle, remove all staging files, and build the Windows portable package once.
