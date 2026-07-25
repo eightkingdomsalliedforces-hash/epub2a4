@@ -71,7 +71,12 @@ jobs:
       - name: Run Kotlin unit tests first
         env:
           CHAQUOPY_PYTHON: python3.13
-        run: gradle --no-daemon testDebugUnitTest --stacktrace
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon testDebugUnitTest --stacktrace 2>&1 | tee gradle-unit-test.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
 
       - name: Install Python core dependencies
         run: |
@@ -113,6 +118,7 @@ jobs:
         with:
           name: android-verification-reports
           path: |
+            gradle-unit-test.log
             python-test-results.xml
             app/build/test-results/testDebugUnitTest/*.xml
           if-no-files-found: ignore
