@@ -20,4 +20,12 @@
 
 Tasks 1–10 of the shared cover core and export plan are implemented and covered by Python acceptance tests. The completed scope includes editable OOXML DOCX sections, unified service and Android JSON bridge APIs, golden PDF/DOCX structure checks, geometry comparison, and CoverProject schema-v1 documentation.
 
-Not started by this plan: desktop application/UI and Android UI integration. The existing Android conversion application constraints remain API 24–36, arm64-v8a only, offline, and without broad storage permissions.
+The shared-core plan did not include platform UI work. Desktop PySide6 integration is now completed below; Android cover UI remains separate. The existing Android conversion application constraints remain API 24–36, arm64-v8a only, offline, and without broad storage permissions.
+
+## Desktop PySide6 Task 10 status
+
+Desktop Tasks 1–10 are implemented on `feature/cross-platform-cover-tool`. GitHub Actions installs the real PySide6 6.11.1、pytest-qt、keyring and platformdirs packages and runs the shared core tests, all desktop tests, compileall, project verification, and the end-to-end offscreen smoke script on Ubuntu、Windows、macOS with Python 3.13.
+
+The desktop smoke gate opens `MainWindow`, navigates to `COVER`, loads a schema-v1 project, renders a preview through the shared cover service, and exports independently validated PDF and DOCX files. The old Tkinter UI remains available only through `--legacy-gui`; CI cannot visually inspect a native Tk window in a headless runner, so its import-order and dispatch behavior remain covered by automated tests rather than a visible-window assertion.
+
+Not included in this completed desktop plan: Android cover UI and online image search.
