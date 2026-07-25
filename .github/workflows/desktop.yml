@@ -98,24 +98,24 @@ jobs:
       - name: Verify project structure
         run: python scripts/verify_project.py
 
-      - name: Package verified Part 1 source
+      - name: Package verified Part 2 source
         if: runner.os == 'Linux'
         run: |
           git archive --format=zip \
-            --output=epub2a4-desktop-pyside6-part1-tasks1-3.zip \
+            --output=epub2a4-desktop-pyside6-part2-tasks4-7.zip \
             HEAD
-          sha256sum epub2a4-desktop-pyside6-part1-tasks1-3.zip \
-            > epub2a4-desktop-pyside6-part1-tasks1-3.zip.sha256
-          unzip -t epub2a4-desktop-pyside6-part1-tasks1-3.zip
+          sha256sum epub2a4-desktop-pyside6-part2-tasks4-7.zip \
+            > epub2a4-desktop-pyside6-part2-tasks4-7.zip.sha256
+          unzip -t epub2a4-desktop-pyside6-part2-tasks4-7.zip
 
-      - name: Upload verified Part 1 source
+      - name: Upload verified Part 2 source
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: epub2a4-desktop-pyside6-part1-source
+          name: epub2a4-desktop-pyside6-part2-source
           path: |
-            epub2a4-desktop-pyside6-part1-tasks1-3.zip
-            epub2a4-desktop-pyside6-part1-tasks1-3.zip.sha256
+            epub2a4-desktop-pyside6-part2-tasks4-7.zip
+            epub2a4-desktop-pyside6-part2-tasks4-7.zip.sha256
           if-no-files-found: error
 
       - name: Upload test reports
