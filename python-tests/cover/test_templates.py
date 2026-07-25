@@ -13,7 +13,7 @@ from epub_a4_word.cover.models import (
     ImageMode,
     Region,
 )
-from epub_a4_word.cover.templates import apply_template, list_templates
+from epub_a4_word.cover.templates import STANDARD_TEMPLATE_IDS, apply_template, list_templates
 
 
 @pytest.mark.parametrize(
@@ -30,12 +30,20 @@ def test_template_creates_unique_standard_elements(
 ) -> None:
     result = apply_template(sample_project(), template_id)
     assert len({element.id for element in result.elements}) == len(result.elements)
-    assert any(element.id == "front-title" for element in result.elements)
-    assert any(element.id == "front-author" for element in result.elements)
-    assert any(element.id == "spine-title" for element in result.elements)
-    assert any(element.id == "back-description" for element in result.elements)
-    assert any(element.id == "back-publisher" for element in result.elements)
-    assert any(element.id == "back-isbn" for element in result.elements)
+    if template_id in {"minimal_text", "top_bottom_blocks"}:
+        assert any(element.id == "front-title" for element in result.elements)
+        assert any(element.id == "front-author" for element in result.elements)
+        assert any(element.id == "spine-title" for element in result.elements)
+        assert any(element.id == "back-description" for element in result.elements)
+        assert any(element.id == "back-publisher" for element in result.elements)
+        assert any(element.id == "back-isbn" for element in result.elements)
+    elif template_id == "front_image_plain_back":
+        assert not any(element.id == "front-title" for element in result.elements)
+        assert not any(element.id == "front-author" for element in result.elements)
+        assert any(element.id == "spine-title" for element in result.elements)
+        assert any(element.id == "back-description" for element in result.elements)
+    else:
+        assert not any(element.id in STANDARD_TEMPLATE_IDS for element in result.elements)
 
 
 def test_full_spread_template_sets_image_mode(
