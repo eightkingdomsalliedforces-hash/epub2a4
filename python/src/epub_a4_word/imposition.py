@@ -3,7 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-ImpositionMode = Literal["four_up", "signature16", "single_a5", "single_4x6"]
+ImpositionMode = Literal[
+    "four_up",
+    "signature16",
+    "single_a5",
+    "single_4x6",
+    "b6_on_a5",
+]
 PageSlot = int | None
 SideSlots = tuple[PageSlot, ...]
 
@@ -84,6 +90,6 @@ def build_imposition(page_count: int, mode: ImpositionMode = "four_up") -> Impos
         return _build_four_up(page_count)
     if mode == "signature16":
         return _build_signature16(page_count)
-    if mode in {"single_a5", "single_4x6"}:
+    if mode in {"single_a5", "single_4x6", "b6_on_a5"}:
         return _build_single_page(page_count, mode)
     raise ValueError(f"Unsupported imposition mode: {mode}")
