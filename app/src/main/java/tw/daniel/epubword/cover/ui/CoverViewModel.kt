@@ -15,12 +15,14 @@ import org.json.JSONObject
 import tw.daniel.epubword.cover.data.CoverDocumentRepository
 import tw.daniel.epubword.cover.data.StagedCoverSource
 import tw.daniel.epubword.cover.model.CoverElement
+import tw.daniel.epubword.cover.model.CoverHandoff
 import tw.daniel.epubword.cover.model.CoverProject
 import tw.daniel.epubword.cover.model.CoverProjectJson
 import tw.daniel.epubword.cover.model.CoverRegion
 import tw.daniel.epubword.cover.model.ElementKind
 import tw.daniel.epubword.cover.model.ElementTransform
 import tw.daniel.epubword.cover.model.ImageMode
+import tw.daniel.epubword.cover.model.TrimSize
 import tw.daniel.epubword.python.PythonCoverGateway
 import java.io.File
 import java.util.UUID
@@ -50,10 +52,7 @@ class CoverViewModel @JvmOverloads constructor(
                 }
             }.onSuccess { (staged, inspection) ->
                 stagedSource = staged
-                pendingExports = null
-                undoHistory.clear()
-                redoHistory.clear()
-                previewDebouncer.cancel()
+                resetEditorSession()
                 val metadata = inspection.optJSONObject("metadata") ?: JSONObject()
                 val fixedPages = if (
                     !inspection.has("fixed_page_count") || inspection.isNull("fixed_page_count")
@@ -83,6 +82,51 @@ class CoverViewModel @JvmOverloads constructor(
                         exportPdfPath = null,
                         exportDocxPath = null,
                         saveMessage = null,
+                    )
+                }
+            }.onFailure(::showError)
+        }
+    }
+
+    fun openHandoff(handoff: CoverHandoff) {
+        if (_uiState.value.isBusy) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(status = CoverStatus.STAGING, errorMessage = null) }
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val staged = repository.stageHandoff(handoff)
+                    staged to gateway.inspectSource(staged.localFile)
+                }
+            }.onSuccess { (staged, inspection) ->
+                stagedSource = staged
+                resetEditorSession()
+                val metadata = inspection.optJSONObject("metadata") ?: JSONObject()
+                _uiState.update {
+                    it.copy(
+                        status = CoverStatus.SETUP,
+                        sourceName = staged.displayName,
+                        sourcePath = staged.localFile.absolutePath,
+                        sourceType = inspection.optString("source_type", handoff.sourceType),
+                        metadataTitle = handoff.title.ifBlank { metadata.optString("title") },
+                        metadataAuthor = handoff.author.ifBlank { metadata.optString("author") },
+                        metadataDescription = metadata.optString("description"),
+                        metadataIsbn = metadata.optString("isbn"),
+                        metadataPublisher = metadata.optString("publisher"),
+                        metadataLanguage = metadata.optString("language"),
+                        trimPreset = trimPresetFor(handoff.trimSize),
+                        pageCount = handoff.pageCount,
+                        pageCountEstimated = false,
+                        pageCountConfirmed = handoff.pageCountConfirmed,
+                        warnings = inspection.stringList("warnings"),
+                        project = null,
+                        projectJson = "",
+                        previewPath = null,
+                        selectedElementId = null,
+                        canUndo = false,
+                        canRedo = false,
+                        exportPdfPath = null,
+                        exportDocxPath = null,
+                        saveMessage = "已從轉換結果帶入實際頁數與裁切尺寸。",
                     )
                 }
             }.onFailure(::showError)
@@ -435,6 +479,13 @@ class CoverViewModel @JvmOverloads constructor(
         )
     }
 
+    private fun resetEditorSession() {
+        pendingExports = null
+        undoHistory.clear()
+        redoHistory.clear()
+        previewDebouncer.cancel()
+    }
+
     private fun showError(failure: Throwable) {
         _uiState.update {
             it.copy(status = CoverStatus.ERROR, errorMessage = failure.message ?: "封面處理失敗。")
@@ -463,6 +514,17 @@ class CoverViewModel @JvmOverloads constructor(
         const val MAX_HISTORY = 50
     }
 }
+
+private fun trimPresetFor(trimSize: TrimSize): TrimPreset = when {
+    trimSize.matches(TrimPreset.A5) -> TrimPreset.A5
+    trimSize.matches(TrimPreset.A6) -> TrimPreset.A6
+    trimSize.matches(TrimPreset.INCH_4X6) -> TrimPreset.INCH_4X6
+    else -> throw IllegalArgumentException("轉換結果的裁切尺寸不受支援。")
+}
+
+private fun TrimSize.matches(preset: TrimPreset): Boolean =
+    kotlin.math.abs(widthMm - preset.widthMm) < 0.000001 &&
+        kotlin.math.abs(heightMm - preset.heightMm) < 0.000001
 
 private fun JSONObject.stringList(key: String): List<String> {
     val array = optJSONArray(key) ?: return emptyList()
