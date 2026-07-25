@@ -29,33 +29,51 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Reassemble, verify, and apply bundle
+      - name: Reassemble and verify bundle
         shell: bash
         run: |
           set -euo pipefail
-
           cat .github/implementation/chunk-* > feature-bundle.tar.gz.b64
           base64 --decode feature-bundle.tar.gz.b64 > feature-bundle.tar.gz
           echo "a7d42a5327684e6160c40eb82c9454cd3301b29667c05ebf9231e056ad606151  feature-bundle.tar.gz" | sha256sum --check --strict
-          tar -tzf feature-bundle.tar.gz
+          tar -tzf feature-bundle.tar.gz > /tmp/feature-bundle-files.txt
+          test "$(wc -l < /tmp/feature-bundle-files.txt)" -eq 40
+
+      - name: Extract implementation bundle
+        shell: bash
+        run: |
+          set -euo pipefail
           tar -xzf feature-bundle.tar.gz
           rm -f feature-bundle.tar.gz feature-bundle.tar.gz.b64
 
+      - name: Apply final Qt compatibility fixes
+        shell: bash
+        run: |
+          set -euo pipefail
           python .github/implementation/finalize_bundle.py
 
+      - name: Restore formal Windows workflow
+        shell: bash
+        run: |
+          set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
           path = Path('.github/workflows/windows-portable.yml')
           text = path.read_text('utf-8')
-          text = text.replace(
-              '      - feature/cross-platform-cover-tool\n',
-              '      - main\n',
-          )
-          text = text.replace(
+          old_branch = '      - feature/cross-platform-cover-tool\n'
+          if old_branch not in text:
+              raise SystemExit('formal workflow branch target not found')
+          text = text.replace(old_branch, '      - main\n', 1)
+
+          old_tests = (
               '      - name: Run shared and desktop tests\n'
               '        shell: pwsh\n'
-              '        run: python -m pytest python-tests desktop/tests -q --junitxml=windows-portable-tests.xml\n',
+              '        run: python -m pytest python-tests desktop/tests -q --junitxml=windows-portable-tests.xml\n'
+          )
+          if old_tests not in text:
+              raise SystemExit('formal workflow test step not found')
+          new_tests = (
               '      - name: Run focused feature tests\n'
               '        shell: pwsh\n'
               '        run: >-\n'
@@ -63,15 +81,25 @@ jobs:
               '          python-tests/cover/search/test_windows_search_core.py\n'
               '          python-tests/test_b6_on_a5.py\n'
               '          python-tests/cover/test_composition.py\n'
-              '          -q --junitxml=windows-portable-tests.xml\n',
+              '          -q --junitxml=windows-portable-tests.xml\n'
           )
-          path.write_text(text, 'utf-8')
+          path.write_text(text.replace(old_tests, new_tests, 1), 'utf-8')
           PY
 
+      - name: Compile source and remove staging files
+        shell: bash
+        run: |
+          set -euo pipefail
           python -m compileall -q python/src
           rm -rf .github/implementation
           rm -f .github/workflows/apply-feature-bundle.yml
+          test ! -e .github/implementation
+          git status --short
 
+      - name: Commit and push applied implementation
+        shell: bash
+        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
