@@ -18,13 +18,14 @@
 
 - `Desktop PySide6 tests`：Python 3.13，Ubuntu／Windows／macOS，正式安裝 PySide6 6.11.1、pytest-qt、keyring、platformdirs。
 - `Android debug APK`：安裝 Android SDK 36、執行測試、建立 Debug APK，並執行 16 KB 對齊檢查。
+- `Windows portable EXE`：Windows Python 3.13 執行共用與桌面測試、建立 PyInstaller onedir、檢查 Qt `qwindows.dll`，並實際執行封裝後的 `EPUB2A4.exe --portable-smoke-test`。
+- Windows portable job 交付 `EPUB2A4-Windows-Portable-x64.zip` 與 SHA-256 檔案；解壓後可直接雙擊執行，不需要安裝 Python。
 - 經驗證的桌面 Tasks 8–10 原始碼與 SHA-256 會由 Linux job 以 workflow artifact 交付。
 
 ## 尚待驗證或後續計畫
 
-- 尚未進行 Android UI（封面編輯介面）。
 - 尚未加入封面網路搜尋。
-- 尚未執行桌面安裝程式、簽章、公證或自動更新等 release packaging。
+- 尚未執行 Windows Authenticode 簽章、安裝程式、自動更新或 macOS 公證。
 - 無顯示的 CI 使用 Qt offscreen 平台；實體螢幕上的視覺細節、系統字型差異與原生檔案選擇器仍需人工桌面驗收。
 - PDF 是列印基準；Word 與 LibreOffice 對部分浮動文字框、字型替代及絕對定位的呈現可能略有差異。
 
