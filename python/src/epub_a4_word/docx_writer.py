@@ -13,6 +13,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
+from .crop_marks import CropMarkFrame, add_crop_marks
 from .imposition import ImpositionMode, build_imposition
 from .models import ImageBlock, TextBlock, TextRun
 from .pagination import LayoutSettings, MiniPage, resolve_layout
@@ -84,9 +85,9 @@ def _set_east_asia_font(run, font_name: str) -> None:
 
 
 def _clear_paragraph(paragraph) -> None:
-    p = paragraph._element
-    for child in list(p):
-        p.remove(child)
+    element = paragraph._element
+    for child in list(element):
+        element.remove(child)
 
 
 def _configure_page_prefix(paragraph, page_break_before: bool) -> None:
@@ -107,16 +108,15 @@ def _normalized_image(data: bytes, media_type: str, resource_path: str) -> tuple
             import cairosvg
         except (ImportError, OSError) as exc:
             raise ValueError("SVG 圖片需要額外安裝 CairoSVG 與其系統元件") from exc
-        png = cairosvg.svg2png(bytestring=data)
-        stream = BytesIO(png)
+        stream = BytesIO(cairosvg.svg2png(bytestring=data))
     else:
         stream = BytesIO(data)
     try:
         with Image.open(stream) as image:
             image.load()
             width_px, height_px = image.size
-            fmt = (image.format or "").upper()
-            if fmt not in {"JPEG", "PNG", "GIF", "TIFF", "BMP"}:
+            image_format = (image.format or "").upper()
+            if image_format not in {"JPEG", "PNG", "GIF", "TIFF", "BMP"}:
                 converted = BytesIO()
                 if image.mode not in {"RGB", "RGBA"}:
                     image = image.convert("RGBA")
@@ -135,7 +135,9 @@ def _add_text_block(cell, block: TextBlock, settings: LayoutSettings, first: boo
         _clear_paragraph(paragraph)
     fmt = paragraph.paragraph_format
     fmt.space_before = Pt(0)
-    fmt.space_after = Pt(settings.heading_spacing_pt if block.style == "heading" else settings.paragraph_spacing_pt)
+    fmt.space_after = Pt(
+        settings.heading_spacing_pt if block.style == "heading" else settings.paragraph_spacing_pt
+    )
     fmt.line_spacing = settings.line_spacing
     font_size = settings.heading_font_pt if block.style == "heading" else settings.body_font_pt
     if block.style == "heading":
@@ -199,7 +201,9 @@ def _add_page_number(cell, page_number: int, settings: LayoutSettings, first: bo
     paragraph = cell.paragraphs[0] if first else cell.add_paragraph()
     if first:
         _clear_paragraph(paragraph)
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT if page_number % 2 else WD_ALIGN_PARAGRAPH.LEFT
+    paragraph.alignment = (
+        WD_ALIGN_PARAGRAPH.RIGHT if page_number % 2 else WD_ALIGN_PARAGRAPH.LEFT
+    )
     paragraph.paragraph_format.space_before = Pt(0)
     paragraph.paragraph_format.space_after = Pt(0)
     paragraph.paragraph_format.line_spacing = Pt(8)
@@ -281,7 +285,10 @@ def write_docx(
     imposition_mode: ImpositionMode = "four_up",
 ) -> list[str]:
     settings = resolve_layout(replace(settings, imposition_mode=imposition_mode))
-    assert settings.outer_margin_cm is not None
+    assert settings.page_margin_left_cm is not None
+    assert settings.page_margin_right_cm is not None
+    assert settings.page_margin_top_cm is not None
+    assert settings.page_margin_bottom_cm is not None
     assert settings.cell_width_cm is not None
     assert settings.cell_height_cm is not None
     assert settings.paper_width_cm is not None
@@ -295,14 +302,27 @@ def write_docx(
     section = document.sections[0]
     section.page_width = Cm(settings.paper_width_cm)
     section.page_height = Cm(settings.paper_height_cm)
-    section.top_margin = Cm(settings.outer_margin_cm)
-    section.bottom_margin = Cm(settings.outer_margin_cm)
-    section.left_margin = Cm(settings.outer_margin_cm)
-    section.right_margin = Cm(settings.outer_margin_cm)
+    section.top_margin = Cm(settings.page_margin_top_cm)
+    section.bottom_margin = Cm(settings.page_margin_bottom_cm)
+    section.left_margin = Cm(settings.page_margin_left_cm)
+    section.right_margin = Cm(settings.page_margin_right_cm)
     section.header_distance = Cm(0)
     section.footer_distance = Cm(0)
     document.core_properties.title = title
     document.core_properties.author = author
+
+    if imposition_mode == "b6_on_a5" and settings.output_mark_mode == "crop_marks":
+        add_crop_marks(
+            section,
+            CropMarkFrame(
+                page_width_cm=settings.paper_width_cm,
+                page_height_cm=settings.paper_height_cm,
+                left_cm=settings.page_margin_left_cm,
+                top_cm=settings.page_margin_top_cm,
+                width_cm=settings.cell_width_cm,
+                height_cm=settings.cell_height_cm,
+            ),
+        )
 
     warnings: list[str] = []
     plan = build_imposition(len(pages), imposition_mode)
@@ -316,13 +336,15 @@ def write_docx(
         table.autofit = False
         _set_fixed_layout(table)
         _set_table_width(table, settings.cell_width_cm * settings.grid_cols)
-        _set_table_borders(table, settings.cut_guides and (settings.grid_rows > 1 or settings.grid_cols > 1))
+        _set_table_borders(
+            table,
+            settings.cut_guides and (settings.grid_rows > 1 or settings.grid_cols > 1),
+        )
         for row in table.rows:
             row.height = Cm(settings.cell_height_cm)
             row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
             tr_pr = row._tr.get_or_add_trPr()
-            cant_split = OxmlElement("w:cantSplit")
-            tr_pr.append(cant_split)
+            tr_pr.append(OxmlElement("w:cantSplit"))
             for cell in row.cells:
                 cell.width = Cm(settings.cell_width_cm)
 
