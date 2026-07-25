@@ -1,5 +1,2 @@
 Start the one-time pull-request repair workflow.
-Diagnostic retry after splitting the apply job into named steps.
-Transport-layer retry: concatenate, decode, SHA-256, and tar structure are isolated.
-Structural-integrity retry: record actual SHA and validate 40 entries plus key paths.
-Manifest retry: isolate tar readability, entry count, shared paths, desktop paths, and test paths.
+Final run: verified six-chunk bundle, code-only automated commit, then one Windows portable build.
