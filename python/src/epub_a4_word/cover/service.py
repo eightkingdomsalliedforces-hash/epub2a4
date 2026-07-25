@@ -279,6 +279,48 @@ def new_project(source_path: str, settings_json: str) -> str:
     return dumps_project(project)
 
 
+def extract_embedded_asset(project_json: str, asset_id: str) -> dict[str, Any]:
+    """Extract one manifest-declared EPUB image into the project assets folder.
+
+    The caller supplies the stable manifest item id returned by metadata
+    inspection. The archive member path is never accepted directly from UI.
+    """
+    if not isinstance(asset_id, str) or not asset_id.strip():
+        raise CoverValidationError("內嵌圖片 ID 不可為空。")
+    project = loads_project(project_json)
+    if project.source_type != "epub":
+        raise CoverValidationError("只有 EPUB 專案包含可提取的內嵌圖片。")
+    source = Path(project.source_file).expanduser().resolve()
+    if not source.is_file():
+        raise CoverValidationError("找不到 EPUB 來源文件。")
+    selected = next(
+        (
+            item
+            for item in project.metadata.embedded_images
+            if item.get("id") == asset_id and isinstance(item.get("href"), str)
+        ),
+        None,
+    )
+    if selected is None:
+        raise CoverValidationError(f"找不到 EPUB 內嵌圖片：{asset_id}")
+    href = str(selected["href"])
+    try:
+        with ZipFile(source) as package:
+            data = package.read(href)
+    except (BadZipFile, KeyError) as exc:
+        raise CoverValidationError(f"無法提取 EPUB 內嵌圖片：{href}") from exc
+    working_dir = _writable_working_dir(project.working_dir)
+    assets_dir = working_dir / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    path = _write_asset_bytes(data, href, assets_dir)
+    return {
+        "asset_id": asset_id,
+        "path": str(path),
+        "media_type": str(selected.get("media_type", "application/octet-stream")),
+        "role": str(selected.get("role", "image")),
+    }
+
+
 def apply_template(project_json: str, template_id: str) -> str:
     return dumps_project(_apply_template(loads_project(project_json), template_id))
 
