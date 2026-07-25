@@ -33,6 +33,7 @@ from .templates import apply_template as _apply_template
 
 _SUPPORTED_TRIMS = (
     (148.0, 210.0),
+    (128.0, 182.0),
     (105.0, 148.0),
     (101.6, 152.4),
 )
@@ -196,8 +197,11 @@ def _cover_asset(
 def _trim_size(settings: dict[str, Any]) -> TrimSize:
     width = _required_number(settings, "trim_width_mm")
     height = _required_number(settings, "trim_height_mm")
-    if not any(abs(width - item[0]) < 1e-6 and abs(height - item[1]) < 1e-6 for item in _SUPPORTED_TRIMS):
-        raise CoverValidationError("裁切尺寸只支援 A5、A6 或 4×6 英吋。")
+    if not any(
+        abs(width - item[0]) < 1e-6 and abs(height - item[1]) < 1e-6
+        for item in _SUPPORTED_TRIMS
+    ):
+        raise CoverValidationError("裁切尺寸只支援 A5、B6、A6 或 4×6 英吋。")
     return TrimSize(width, height)
 
 
