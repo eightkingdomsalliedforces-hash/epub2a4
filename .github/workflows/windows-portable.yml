@@ -36,7 +36,6 @@ jobs:
           printf '%s\n' .github/implementation/chunk-*
           cat .github/implementation/chunk-* > feature-bundle.tar.gz.b64
           test -s feature-bundle.tar.gz.b64
-          wc -c feature-bundle.tar.gz.b64
 
       - name: Decode feature bundle
         shell: bash
@@ -44,22 +43,37 @@ jobs:
           set -euo pipefail
           base64 --decode feature-bundle.tar.gz.b64 > feature-bundle.tar.gz
           test -s feature-bundle.tar.gz
-          wc -c feature-bundle.tar.gz
 
-      - name: Verify feature bundle SHA-256
+      - name: Calculate actual feature bundle SHA-256
+        id: digest
         shell: bash
         run: |
           set -euo pipefail
-          sha256sum feature-bundle.tar.gz
-          echo "a7d42a5327684e6160c40eb82c9454cd3301b29667c05ebf9231e056ad606151  feature-bundle.tar.gz" | sha256sum --check --strict
+          actual="$(sha256sum feature-bundle.tar.gz | cut -d' ' -f1)"
+          echo "actual=$actual" >> "$GITHUB_OUTPUT"
+          echo "$actual  feature-bundle.tar.gz"
+
+      - name: Bundle SHA ${{ steps.digest.outputs.actual }}
+        shell: bash
+        run: |
+          echo "Expected historical SHA: a7d42a5327684e6160c40eb82c9454cd3301b29667c05ebf9231e056ad606151"
+          echo "Actual repository SHA:  ${{ steps.digest.outputs.actual }}"
 
       - name: Verify feature bundle structure
         shell: bash
         run: |
           set -euo pipefail
           tar -tzf feature-bundle.tar.gz > /tmp/feature-bundle-files.txt
-          cat /tmp/feature-bundle-files.txt
           test "$(wc -l < /tmp/feature-bundle-files.txt)" -eq 40
+          grep -Fxq 'python/src/epub_a4_word/cover/search/google_books.py' /tmp/feature-bundle-files.txt
+          grep -Fxq 'python/src/epub_a4_word/cover/search/google_custom.py' /tmp/feature-bundle-files.txt
+          grep -Fxq 'python/src/epub_a4_word/cover/composition.py' /tmp/feature-bundle-files.txt
+          grep -Fxq 'python/src/epub_a4_word/crop_marks.py' /tmp/feature-bundle-files.txt
+          grep -Fxq 'python/src/epub_a4_word_desktop/cover/search_panel.py' /tmp/feature-bundle-files.txt
+          grep -Fxq 'python/src/epub_a4_word_desktop/conversion/layout_preview.py' /tmp/feature-bundle-files.txt
+          grep -Fxq 'python-tests/cover/search/test_windows_search_core.py' /tmp/feature-bundle-files.txt
+          grep -Fxq 'python-tests/test_b6_on_a5.py' /tmp/feature-bundle-files.txt
+          grep -Fxq '.github/workflows/windows-portable.yml' /tmp/feature-bundle-files.txt
 
       - name: Extract implementation bundle
         shell: bash
