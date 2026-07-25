@@ -17,7 +17,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect:
+    name: Detect staged implementation bundle
+    runs-on: ubuntu-latest
+    outputs:
+      has_bundle: ${{ steps.bundle.outputs.has_bundle }}
+
+    steps:
+      - name: Checkout pull-request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Detect bundle
+        id: bundle
+        shell: bash
+        run: |
+          if [[ -f .github/implementation/chunk-00 ]]; then
+            echo "has_bundle=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_bundle=false" >> "$GITHUB_OUTPUT"
+          fi
+
   apply:
+    needs: detect
+    if: ${{ needs.detect.outputs.has_bundle == 'true' }}
     name: Apply verified implementation bundle
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -29,136 +53,53 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Concatenate Base64 chunks
+      - name: Reassemble and verify implementation bundle
         shell: bash
         run: |
           set -euo pipefail
           cat .github/implementation/chunk-* > feature-bundle.tar.gz.b64
-          test -s feature-bundle.tar.gz.b64
-
-      - name: Decode feature bundle
-        shell: bash
-        run: |
-          set -euo pipefail
           base64 --decode feature-bundle.tar.gz.b64 > feature-bundle.tar.gz
-          test -s feature-bundle.tar.gz
-
-      - name: Calculate actual feature bundle SHA-256
-        id: digest
-        shell: bash
-        run: |
-          set -euo pipefail
-          actual="$(sha256sum feature-bundle.tar.gz | cut -d' ' -f1)"
-          echo "actual=$actual" >> "$GITHUB_OUTPUT"
-
-      - name: Bundle SHA ${{ steps.digest.outputs.actual }}
-        run: echo "Decoded repository bundle"
-
-      - name: Read tar manifest
-        shell: bash
-        run: |
-          set -euo pipefail
+          echo "a7d42a5327684e6160c40eb82c9454cd3301b29667c05ebf9231e056ad606151  feature-bundle.tar.gz" | sha256sum --check --strict
           tar -tzf feature-bundle.tar.gz > /tmp/feature-bundle-files.txt
-          sort /tmp/feature-bundle-files.txt > /tmp/feature-bundle-files.sorted.txt
-          cat /tmp/feature-bundle-files.sorted.txt
-
-      - name: Count tar entries
-        id: entries
-        shell: bash
-        run: |
-          set -euo pipefail
-          count="$(wc -l < /tmp/feature-bundle-files.txt | tr -d ' ')"
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-
-      - name: Bundle entry count ${{ steps.entries.outputs.count }}
-        run: echo "Manifest contains ${{ steps.entries.outputs.count }} entries"
-
-      - name: Require 40 tar entries
-        shell: bash
-        run: test "${{ steps.entries.outputs.count }}" -eq 40
-
-      - name: Verify shared search and composition paths
-        shell: bash
-        run: |
-          set -euo pipefail
-          grep -Fxq 'python/src/epub_a4_word/cover/search/google_books.py' /tmp/feature-bundle-files.txt
+          test "$(wc -l < /tmp/feature-bundle-files.txt)" -eq 40
           grep -Fxq 'python/src/epub_a4_word/cover/search/google_custom.py' /tmp/feature-bundle-files.txt
           grep -Fxq 'python/src/epub_a4_word/cover/composition.py' /tmp/feature-bundle-files.txt
           grep -Fxq 'python/src/epub_a4_word/crop_marks.py' /tmp/feature-bundle-files.txt
-
-      - name: Verify desktop paths
-        shell: bash
-        run: |
-          set -euo pipefail
           grep -Fxq 'python/src/epub_a4_word_desktop/cover/search_panel.py' /tmp/feature-bundle-files.txt
           grep -Fxq 'python/src/epub_a4_word_desktop/conversion/layout_preview.py' /tmp/feature-bundle-files.txt
-          grep -Fxq 'python/src/epub_a4_word_desktop/pages/cover_page.py' /tmp/feature-bundle-files.txt
-
-      - name: Verify tests and formal workflow paths
-        shell: bash
-        run: |
-          set -euo pipefail
           grep -Fxq 'python-tests/cover/search/test_windows_search_core.py' /tmp/feature-bundle-files.txt
           grep -Fxq 'python-tests/test_b6_on_a5.py' /tmp/feature-bundle-files.txt
           grep -Fxq 'python-tests/cover/test_composition.py' /tmp/feature-bundle-files.txt
-          grep -Fxq '.github/workflows/windows-portable.yml' /tmp/feature-bundle-files.txt
 
-      - name: Extract implementation bundle
+      - name: Extract implementation and apply final fixes
         shell: bash
         run: |
           set -euo pipefail
           tar -xzf feature-bundle.tar.gz
           rm -f feature-bundle.tar.gz feature-bundle.tar.gz.b64
-
-      - name: Apply final Qt compatibility fixes
-        shell: bash
-        run: |
-          set -euo pipefail
           python .github/implementation/finalize_bundle.py
 
-      - name: Restore formal Windows workflow
+      - name: Keep workflow files outside the automated commit
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
+          git checkout HEAD -- .github/workflows/windows-portable.yml
+          if git ls-files --error-unmatch .github/workflows/apply-feature-bundle.yml >/dev/null 2>&1; then
+            git checkout HEAD -- .github/workflows/apply-feature-bundle.yml
+          fi
 
-          path = Path('.github/workflows/windows-portable.yml')
-          text = path.read_text('utf-8')
-          old_branch = '      - feature/cross-platform-cover-tool\n'
-          if old_branch not in text:
-              raise SystemExit('formal workflow branch target not found')
-          text = text.replace(old_branch, '      - main\n', 1)
-
-          old_tests = (
-              '      - name: Run shared and desktop tests\n'
-              '        shell: pwsh\n'
-              '        run: python -m pytest python-tests desktop/tests -q --junitxml=windows-portable-tests.xml\n'
-          )
-          if old_tests not in text:
-              raise SystemExit('formal workflow test step not found')
-          new_tests = (
-              '      - name: Run focused feature tests\n'
-              '        shell: pwsh\n'
-              '        run: >-\n'
-              '          python -m pytest\n'
-              '          python-tests/cover/search/test_windows_search_core.py\n'
-              '          python-tests/test_b6_on_a5.py\n'
-              '          python-tests/cover/test_composition.py\n'
-              '          -q --junitxml=windows-portable-tests.xml\n'
-          )
-          path.write_text(text.replace(old_tests, new_tests, 1), 'utf-8')
-          PY
-
-      - name: Compile source and remove staging files
+      - name: Compile source and remove staging data
         shell: bash
         run: |
           set -euo pipefail
           python -m compileall -q python/src
           rm -rf .github/implementation
-          rm -f .github/workflows/apply-feature-bundle.yml
           test ! -e .github/implementation
-          git status --short
+          if ! git diff --quiet -- .github/workflows; then
+            git diff -- .github/workflows
+            echo "Workflow files must not be changed by the automated commit." >&2
+            exit 1
+          fi
 
       - name: Commit and push applied implementation
         shell: bash
@@ -167,5 +108,130 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+          if git diff --cached --name-only | grep -q '^.github/workflows/'; then
+            git diff --cached --name-only
+            echo "Refusing to push workflow changes with GITHUB_TOKEN." >&2
+            exit 1
+          fi
           git commit -m "feat: complete Windows cover search and B6-on-A5 conversion"
           git push origin HEAD:${{ github.head_ref }}
+
+  build-portable:
+    needs:
+      - detect
+      - apply
+    if: ${{ always() && (needs.detect.outputs.has_bundle == 'false' || needs.apply.result == 'success') }}
+    name: Windows x64 portable PyInstaller build
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: python/src;app/src/main/python
+      QT_QPA_PLATFORM: offscreen
+
+    steps:
+      - name: Checkout latest pull-request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Confirm implementation was applied
+        shell: pwsh
+        run: |
+          if (Test-Path ".github/implementation") { throw "Staging directory still exists." }
+          if (-not (Test-Path "python/src/epub_a4_word/cover/search/google_custom.py")) { throw "Cover search implementation is missing." }
+          if (-not (Test-Path "python-tests/test_b6_on_a5.py")) { throw "B6-on-A5 implementation is missing." }
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install project and portable build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test,desktop,portable]"
+          python -c "import PyInstaller, PySide6, PySide6.QtWidgets, keyring, platformdirs; print('PyInstaller', PyInstaller.__version__); print('PySide6', PySide6.__version__)"
+
+      - name: Run focused feature tests
+        shell: pwsh
+        run: >-
+          python -m pytest
+          python-tests/cover/search/test_windows_search_core.py
+          python-tests/test_b6_on_a5.py
+          python-tests/cover/test_composition.py
+          -q --junitxml=windows-portable-tests.xml
+
+      - name: Run source desktop smoke
+        shell: pwsh
+        run: python scripts/desktop_smoke.py --offscreen
+
+      - name: Compile and verify source project
+        shell: pwsh
+        run: |
+          python -m compileall -q python/src app/src/main/python scripts packaging/windows
+          python scripts/verify_project.py
+
+      - name: Build PyInstaller onedir application
+        shell: pwsh
+        run: python -m PyInstaller --clean --noconfirm packaging/windows/EPUB2A4.spec
+
+      - name: Enable portable data mode
+        shell: pwsh
+        run: New-Item -ItemType File -Path "dist/EPUB2A4-Windows-Portable-x64/portable.flag" -Force | Out-Null
+
+      - name: Verify portable directory
+        shell: pwsh
+        run: python scripts/verify_windows_portable.py dist/EPUB2A4-Windows-Portable-x64 --output windows-portable-verification.json
+
+      - name: Run packaged executable smoke
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath "dist/EPUB2A4-Windows-Portable-x64/EPUB2A4.exe" -ArgumentList "--portable-smoke-test" -PassThru
+          if (-not $process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "Packaged EPUB2A4.exe smoke test did not exit within 30 seconds."
+          }
+          $process.WaitForExit()
+          if ($process.ExitCode -ne 0) {
+            throw "Packaged EPUB2A4.exe smoke test failed with exit code $($process.ExitCode)."
+          }
+
+      - name: Archive portable application and calculate SHA-256
+        shell: pwsh
+        run: |
+          $zip = "EPUB2A4-Windows-Portable-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path "dist/EPUB2A4-Windows-Portable-x64" -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $zip" | Set-Content "EPUB2A4-Windows-Portable-x64.zip.sha256" -Encoding ascii
+          Expand-Archive -Path $zip -DestinationPath "zip-verification" -Force
+          python scripts/verify_windows_portable.py "zip-verification/EPUB2A4-Windows-Portable-x64"
+          Get-Item $zip | Format-List Name,Length
+          Get-Content "EPUB2A4-Windows-Portable-x64.zip.sha256"
+
+      - name: Upload Windows portable application
+        uses: actions/upload-artifact@v4
+        with:
+          name: EPUB2A4-Windows-Portable-x64
+          path: |
+            EPUB2A4-Windows-Portable-x64.zip
+            EPUB2A4-Windows-Portable-x64.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Windows portable verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-portable-verification-reports
+          path: |
+            windows-portable-tests.xml
+            windows-portable-verification.json
+            build/EPUB2A4/warn-EPUB2A4.txt
+          if-no-files-found: ignore
+          retention-days: 30
