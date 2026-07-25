@@ -59,4 +59,35 @@ python3.13 scripts/inspect_cover_exports.py PROJECT.json COVER.pdf COVER.docx
 python3.13 scripts/compare_cover_geometry.py LEFT.json RIGHT.json --tolerance-mm 0.05
 ```
 
-Desktop UI and Android UI work are intentionally outside this completed core scope.
+The shared cover core is reused without duplicated layout or export logic by the desktop PySide6 application described below; Android cover UI remains a separate plan.
+
+## 電腦版 PySide6
+
+- Windows、macOS、Linux 使用相同 PySide6 介面。
+- `epub2a4-desktop --legacy-gui` 暫時開啟舊 Tkinter 介面。
+- 封面工具可使用 EPUB 內建圖片或本機圖片；此階段尚未啟用網路搜尋。
+- 封面 PDF 與 DOCX 獨立輸出，不修改正文。
+- 預設啟動 PySide6；轉換頁保留 EPUB 的 A4 四格、A6 書帖、A5、4×6，以及 DOCX 的 A5、4×6 模式。
+- 封面畫布、屬性面板和專案 JSON 均以毫米儲存，縮放只影響畫面顯示。
+
+### 封面專案
+
+使用「儲存專案」建立 `.cover.json` 與同層的 `<名稱>_assets/` 資料夾；重新開啟時，相對資產路徑會以專案所在目錄解析。素材可由 EPUB 內嵌圖片或本機 PNG、JPEG、GIF、WebP 匯入，來源檔不會被直接修改。
+
+### 快捷鍵
+
+- Ctrl+Z：復原
+- Ctrl+Shift+Z：重做
+- Ctrl+0：符合視窗
+- Ctrl+1：100%
+
+### DOCX 相容性
+
+PDF 是列印基準。Word 與 LibreOffice 對部分浮動文字框的呈現可能略有差異。DOCX 與 PDF 會輸出為獨立封面檔案，不會改寫正文文件。
+
+桌面版驗證命令：
+
+```bash
+QT_QPA_PLATFORM=offscreen python3.13 -m pytest desktop/tests -q
+QT_QPA_PLATFORM=offscreen python3.13 scripts/desktop_smoke.py --offscreen
+```
