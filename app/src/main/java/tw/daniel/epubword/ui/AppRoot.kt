@@ -1,18 +1,17 @@
 package tw.daniel.epubword.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import tw.daniel.epubword.cover.ui.CoverEditorCallbacks
+import tw.daniel.epubword.cover.ui.CoverEditorScreen
 import tw.daniel.epubword.cover.ui.CoverSetupCallbacks
 import tw.daniel.epubword.cover.ui.CoverSetupScreen
+import tw.daniel.epubword.cover.ui.CoverStatus
 import tw.daniel.epubword.cover.ui.CoverUiState
 import tw.daniel.epubword.model.MarginMode
 import tw.daniel.epubword.model.OutputMode
@@ -40,6 +39,7 @@ fun AppRoot(
     onDismissConversionError: () -> Unit,
     coverState: CoverUiState = CoverUiState(),
     coverCallbacks: CoverSetupCallbacks = CoverSetupCallbacks(),
+    coverEditorCallbacks: CoverEditorCallbacks = CoverEditorCallbacks(),
 ) {
     var routeName by rememberSaveable { mutableStateOf(AppRoute.HOME.name) }
     val route = runCatching { AppRoute.valueOf(routeName) }.getOrDefault(AppRoute.HOME)
@@ -47,7 +47,22 @@ fun AppRoot(
         routeName = next.name
     }
 
-    BackHandler(enabled = route != AppRoute.HOME) { navigate(AppRoute.HOME) }
+    LaunchedEffect(coverState.projectJson, coverState.status) {
+        if (coverState.projectJson.isNotBlank() && coverState.status in setOf(
+                CoverStatus.EDITING,
+                CoverStatus.RENDERING,
+                CoverStatus.EXPORTING,
+                CoverStatus.READY_TO_SAVE,
+                CoverStatus.SAVING,
+            )
+        ) {
+            navigate(AppRoute.COVER_EDITOR)
+        }
+    }
+
+    BackHandler(enabled = route != AppRoute.HOME) {
+        navigate(if (route == AppRoute.COVER_EDITOR) AppRoute.COVER_SETUP else AppRoute.HOME)
+    }
 
     when (route) {
         AppRoute.HOME -> HomeScreen(
@@ -73,11 +88,11 @@ fun AppRoot(
             state = coverState,
             callbacks = coverCallbacks,
         )
-        AppRoute.COVER_EDITOR -> Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("封面編輯器準備中")
-        }
+        AppRoute.COVER_EDITOR -> CoverEditorScreen(
+            state = coverState,
+            callbacks = coverEditorCallbacks.copy(
+                onBack = { navigate(AppRoute.COVER_SETUP) },
+            ),
+        )
     }
 }
