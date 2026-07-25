@@ -1,0 +1,47 @@
+name: Focused cover search and B6 tests
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/focused-plan-tests.yml"
+      - "python/src/epub_a4_word/**"
+      - "python/src/epub_a4_word_desktop/conversion/**"
+      - "python-tests/test_b6_on_a5_*.py"
+      - "python-tests/cover/search/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: python/src
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test]"
+
+      - name: Run focused tests
+        run: |
+          python -m pytest \
+            python-tests/test_b6_on_a5_mode.py \
+            python-tests/test_b6_on_a5_geometry.py \
+            python-tests/cover/search/test_contracts.py \
+            -q
