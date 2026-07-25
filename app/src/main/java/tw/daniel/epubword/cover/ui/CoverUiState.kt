@@ -55,6 +55,10 @@ data class CoverUiState(
     val project: CoverProject? = null,
     val projectJson: String = "",
     val previewPath: String? = null,
+    val selectedElementId: String? = null,
+    val guidesVisible: Boolean = true,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
     val errorMessage: String? = null,
 ) {
     val isBusy: Boolean get() = status in setOf(
@@ -69,6 +73,7 @@ data class CoverUiState(
     val sheetCount: Int get() = if (pageCount > 0) (pageCount + 1) / 2 else 0
     val autoSpineWidthMm: Double get() = sheetCount * paperCaliperMm
     val effectiveSpineWidthMm: Double get() = manualSpineWidthMm ?: autoSpineWidthMm
+    val selectedElement get() = project?.elements?.firstOrNull { it.id == selectedElementId }
 
     val canCreateProject: Boolean get() =
         !sourcePath.isNullOrBlank() && pageCount > 0 && pageCountConfirmed && status == CoverStatus.SETUP
