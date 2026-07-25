@@ -58,13 +58,15 @@ data class SavedCoverFiles(
     val pdfUri: Uri?,
     val docxUri: Uri?,
     val errorMessage: String? = null,
+    val pdfSaved: Boolean = pdfUri != null,
+    val docxSaved: Boolean = docxUri != null,
 ) {
-    val isComplete: Boolean get() = pdfUri != null && docxUri != null && errorMessage == null
+    val isComplete: Boolean get() = pdfSaved && docxSaved && errorMessage == null
 
     val userMessage: String get() = when {
-        pdfUri != null && docxUri != null -> "PDF 與 DOCX 已儲存。"
-        pdfUri != null -> "PDF 已儲存；DOCX 儲存失敗，可重試。"
-        docxUri != null -> "DOCX 已儲存；PDF 儲存失敗，可重試。"
+        pdfSaved && docxSaved -> "PDF 與 DOCX 已儲存。"
+        pdfSaved -> "PDF 已儲存；DOCX 儲存失敗，可重試。"
+        docxSaved -> "DOCX 已儲存；PDF 儲存失敗，可重試。"
         else -> errorMessage ?: "PDF 與 DOCX 尚未儲存。"
     }
 }
@@ -145,6 +147,8 @@ class CoverDocumentRepository(private val context: Context) {
                 pdfUri = pdfUri,
                 docxUri = null,
                 errorMessage = failure.message ?: "DOCX 儲存失敗。",
+                pdfSaved = true,
+                docxSaved = false,
             )
         }
     }
