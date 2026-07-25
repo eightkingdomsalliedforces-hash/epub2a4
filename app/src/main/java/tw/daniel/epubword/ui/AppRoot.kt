@@ -11,6 +11,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import tw.daniel.epubword.cover.ui.CoverSetupCallbacks
+import tw.daniel.epubword.cover.ui.CoverSetupScreen
+import tw.daniel.epubword.cover.ui.CoverUiState
 import tw.daniel.epubword.model.MarginMode
 import tw.daniel.epubword.model.OutputMode
 
@@ -35,6 +38,8 @@ fun AppRoot(
     onCancelConversion: () -> Unit,
     onSaveConversion: () -> Unit,
     onDismissConversionError: () -> Unit,
+    coverState: CoverUiState = CoverUiState(),
+    coverCallbacks: CoverSetupCallbacks = CoverSetupCallbacks(),
 ) {
     var routeName by rememberSaveable { mutableStateOf(AppRoute.HOME.name) }
     val route = runCatching { AppRoute.valueOf(routeName) }.getOrDefault(AppRoute.HOME)
@@ -64,11 +69,15 @@ fun AppRoot(
             onSave = onSaveConversion,
             onDismissError = onDismissConversionError,
         )
-        AppRoute.COVER_SETUP, AppRoute.COVER_EDITOR -> Box(
+        AppRoute.COVER_SETUP -> CoverSetupScreen(
+            state = coverState,
+            callbacks = coverCallbacks,
+        )
+        AppRoute.COVER_EDITOR -> Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
-            Text("封面工具準備中")
+            Text("封面編輯器準備中")
         }
     }
 }
