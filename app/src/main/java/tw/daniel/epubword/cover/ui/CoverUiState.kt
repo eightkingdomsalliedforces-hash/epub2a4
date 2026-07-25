@@ -53,6 +53,7 @@ data class CoverUiState(
     val templateId: String = "minimal_text",
     val warnings: List<String> = emptyList(),
     val project: CoverProject? = null,
+    val projectJson: String = "",
     val previewPath: String? = null,
     val errorMessage: String? = null,
 ) {
@@ -72,5 +73,6 @@ data class CoverUiState(
     val canCreateProject: Boolean get() =
         !sourcePath.isNullOrBlank() && pageCount > 0 && pageCountConfirmed && status == CoverStatus.SETUP
 
-    val canExport: Boolean get() = project != null && status == CoverStatus.EDITING
+    val canExport: Boolean get() =
+        project != null && projectJson.isNotBlank() && pageCountConfirmed && status == CoverStatus.EDITING
 }
