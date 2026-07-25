@@ -81,6 +81,20 @@ def _project_with_embedded_front_cover(tmp_path: Path) -> CoverProject:
     )
 
 
+def test_legacy_desktop_template_ids_are_accepted(tmp_path: Path) -> None:
+    project = _project_with_embedded_front_cover(tmp_path)
+    aliases = {
+        "minimal": "front_image_plain_back",
+        "top_bottom_blocks": "top_bottom_blocks",
+        "full_bleed_image": "full_spread",
+        "classic_book": "minimal_text",
+    }
+    for legacy_id, canonical_id in aliases.items():
+        legacy = apply_template(project, legacy_id)
+        canonical = apply_template(project, canonical_id)
+        assert legacy == canonical
+
+
 def test_epub_identifier_prefers_real_isbn_over_unique_uuid(tmp_path: Path) -> None:
     epub = tmp_path / "uuid-and-isbn.epub"
     _write_epub(
@@ -90,22 +104,17 @@ def test_epub_identifier_prefers_real_isbn_over_unique_uuid(tmp_path: Path) -> N
             ("isbn", "978-4-04-866304-0"),
         ],
     )
-
     assert inspect_metadata(epub).metadata.isbn == "9784048663040"
 
 
 def test_epub_identifier_does_not_show_uuid_as_barcode_text(tmp_path: Path) -> None:
     epub = tmp_path / "uuid-only.epub"
     _write_epub(epub, [("book-id", "35e130a1-61a1-4f1a-ad90-e5eacf13b7a0")])
-
     assert inspect_metadata(epub).metadata.isbn == ""
 
 
-def test_front_image_template_does_not_duplicate_title_over_embedded_cover(
-    tmp_path: Path,
-) -> None:
+def test_front_image_template_does_not_duplicate_title_over_embedded_cover(tmp_path: Path) -> None:
     result = apply_template(_project_with_embedded_front_cover(tmp_path), "front_image_plain_back")
-
     assert "source-cover-image" in result.elements_by_id
     assert "front-title" not in result.elements_by_id
     assert "front-author" not in result.elements_by_id
@@ -115,7 +124,6 @@ def test_front_image_template_does_not_duplicate_title_over_embedded_cover(
 
 def test_full_spread_template_starts_without_text_overlays(tmp_path: Path) -> None:
     result = apply_template(_project_with_embedded_front_cover(tmp_path), "full_spread")
-
     assert "front-title" not in result.elements_by_id
     assert "front-author" not in result.elements_by_id
     assert "back-description" not in result.elements_by_id
