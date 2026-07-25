@@ -73,13 +73,18 @@ jobs:
           CHAQUOPY_PYTHON: python3.13
         run: gradle --no-daemon testDebugUnitTest --stacktrace
 
-      - name: Install and verify Python core
+      - name: Install Python core dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -e .
           python -m pip install "pytest>=8.3,<9"
           python -c "import pypdf, epub_a4_word; print('pypdf', pypdf.__version__); print('epub_a4_word', epub_a4_word.__version__)"
-          python -m pytest python-tests -q
+
+      - name: Run shared Python tests
+        run: python -m pytest python-tests -q
+
+      - name: Compile and verify shared Python project
+        run: |
           python -m compileall -q python/src app/src/main/python
           python scripts/verify_project.py
 
