@@ -30,6 +30,16 @@ class PythonCoverGateway(
         module().callAttr(BRIDGE_FUNCTIONS[2], projectJson, templateId).toString()
     }
 
+    fun extractEmbeddedAsset(projectJson: String, assetId: String): JSONObject = executor.run {
+        JSONObject(
+            module().callAttr(
+                EXTRACT_EMBEDDED_ASSET_FUNCTION,
+                projectJson,
+                assetId,
+            ).toString(),
+        )
+    }
+
     fun renderPreview(
         projectJson: String,
         outputPng: File,
@@ -84,5 +94,6 @@ class PythonCoverGateway(
             "cover_render_preview_json",
             "cover_export_json",
         )
+        const val EXTRACT_EMBEDDED_ASSET_FUNCTION = "cover_extract_embedded_asset_json"
     }
 }
