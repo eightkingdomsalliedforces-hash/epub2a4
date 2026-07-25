@@ -9,8 +9,8 @@
 - Kotlin 的資料模型 smoke test 通過。
 - 全部 Kotlin 應用程式原始碼已用 Android／Compose／Chaquopy API stub 做型別編譯檢查。
 - 專案只設定 `arm64-v8a`，且 Manifest 不要求網路或傳統全域儲存權限。
-- 共用封面核心 Tasks 1–10 已通過 CoverProject schema、PDF／DOCX 結構、golden geometry 與 service bridge 驗收。
-- 桌面 PySide6 Tasks 1–10 由 GitHub Actions 在 Ubuntu、Windows、macOS 的 Python 3.13 與 `QT_QPA_PLATFORM=offscreen` 執行。
+- 共用封面核心 Task 10（Tasks 1–10）已通過 CoverProject schema、PDF／DOCX 結構、golden geometry 與 service bridge 驗收。
+- 桌面 PySide6 Task 10（Tasks 1–10）由 GitHub Actions 在 Ubuntu、Windows、macOS 的 Python 3.13 與 `QT_QPA_PLATFORM=offscreen` 執行。
 - 桌面驗收涵蓋預設 PySide6／legacy Tkinter 分流、完整轉換模式、HOME／CONVERTER／COVER 導覽、毫米畫布、封面素材與裁切、可攜式專案，以及獨立 PDF／DOCX 匯出。
 - `scripts/desktop_smoke.py --offscreen` 會實際建立主視窗、走過轉換與封面路由、渲染預覽並驗證雙格式輸出。
 
