@@ -47,12 +47,12 @@ def test_browsed_epub_automatically_populates_and_confirms_page_count(
     assert "自動估算" in panel.page_count_note.text()
 
 
-def test_bleed_defaults_to_zero_and_explains_it_does_not_generate_images(qtbot) -> None:
+def test_bleed_defaults_to_zero_and_explains_it_is_not_image_creation(qtbot) -> None:
     panel = CoverSetupPanel()
     qtbot.addWidget(panel)
 
     assert panel.bleed_spin.value() == 0.0
-    assert "不會生成" in panel.bleed_spin.toolTip()
+    assert "與圖片產生無關" in panel.bleed_spin.toolTip()
 
 
 def test_public_google_books_search_reuses_saved_google_api_key() -> None:
