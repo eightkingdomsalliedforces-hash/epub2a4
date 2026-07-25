@@ -54,6 +54,7 @@ fun AppRoot(
                 CoverStatus.EXPORTING,
                 CoverStatus.READY_TO_SAVE,
                 CoverStatus.SAVING,
+                CoverStatus.COMPLETED,
             )
         ) {
             navigate(AppRoute.COVER_EDITOR)
