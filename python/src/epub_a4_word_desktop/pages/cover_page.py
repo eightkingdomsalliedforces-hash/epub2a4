@@ -5,10 +5,9 @@ from dataclasses import replace
 from pathlib import Path
 from uuid import uuid4
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QRectF, Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
-    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -27,8 +26,10 @@ from epub_a4_word.cover.models import (
     Region,
 )
 from epub_a4_word.cover.project_io import dumps_project, loads_project
+from epub_a4_word_desktop.cover.assets_panel import AssetsPanel
 from epub_a4_word_desktop.cover.canvas import CoverCanvas
 from epub_a4_word_desktop.cover.controller import CoverController
+from epub_a4_word_desktop.cover.crop_dialog import CropDialog
 from epub_a4_word_desktop.cover.inspector import ElementInspector
 from epub_a4_word_desktop.cover.layers_panel import LayersPanel
 from epub_a4_word_desktop.cover.setup_panel import CoverSetupPanel, CoverSetupValues
@@ -52,45 +53,10 @@ class TemplatePanel(QGroupBox):
         layout.addWidget(self.combo)
         layout.addWidget(self.apply_button)
         self.apply_button.clicked.connect(
-            lambda _checked=False: self.template_selected.emit(str(self.combo.currentData()))
+            lambda _checked=False: self.template_selected.emit(
+                str(self.combo.currentData())
+            )
         )
-
-
-class AssetsPanel(QGroupBox):
-    image_imported = Signal(str, object)
-    add_text_requested = Signal(object)
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("素材", parent)
-        self.region_combo = QComboBox(self)
-        self.region_combo.addItem("正面", Region.FRONT.value)
-        self.region_combo.addItem("封底", Region.BACK.value)
-        self.region_combo.addItem("書脊", Region.SPINE.value)
-        self.region_combo.addItem("完整展開", Region.SPREAD.value)
-        self.add_image_button = QPushButton("加入本機圖片", self)
-        self.add_text_button = QPushButton("加入文字", self)
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.region_combo)
-        layout.addWidget(self.add_image_button)
-        layout.addWidget(self.add_text_button)
-        self.add_image_button.clicked.connect(self._pick_image)
-        self.add_text_button.clicked.connect(
-            lambda _checked=False: self.add_text_requested.emit(self.current_region)
-        )
-
-    @property
-    def current_region(self) -> Region:
-        return Region(str(self.region_combo.currentData()))
-
-    def _pick_image(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self,
-            "選擇封面圖片",
-            "",
-            "圖片 (*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)",
-        )
-        if path:
-            self.image_imported.emit(path, self.current_region)
 
 
 class ExportPanel(QGroupBox):
@@ -133,7 +99,7 @@ class CoverPage(QWidget):
         toolbar.addWidget(self.status_label)
 
         self.template_panel = TemplatePanel(self)
-        self.assets_panel = AssetsPanel(self)
+        self.assets_panel = AssetsPanel(self.controller, self)
         self.layers_panel = LayersPanel(self)
         self.canvas = CoverCanvas(self)
         self.inspector = ElementInspector(self)
@@ -173,25 +139,39 @@ class CoverPage(QWidget):
         layout.addLayout(toolbar)
         layout.addWidget(self.splitter, 1)
 
-        self.back_button.clicked.connect(lambda _checked=False: self.back_requested.emit())
-        self.undo_button.clicked.connect(lambda _checked=False: self.controller.undo())
-        self.redo_button.clicked.connect(lambda _checked=False: self.controller.redo())
+        self.back_button.clicked.connect(
+            lambda _checked=False: self.back_requested.emit()
+        )
+        self.undo_button.clicked.connect(
+            lambda _checked=False: self.controller.undo()
+        )
+        self.redo_button.clicked.connect(
+            lambda _checked=False: self.controller.redo()
+        )
         self.setup_panel.create_requested.connect(self._create_project)
         self.template_panel.template_selected.connect(self._apply_template)
         self.assets_panel.image_imported.connect(self._add_image)
         self.assets_panel.add_text_requested.connect(self._add_text)
+        self.assets_panel.crop_requested.connect(self._crop_asset)
+        self.assets_panel.error.connect(self._show_error)
         self.layers_panel.selection_changed.connect(self.canvas.select_element)
         self.layers_panel.delete_requested.connect(self.controller.remove_element)
         self.layers_panel.z_order_requested.connect(self._change_z_order)
         self.layers_panel.visibility_requested.connect(self._change_visibility)
         self.canvas.element_selected.connect(self._select_element)
-        self.canvas.element_transform_requested.connect(self._commit_canvas_transform)
+        self.canvas.element_transform_requested.connect(
+            self._commit_canvas_transform
+        )
         self.inspector.patch_requested.connect(self.controller.update_element)
         self.controller.project_changed.connect(self._project_changed)
         self.controller.preview_ready.connect(self.canvas.set_preview)
         self.controller.error.connect(self._show_error)
-        self.controller.undo_stack.canUndoChanged.connect(self.undo_button.setEnabled)
-        self.controller.undo_stack.canRedoChanged.connect(self.redo_button.setEnabled)
+        self.controller.undo_stack.canUndoChanged.connect(
+            self.undo_button.setEnabled
+        )
+        self.controller.undo_stack.canRedoChanged.connect(
+            self.redo_button.setEnabled
+        )
         self.undo_button.setEnabled(False)
         self.redo_button.setEnabled(False)
 
@@ -213,7 +193,9 @@ class CoverPage(QWidget):
             estimated=False,
             confirmed=True,
         )
-        self.status_label.setText("已帶入轉換後的實際頁數，請確認設定後建立封面。")
+        self.status_label.setText(
+            "已帶入轉換後的實際頁數，請確認設定後建立封面。"
+        )
 
     def _create_project(self, values: CoverSetupValues) -> None:
         try:
@@ -244,16 +226,51 @@ class CoverPage(QWidget):
         except Exception as exc:
             self._show_error(str(exc))
 
+    def _crop_asset(self, path: str) -> None:
+        if not self.controller.project_json:
+            return
+        project = loads_project(self.controller.project_json)
+        resolved_path = str(Path(path).expanduser().resolve())
+        target = next(
+            (
+                element
+                for element in project.elements
+                if element.kind is ElementKind.IMAGE
+                and str(Path(str(element.content.get("path", ""))).expanduser().resolve())
+                == resolved_path
+            ),
+            None,
+        )
+        if target is None:
+            self._show_error("找不到要裁切的封面圖片元素。")
+            return
+        content = target.content
+        left = float(content.get("crop_left", 0.0))
+        top = float(content.get("crop_top", 0.0))
+        right = float(content.get("crop_right", 0.0))
+        bottom = float(content.get("crop_bottom", 0.0))
+        dialog = CropDialog(
+            path,
+            QRectF(left, top, 1.0 - left - right, 1.0 - top - bottom),
+            self,
+        )
+        if dialog.exec():
+            self.controller.update_element(
+                target.id,
+                {"content": dialog.crop_margins()},
+            )
+
     def _add_text(self, region: Region) -> None:
         if not self.controller.project_json:
             self.status_label.setText("請先建立封面專案。")
             return
         project = loads_project(self.controller.project_json)
+        layout = calculate_layout(project)
         target = {
-            Region.FRONT: calculate_layout(project).front_safe_rect,
-            Region.BACK: calculate_layout(project).back_safe_rect,
-            Region.SPINE: calculate_layout(project).spine_safe_rect,
-            Region.SPREAD: calculate_layout(project).spread_rect,
+            Region.FRONT: layout.front_safe_rect,
+            Region.BACK: layout.back_safe_rect,
+            Region.SPINE: layout.spine_safe_rect,
+            Region.SPREAD: layout.spread_rect,
         }[region]
         width = max(1.0, min(target.width_mm, 80.0))
         height = max(1.0, min(target.height_mm, 20.0))
@@ -282,13 +299,17 @@ class CoverPage(QWidget):
             },
         )
         candidate = replace(project, elements=project.elements + (element,))
-        self.controller.replace_project(dumps_project(candidate), label="加入文字")
+        self.controller.replace_project(
+            dumps_project(candidate), label="加入文字"
+        )
         self.canvas.select_element(element_id)
 
     def _change_z_order(self, element_id: str, delta: int) -> None:
         if not self.controller.project_json:
             return
-        element = loads_project(self.controller.project_json).elements_by_id[element_id]
+        element = loads_project(self.controller.project_json).elements_by_id[
+            element_id
+        ]
         self.controller.update_element(
             element_id,
             {"z_index": element.z_index + int(delta)},
@@ -300,16 +321,20 @@ class CoverPage(QWidget):
             {"opacity": 1.0 if visible else 0.0},
         )
 
-    def _commit_canvas_transform(self, element_id: str, transform: dict) -> None:
+    def _commit_canvas_transform(
+        self, element_id: str, transform: dict
+    ) -> None:
         self.controller.update_element(element_id, {"transform": dict(transform)})
 
     def _project_changed(self, project_json: str) -> None:
         self.canvas.set_project(project_json)
         self.layers_panel.set_project(project_json)
+        self.assets_panel.refresh_from_project(project_json)
         self.inspector.set_element(None)
         project = loads_project(project_json)
         self.status_label.setText(
-            f"{project.metadata.title or Path(project.source_file).name}｜{project.page_count} 頁"
+            f"{project.metadata.title or Path(project.source_file).name}｜"
+            f"{project.page_count} 頁"
         )
 
     def _select_element(self, element_id: object) -> None:
