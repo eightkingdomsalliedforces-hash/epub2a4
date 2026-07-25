@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tw.daniel.epubword.cover.model.TrimSize
+import tw.daniel.epubword.cover.model.coverTrimSize
 import tw.daniel.epubword.cover.model.createCoverHandoff
 import tw.daniel.epubword.model.ConversionResult
 import tw.daniel.epubword.model.InputKind
