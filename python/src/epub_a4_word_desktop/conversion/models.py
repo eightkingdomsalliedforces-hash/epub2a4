@@ -15,8 +15,10 @@ _TRIM_SIZE_BY_MODE: dict[str, tuple[float, float]] = {
     "four_up": (105.0, 148.0),
     "single_a5": (148.0, 210.0),
     "single_4x6": (101.6, 152.4),
+    "b6_on_a5": (128.0, 182.0),
 }
 _ALLOWED_MARGINS = {"safe", "maximized", "borderless"}
+_ALLOWED_OUTPUT_MARK_MODES = {"normal", "crop_marks"}
 
 
 @dataclass(frozen=True)
@@ -30,6 +32,7 @@ class ConversionRequest:
     heading_font_pt: float = 14.0
     page_numbers: bool = True
     cut_guides: bool = True
+    output_mark_mode: str = "normal"
 
     def validate(self) -> None:
         source = Path(self.input_path)
@@ -55,6 +58,8 @@ class ConversionRequest:
             raise ValueError(f"{label} 不支援所選輸出模式。")
         if self.margin_mode not in _ALLOWED_MARGINS:
             raise ValueError("邊界模式無效。")
+        if self.output_mark_mode not in _ALLOWED_OUTPUT_MARK_MODES:
+            raise ValueError("列印標記模式無效。")
         if not self.font_name.strip():
             raise ValueError("字型名稱不可為空。")
         if self.body_font_pt <= 0 or self.heading_font_pt <= 0:
@@ -69,6 +74,7 @@ class ConversionRequest:
             heading_font_pt=float(self.heading_font_pt),
             page_numbers=bool(self.page_numbers),
             cut_guides=bool(self.cut_guides),
+            output_mark_mode=self.output_mark_mode,
         )
 
 
