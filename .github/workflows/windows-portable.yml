@@ -32,6 +32,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: windows-portable-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-portable:
     name: Windows x64 portable PyInstaller build
@@ -72,7 +76,7 @@ jobs:
       - name: Compile and verify source project
         shell: pwsh
         run: |
-          python -m compileall -q python/src app/src/main/python scripts
+          python -m compileall -q python/src app/src/main/python scripts packaging/windows
           python scripts/verify_project.py
 
       - name: Build PyInstaller onedir application
@@ -86,7 +90,12 @@ jobs:
       - name: Run packaged executable smoke
         shell: pwsh
         run: |
-          $process = Start-Process -FilePath "dist/EPUB2A4-Windows-Portable-x64/EPUB2A4.exe" -ArgumentList "--portable-smoke-test" -PassThru -Wait -NoNewWindow
+          $process = Start-Process -FilePath "dist/EPUB2A4-Windows-Portable-x64/EPUB2A4.exe" -ArgumentList "--portable-smoke-test" -PassThru
+          if (-not $process.WaitForExit(30000)) {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            throw "Packaged EPUB2A4.exe smoke test did not exit within 30 seconds."
+          }
+          $process.WaitForExit()
           if ($process.ExitCode -ne 0) {
             throw "Packaged EPUB2A4.exe smoke test failed with exit code $($process.ExitCode)."
           }
