@@ -9,7 +9,7 @@ import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.matchParentSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -92,7 +92,7 @@ fun CoverEditorCanvas(
     ) {
         Canvas(
             modifier = Modifier
-                .matchParentSize()
+                .fillMaxSize()
                 .semantics { contentDescription = "封面預覽" },
         ) {
             val previewWidthPx = canvasWidthMm * normalizedViewport.scalePxPerMm
