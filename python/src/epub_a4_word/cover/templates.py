@@ -298,10 +298,17 @@ _BUILDERS = {
     "top_bottom_blocks": _top_bottom_blocks,
 }
 
+_TEMPLATE_ALIASES = {
+    "minimal": "front_image_plain_back",
+    "classic_book": "minimal_text",
+    "full_bleed_image": "full_spread",
+}
+
 
 def apply_template(project: CoverProject, template_id: str) -> CoverProject:
+    canonical_template_id = _TEMPLATE_ALIASES.get(template_id, template_id)
     try:
-        builder = _BUILDERS[template_id]
+        builder = _BUILDERS[canonical_template_id]
     except KeyError as exc:
         raise ValueError(f"未知封面模板：{template_id}") from exc
 
@@ -312,12 +319,19 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
         if element.id not in STANDARD_TEMPLATE_IDS
         and not element.id.startswith("template-")
     )
-    spine_elements, new_warnings = _spine_elements(project, layout)
-    generated = (
-        builder(project, layout)
-        + _standard_panel_elements(project, layout)
-        + spine_elements
-    )
+    standard_elements = _standard_panel_elements(project, layout)
+    if canonical_template_id == "front_image_plain_back":
+        standard_elements = tuple(
+            element for element in standard_elements if element.region is Region.BACK
+        )
+    elif canonical_template_id == "full_spread":
+        standard_elements = ()
+
+    if canonical_template_id == "full_spread":
+        spine_elements, new_warnings = (), ()
+    else:
+        spine_elements, new_warnings = _spine_elements(project, layout)
+    generated = builder(project, layout) + standard_elements + spine_elements
 
     background = dict(project.background)
     warnings = list(background.get("warnings", ()))
@@ -331,7 +345,7 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
 
     image_mode = (
         ImageMode.FULL_SPREAD
-        if template_id == "full_spread"
+        if canonical_template_id == "full_spread"
         else ImageMode.FRONT_ONLY
     )
     return replace(
