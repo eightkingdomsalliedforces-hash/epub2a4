@@ -7,6 +7,7 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import tw.daniel.epubword.cover.model.CoverHandoff
 import java.io.File
 import java.util.UUID
 
@@ -83,9 +84,27 @@ class CoverDocumentRepository(private val context: Context) {
         val destination = File(session.sourceDir, safeFileName(normalizedName))
         try {
             val copied = copyUri(uri, destination, MAX_SOURCE_BYTES)
-            activeFiles?.root?.takeIf { it != session.root }?.deleteRecursively()
-            activeFiles = session
+            activate(session)
             StagedCoverSource(destination, normalizedName, kind, copied, session)
+        } catch (failure: Throwable) {
+            session.root.deleteRecursively()
+            throw failure
+        }
+    }
+
+    suspend fun stageHandoff(handoff: CoverHandoff): StagedCoverSource = withContext(Dispatchers.IO) {
+        val source = File(handoff.sourcePath)
+        require(source.isFile && source.length() > 0L) { "找不到轉換流程交付的封面來源。" }
+        require(source.length() <= MAX_SOURCE_BYTES) { "封面來源超過允許大小。" }
+        val kind = kindFor(handoff.sourceName, mimeForSourceType(handoff.sourceType))
+        val session = createSession()
+        val normalizedName = ensureExtension(handoff.sourceName, kind.extension)
+        val destination = File(session.sourceDir, safeFileName(normalizedName))
+        try {
+            copyLocalFile(source, destination, MAX_SOURCE_BYTES)
+            activate(session)
+            source.parentFile?.deleteRecursively()
+            StagedCoverSource(destination, normalizedName, kind, destination.length(), session)
         } catch (failure: Throwable) {
             session.root.deleteRecursively()
             throw failure
@@ -160,6 +179,11 @@ class CoverDocumentRepository(private val context: Context) {
         }
     }
 
+    private fun activate(session: CoverWorkingFiles) {
+        activeFiles?.root?.takeIf { it != session.root }?.deleteRecursively()
+        activeFiles = session
+    }
+
     private fun createSession(): CoverWorkingFiles {
         val root = File(context.cacheDir, "cover/${UUID.randomUUID()}")
         return CoverWorkingFiles(
@@ -191,14 +215,46 @@ class CoverDocumentRepository(private val context: Context) {
                 }
             }
             require(copied > 0L) { "檔案內容是空的。" }
-            if (destination.exists()) destination.delete()
-            check(temporary.renameTo(destination)) { "無法完成工作檔案寫入。" }
+            replaceTemporary(temporary, destination)
             return copied
         } catch (failure: Throwable) {
             temporary.delete()
             destination.delete()
             throw failure
         }
+    }
+
+    private fun copyLocalFile(source: File, destination: File, maxBytes: Long): Long {
+        destination.parentFile?.mkdirs()
+        val temporary = File(destination.parentFile, destination.name + ".part")
+        temporary.delete()
+        var copied = 0L
+        try {
+            source.inputStream().buffered(COPY_BUFFER_BYTES).use { input ->
+                temporary.outputStream().buffered(COPY_BUFFER_BYTES).use { output ->
+                    val buffer = ByteArray(COPY_BUFFER_BYTES)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        copied += count
+                        require(copied <= maxBytes) { "檔案超過允許大小。" }
+                        output.write(buffer, 0, count)
+                    }
+                }
+            }
+            require(copied > 0L && copied == source.length()) { "封面來源複製不完整。" }
+            replaceTemporary(temporary, destination)
+            return copied
+        } catch (failure: Throwable) {
+            temporary.delete()
+            destination.delete()
+            throw failure
+        }
+    }
+
+    private fun replaceTemporary(temporary: File, destination: File) {
+        if (destination.exists()) destination.delete()
+        check(temporary.renameTo(destination)) { "無法完成工作檔案寫入。" }
     }
 
     private fun createAndCopy(parent: Uri, mime: String, name: String, source: File): Uri {
@@ -227,6 +283,13 @@ class CoverDocumentRepository(private val context: Context) {
 
     private fun requireActiveSession(): CoverWorkingFiles =
         requireNotNull(activeFiles) { "尚未建立封面工作階段。" }
+
+    private fun mimeForSourceType(sourceType: String): String? = when (sourceType.lowercase()) {
+        "epub" -> EPUB_MIME
+        "docx" -> DOCX_MIME
+        "pdf" -> PDF_MIME
+        else -> null
+    }
 
     private fun ensureExtension(name: String, extension: String): String =
         if (name.endsWith(".$extension", ignoreCase = true)) name else "$name.$extension"
