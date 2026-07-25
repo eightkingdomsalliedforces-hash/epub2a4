@@ -8,7 +8,7 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 PROJECT_ROOT = Path(SPECPATH).resolve().parents[1]
 PYTHON_SRC = PROJECT_ROOT / "python" / "src"
 ANDROID_PYTHON_SRC = PROJECT_ROOT / "app" / "src" / "main" / "python"
-ENTRY_POINT = PYTHON_SRC / "epub_a4_word_desktop" / "__main__.py"
+ENTRY_POINT = PROJECT_ROOT / "packaging/windows/launcher.py"
 
 
 datas = []
