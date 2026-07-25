@@ -42,5 +42,10 @@ def test_all_template_panel_options_apply_through_controller(qtbot, tmp_path: Pa
 
     for index in range(panel.combo.count()):
         controller.replace_project(original, clear_history=True)
-        controller.apply_template(str(panel.combo.itemData(index)))
-        assert loads_project(controller.project_json).elements
+        template_id = str(panel.combo.itemData(index))
+        controller.apply_template(template_id)
+        project = loads_project(controller.project_json)
+        if template_id == "minimal":
+            assert project.elements == ()
+        else:
+            assert project.elements
