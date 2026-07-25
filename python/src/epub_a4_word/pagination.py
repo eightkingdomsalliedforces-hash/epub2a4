@@ -11,11 +11,16 @@ from .models import ContentBlock, ImageBlock, PageBreakBlock, TextBlock, TextRun
 
 
 MarginMode = Literal["safe", "maximized", "borderless"]
+OutputMarkMode = Literal["normal", "crop_marks"]
 PT_PER_CM = 72.0 / 2.54
 A4_WIDTH_CM = 21.0
 A4_HEIGHT_CM = 29.7
 A5_WIDTH_CM = 14.8
 A5_HEIGHT_CM = 21.0
+B6_WIDTH_CM = 12.8
+B6_HEIGHT_CM = 18.2
+B6_ON_A5_HORIZONTAL_MARGIN_CM = 1.0
+B6_ON_A5_VERTICAL_MARGIN_CM = 1.4
 PHOTO_4X6_WIDTH_CM = 10.16
 PHOTO_4X6_HEIGHT_CM = 15.24
 A4_PAGE_PREFIX_HEIGHT_CM = 0.50
@@ -68,8 +73,13 @@ class LayoutSettings:
     max_image_height_pt: float | None = None
     page_numbers: bool = True
     cut_guides: bool = True
+    output_mark_mode: OutputMarkMode = "normal"
     first_line_indent_chars: float = 2.0
     outer_margin_cm: float | None = None
+    page_margin_left_cm: float | None = None
+    page_margin_right_cm: float | None = None
+    page_margin_top_cm: float | None = None
+    page_margin_bottom_cm: float | None = None
     cell_width_cm: float | None = None
     cell_height_cm: float | None = None
     cell_outer_margin_cm: float | None = None
@@ -98,7 +108,8 @@ class MiniPage:
 def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
     """Resolve paper, grid, margins, and content dimensions for one output mode.
 
-    Explicit dimensions supplied by tests or advanced callers are preserved.
+    Explicit dimensions supplied by tests or advanced callers are preserved for
+    legacy modes. B6-on-A5 deliberately uses its exact physical geometry.
     """
 
     try:
@@ -106,6 +117,7 @@ def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
     except KeyError as exc:
         raise ValueError(f"Unsupported margin mode: {settings.margin_mode}") from exc
 
+    is_b6_on_a5 = settings.imposition_mode == "b6_on_a5"
     if settings.imposition_mode in {"four_up", "signature16"}:
         default_paper_width = A4_WIDTH_CM
         default_paper_height = A4_HEIGHT_CM
@@ -124,30 +136,55 @@ def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
         default_rows = 1
         default_cols = 1
         default_prefix = SINGLE_PAGE_PREFIX_HEIGHT_CM
+    elif is_b6_on_a5:
+        default_paper_width = A5_WIDTH_CM
+        default_paper_height = A5_HEIGHT_CM
+        default_rows = 1
+        default_cols = 1
+        default_prefix = 0.0
     else:
         raise ValueError(f"Unsupported imposition mode: {settings.imposition_mode}")
 
-    paper_width = default_paper_width if settings.paper_width_cm is None else settings.paper_width_cm
-    paper_height = default_paper_height if settings.paper_height_cm is None else settings.paper_height_cm
-    grid_rows = default_rows if settings.grid_rows is None else settings.grid_rows
-    grid_cols = default_cols if settings.grid_cols is None else settings.grid_cols
-    prefix_height = (
-        default_prefix if settings.page_prefix_height_cm is None else settings.page_prefix_height_cm
-    )
+    if is_b6_on_a5:
+        paper_width = A5_WIDTH_CM
+        paper_height = A5_HEIGHT_CM
+        grid_rows = 1
+        grid_cols = 1
+        prefix_height = 0.0
+        outer = preset.outer_margin_cm if settings.outer_margin_cm is None else settings.outer_margin_cm
+        page_left = B6_ON_A5_HORIZONTAL_MARGIN_CM
+        page_right = B6_ON_A5_HORIZONTAL_MARGIN_CM
+        page_top = B6_ON_A5_VERTICAL_MARGIN_CM
+        page_bottom = B6_ON_A5_VERTICAL_MARGIN_CM
+        cell_width = B6_WIDTH_CM
+        cell_height = B6_HEIGHT_CM
+    else:
+        paper_width = default_paper_width if settings.paper_width_cm is None else settings.paper_width_cm
+        paper_height = default_paper_height if settings.paper_height_cm is None else settings.paper_height_cm
+        grid_rows = default_rows if settings.grid_rows is None else settings.grid_rows
+        grid_cols = default_cols if settings.grid_cols is None else settings.grid_cols
+        prefix_height = (
+            default_prefix if settings.page_prefix_height_cm is None else settings.page_prefix_height_cm
+        )
+        outer = preset.outer_margin_cm if settings.outer_margin_cm is None else settings.outer_margin_cm
+        page_left = outer if settings.page_margin_left_cm is None else settings.page_margin_left_cm
+        page_right = outer if settings.page_margin_right_cm is None else settings.page_margin_right_cm
+        page_top = outer if settings.page_margin_top_cm is None else settings.page_margin_top_cm
+        page_bottom = outer if settings.page_margin_bottom_cm is None else settings.page_margin_bottom_cm
+        cell_width = (
+            (paper_width - page_left - page_right) / grid_cols
+            if settings.cell_width_cm is None
+            else settings.cell_width_cm
+        )
+        cell_height = (
+            (paper_height - page_top - page_bottom - prefix_height) / grid_rows
+            if settings.cell_height_cm is None
+            else settings.cell_height_cm
+        )
+
     if grid_rows < 1 or grid_cols < 1:
         raise ValueError("grid_rows and grid_cols must be positive")
 
-    outer = preset.outer_margin_cm if settings.outer_margin_cm is None else settings.outer_margin_cm
-    cell_width = (
-        (paper_width - 2 * outer) / grid_cols
-        if settings.cell_width_cm is None
-        else settings.cell_width_cm
-    )
-    cell_height = (
-        (paper_height - 2 * outer - prefix_height) / grid_rows
-        if settings.cell_height_cm is None
-        else settings.cell_height_cm
-    )
     cell_outer = (
         preset.cell_outer_margin_cm
         if settings.cell_outer_margin_cm is None
@@ -188,6 +225,10 @@ def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
         grid_cols=grid_cols,
         page_prefix_height_cm=prefix_height,
         outer_margin_cm=outer,
+        page_margin_left_cm=page_left,
+        page_margin_right_cm=page_right,
+        page_margin_top_cm=page_top,
+        page_margin_bottom_cm=page_bottom,
         cell_width_cm=cell_width,
         cell_height_cm=cell_height,
         cell_outer_margin_cm=cell_outer,
