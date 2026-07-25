@@ -25,7 +25,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.stack)
 
         self.home_page = HomePage(self)
-        self.converter_page = ConverterPage(self)
+        self.converter_page = ConverterPage(parent=self)
         self.cover_page = CoverPage(self)
         self.pages = {
             AppRoute.HOME: self.home_page,
@@ -40,6 +40,9 @@ class MainWindow(QMainWindow):
         )
         self.home_page.open_cover.connect(lambda: self.navigate(AppRoute.COVER))
         self.converter_page.back_requested.connect(lambda: self.navigate(AppRoute.HOME))
+        self.converter_page.open_cover_requested.connect(
+            lambda payload: self.navigate(AppRoute.COVER, payload)
+        )
         self.cover_page.back_requested.connect(lambda: self.navigate(AppRoute.HOME))
 
         self.current_route = AppRoute.HOME
