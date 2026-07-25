@@ -112,8 +112,17 @@ jobs:
                       raise AssertionError(f"invalid mark value accepted: {value!r}")
           PY
 
-      - name: Test B6 mode contract
-        run: python -m pytest python-tests/test_b6_on_a5_mode.py -q
+      - name: Test B6 primary contract node
+        run: >-
+          python -m pytest
+          python-tests/test_b6_on_a5_mode.py::test_b6_on_a5_is_epub_only_single_page_mode
+          -q
+
+      - name: Test B6 invalid-mark contract node
+        run: >-
+          python -m pytest
+          python-tests/test_b6_on_a5_mode.py::test_conversion_request_rejects_unknown_output_mark_mode
+          -q
 
       - name: Test B6 geometry
         run: python -m pytest python-tests/test_b6_on_a5_geometry.py -q
