@@ -46,3 +46,77 @@ DOCX 模式直接修改 Word 文件的頁面尺寸與可流動版面；原始 `w
 - SVG 若需要 CairoSVG 才能轉換，Android 第一版會列出警告並略過該 SVG；一般 JPEG、PNG、GIF、WebP 可使用 Pillow。
 - 浮動 Word 圖形、文字方塊與絕對定位物件在縮小紙張後可能需要人工微調。
 - 應用程式被系統終止後，不恢復正在執行的轉換。
+
+## Cross-platform cover core (Tasks 1–10)
+
+The canonical `epub_a4_word.cover` package includes schema-v1 project JSON, EPUB/DOCX/PDF metadata inspection, spine and A4 geometry, deterministic templates, Pillow preview rendering, exact A4 PDF export, editable A4 DOCX export, a unified service API, Android JSON wrappers, and golden structural acceptance tooling through Task 10.
+
+Core QA commands:
+
+```bash
+PYTHONPATH=python/src:app/src/main/python python3.13 -m pytest python-tests -q
+python3.13 scripts/inspect_cover_exports.py PROJECT.json COVER.pdf COVER.docx
+python3.13 scripts/compare_cover_geometry.py LEFT.json RIGHT.json --tolerance-mm 0.05
+```
+
+## 電腦版 PySide6
+
+- Windows、macOS、Linux 使用相同 PySide6 介面。
+- `epub2a4-desktop` 預設啟動 PySide6；`epub2a4-desktop --legacy-gui` 暫時開啟舊 Tkinter 介面。
+- 轉換頁保留 EPUB 的 A4 四格、A6 書帖、A5、4×6，以及 DOCX 的 A5、4×6 模式。
+- 封面工具可使用 EPUB 內建圖片或本機圖片；此階段尚未啟用網路搜尋。
+- 畫布、屬性欄與封面專案中的位置及尺寸都以毫米儲存；縮放只影響畫面顯示。
+- 封面 PDF 與 DOCX 獨立輸出，不修改正文來源檔。
+
+安裝與驗證：
+
+```bash
+python3.13 -m pip install -e ".[test]"
+python3.13 -m pip install "PySide6==6.11.1" "pytest-qt>=4.4,<5" "keyring==25.7.0" "platformdirs==4.10.1"
+QT_QPA_PLATFORM=offscreen python3.13 -m pytest desktop/tests -q
+QT_QPA_PLATFORM=offscreen python3.13 scripts/desktop_smoke.py
+```
+
+啟動：
+
+```bash
+epub2a4-desktop
+epub2a4-desktop --legacy-gui
+```
+
+### 封面專案
+
+使用「儲存專案」建立 `.cover.json` 與同層的 `<專案檔名>_assets/` 資料夾。圖片依 SHA-256 去重後複製，JSON 只儲存相對路徑；重新開啟時，相對資產路徑會以專案所在目錄解析。移動專案時必須同時移動 JSON 與其資產資料夾。
+
+本機圖片與 EPUB 內建圖片都會先複製到工作資產目錄，不會回寫或修改來源 EPUB。單張圖片上限為 50 MiB，最大像素尺寸為 20000 × 20000。
+
+### 快捷鍵
+
+- Ctrl+Z：復原
+- Ctrl+Shift+Z：重做
+- Ctrl+0：符合視窗
+- Ctrl+1：100%
+
+### DOCX 相容性
+
+PDF 是列印基準。DOCX 保留錨定圖片、真正文字框、裁切線、拼接標記與 A4 sections，方便後續編輯；Word 與 LibreOffice 對部分浮動文字框、字型替代及絕對定位的呈現可能略有差異，列印前應以輸出的 PDF 對照。
+
+## Windows 可攜式版本
+
+GitHub Actions 的 `Windows portable EXE` 工作流程會在 `windows-latest` 與 Python 3.13 上測試原始碼、以 PyInstaller onedir 模式建立程式、實際啟動封裝後的 EXE，並上傳 artifact：
+
+```text
+EPUB2A4-Windows-Portable-x64.zip
+EPUB2A4-Windows-Portable-x64.zip.sha256
+```
+
+使用方式：
+
+1. 從 GitHub Actions 下載 `EPUB2A4-Windows-Portable-x64` artifact。
+2. 將 ZIP 完整解壓縮。
+3. 進入 `EPUB2A4-Windows-Portable-x64` 資料夾。
+4. 雙擊 `EPUB2A4.exe`。
+
+此版本不需要另外安裝 Python 或 PySide6。不可只複製 `EPUB2A4.exe`，也不可刪除旁邊的 `_internal` 或 Qt runtime 檔案。第一版未使用 Windows Authenticode 簽章，因此 SmartScreen 可能顯示未知發行者；可以核對同一 artifact 中的 SHA-256 檔案。
+
+封面網路搜尋與安裝程式／自動更新不屬於目前的 Windows portable 範圍。

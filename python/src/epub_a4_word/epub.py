@@ -9,6 +9,7 @@ from zipfile import BadZipFile, ZipFile
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from .models import ImageBlock, PageBreakBlock, ParsedBook, TextBlock, TextRun
+from .pagination import LayoutSettings, paginate
 
 
 class EpubError(ValueError):
@@ -280,3 +281,13 @@ def parse_epub(path: Path | str) -> ParsedBook:
                 }.get(suffix, "application/octet-stream")
 
         return book
+
+
+def estimate_epub_page_count(
+    source_path: Path | str, settings: LayoutSettings
+) -> int:
+    """Estimate logical pages when cover editing starts directly from an EPUB."""
+
+    book = parse_epub(source_path)
+    pages = paginate(book.blocks, settings, image_sizes={})
+    return max(1, len(pages))

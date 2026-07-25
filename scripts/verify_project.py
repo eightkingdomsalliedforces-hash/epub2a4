@@ -6,7 +6,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from zipfile import ZipFile, BadZipFile
+from zipfile import BadZipFile, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 errors: list[str] = []
@@ -25,6 +25,7 @@ required = [
     "app/build.gradle.kts",
     "app/src/main/AndroidManifest.xml",
     "app/src/main/python/android_bridge.py",
+    "python/src/epub_a4_word/__init__.py",
     "app/src/main/java/tw/daniel/epubword/MainActivity.kt",
     "app/src/main/java/tw/daniel/epubword/ui/ConverterScreen.kt",
     "app/src/main/java/tw/daniel/epubword/ui/ConversionViewModel.kt",
@@ -43,15 +44,25 @@ checks = {
     "Chaquopy plugin": r"com\.chaquo\.python",
     "lxml Android dependency": r"lxml==5\.3\.0",
     "Pillow Android dependency": r"Pillow==11\.0\.0",
+    "pypdf Android dependency": r"pypdf==6\.14\.2",
+    "canonical Python source set": r"srcDir\(\"\.\./python/src\"\)",
 }
 for label, pattern in checks.items():
     if not re.search(pattern, app_gradle):
         errors.append(f"Gradle check failed: {label}")
 
+chaquopy_index = app_gradle.find("chaquopy {")
+canonical_source_index = app_gradle.find('srcDir("../python/src")')
+if chaquopy_index < 0 or canonical_source_index < chaquopy_index:
+    errors.append("Gradle check failed: canonical Python source set must be inside chaquopy")
+
 manifest_path = require("app/src/main/AndroidManifest.xml")
 try:
     manifest = ET.parse(manifest_path).getroot()
-    permissions = [node.attrib.get("{http://schemas.android.com/apk/res/android}name", "") for node in manifest.findall("uses-permission")]
+    permissions = [
+        node.attrib.get("{http://schemas.android.com/apk/res/android}name", "")
+        for node in manifest.findall("uses-permission")
+    ]
     forbidden = {
         "android.permission.INTERNET",
         "android.permission.MANAGE_EXTERNAL_STORAGE",
@@ -64,17 +75,43 @@ try:
 except ET.ParseError as exc:
     errors.append(f"manifest XML invalid: {exc}")
 
-for python_file in (ROOT / "app/src/main/python").rglob("*.py"):
-    try:
-        tree = ast.parse(python_file.read_text(encoding="utf-8"), filename=str(python_file))
-    except SyntaxError as exc:
-        errors.append(f"Python syntax error: {exc}")
-        continue
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.Import, ast.ImportFrom)):
-            names = [alias.name for alias in node.names] if isinstance(node, ast.Import) else [node.module or ""]
-            if any(name.startswith("tkinter") for name in names):
-                errors.append(f"desktop GUI import in Android Python: {python_file}")
+# Every committed Python file must parse, including the desktop package.
+python_roots = (ROOT / "python/src", ROOT / "app/src/main/python")
+parsed_files: dict[Path, ast.AST] = {}
+for python_root in python_roots:
+    for python_file in python_root.rglob("*.py"):
+        try:
+            parsed_files[python_file] = ast.parse(
+                python_file.read_text(encoding="utf-8"),
+                filename=str(python_file),
+            )
+        except SyntaxError as exc:
+            errors.append(f"Python syntax error: {exc}")
+
+# Tkinter is allowed only in the explicitly separate desktop package. The
+# shared cover/conversion core and Android bridge must stay GUI-toolkit free.
+android_compatible_roots = (
+    ROOT / "python/src/epub_a4_word",
+    ROOT / "app/src/main/python",
+)
+for python_root in android_compatible_roots:
+    for python_file in python_root.rglob("*.py"):
+        tree = parsed_files.get(python_file)
+        if tree is None:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                names = (
+                    [alias.name for alias in node.names]
+                    if isinstance(node, ast.Import)
+                    else [node.module or ""]
+                )
+                if any(name.startswith("tkinter") for name in names):
+                    errors.append(f"desktop GUI import in Android Python: {python_file}")
+
+legacy_core = ROOT / "app/src/main/python/epub_a4_word"
+if legacy_core.exists():
+    errors.append("duplicate Android-only Python core remains: app/src/main/python/epub_a4_word")
 
 for kotlin_file in (ROOT / "app/src/main/java").rglob("*.kt"):
     text = kotlin_file.read_text(encoding="utf-8")
@@ -119,5 +156,5 @@ print("Project verification passed")
 print("- API 24–36")
 print("- arm64-v8a only")
 print("- no network or broad storage permissions")
-print("- Android Python sources parse successfully")
+print("- shared, desktop, and Android bridge Python sources parse successfully")
 print("- EPUB and DOCX fixtures are valid ZIP containers")

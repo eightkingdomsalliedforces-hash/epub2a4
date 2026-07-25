@@ -60,6 +60,7 @@ fun ConverterScreen(
     onCancel: () -> Unit,
     onSave: () -> Unit,
     onDismissError: () -> Unit,
+    onCreateCover: () -> Unit = {},
 ) {
     Scaffold(
         topBar = {
@@ -220,6 +221,15 @@ fun ConverterScreen(
                     }
                 }
 
+                AnimatedVisibility(visible = state.canCreateCover) {
+                    OutlinedButton(
+                        onClick = onCreateCover,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("製作獨立書封")
+                    }
+                }
+
                 state.result?.let { result ->
                     HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -292,9 +302,7 @@ private fun SettingCheck(
 }
 
 private fun Double.oneDecimal(): String = String.format(Locale.US, "%.1f", this)
-
 private fun Long?.orZero(): Long = this ?: 0L
-
 private fun Long.fileSizeText(): String = when {
     this >= 1024L * 1024L -> String.format(Locale.US, "%.1f MB", this / (1024.0 * 1024.0))
     this >= 1024L -> String.format(Locale.US, "%.1f KB", this / 1024.0)

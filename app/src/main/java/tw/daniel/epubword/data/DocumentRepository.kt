@@ -16,6 +16,7 @@ import java.util.UUID
 class DocumentRepository(private val context: Context) {
     private val resolver: ContentResolver = context.contentResolver
     private val workRoot = File(context.cacheDir, "conversion-work")
+    private val handoffRoot = File(context.cacheDir, "cover-handoff")
 
     suspend fun stageInput(uri: Uri): StagedInput = withContext(Dispatchers.IO) {
         val displayName = queryDisplayName(uri) ?: "document"
@@ -54,6 +55,26 @@ class DocumentRepository(private val context: Context) {
         } ?: throw FileNotFoundException("無法開啟所選儲存位置。")
     }
 
+    suspend fun copyForCoverSession(input: StagedInput): StagedInput = withContext(Dispatchers.IO) {
+        require(input.localFile.isFile && input.localFile.length() > 0L) { "找不到可交給封面工具的來源文件。" }
+        val directory = File(handoffRoot, UUID.randomUUID().toString()).apply { mkdirs() }
+        val destination = File(directory, safeFileName(input.displayName))
+        val temporary = File(directory, destination.name + ".part")
+        try {
+            input.localFile.inputStream().buffered().use { source ->
+                temporary.outputStream().buffered().use { target -> source.copyTo(target, 1024 * 1024) }
+            }
+            require(temporary.length() == input.localFile.length() && temporary.length() > 0L) {
+                "封面來源複製不完整。"
+            }
+            check(temporary.renameTo(destination)) { "無法完成封面來源複製。" }
+            input.copy(localFile = destination, sizeBytes = destination.length())
+        } catch (failure: Throwable) {
+            directory.deleteRecursively()
+            throw failure
+        }
+    }
+
     fun delete(file: File?) {
         if (file?.isFile == true) file.delete()
     }
@@ -83,7 +104,7 @@ class DocumentRepository(private val context: Context) {
         if (name.endsWith(".$extension", ignoreCase = true)) name else "$name.$extension"
 
     private fun safeFileName(value: String): String = value
-        .replace(Regex("[\\\\/:*?\"<>|\\p{Cntrl}]"), "_")
+        .replace(Regex("[\\/:*?\"<>|\\p{Cntrl}]"), "_")
         .trim()
         .take(120)
         .ifBlank { "document" }

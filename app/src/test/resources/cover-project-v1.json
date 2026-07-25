@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "source_file": "body.epub",
+  "source_type": "epub",
+  "working_dir": ".",
+  "metadata": {
+    "title": "黃金範例書",
+    "author": "範例作者",
+    "description": "固定封底簡介",
+    "isbn": "9780000000000",
+    "publisher": "範例出版社",
+    "language": "zh-TW",
+    "page_count_is_estimate": false,
+    "embedded_images": []
+  },
+  "trim_size": {"width_mm": 148.0, "height_mm": 210.0},
+  "page_count": 160,
+  "paper_caliper_mm": 0.1,
+  "manual_spine_width_mm": null,
+  "bleed_mm": 3.0,
+  "overlap_mm": 5.0,
+  "image_mode": "full_spread",
+  "background": {},
+  "elements": [
+    {
+      "id": "front-title",
+      "kind": "text",
+      "region": "front",
+      "transform": {
+        "x_mm": 12.75,
+        "y_mm": 28.0,
+        "width_mm": 140.0,
+        "height_mm": 48.0,
+        "rotation_deg": 0.0
+      },
+      "z_index": 10,
+      "opacity": 1.0,
+      "content": {"text": "黃金範例書", "font_size_pt": 24.0}
+    }
+  ],
+  "export_settings": {
+    "dpi": 300,
+    "show_crop_marks": true,
+    "show_assembly_marks": true
+  }
+}

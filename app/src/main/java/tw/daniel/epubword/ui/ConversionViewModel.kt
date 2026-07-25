@@ -5,8 +5,12 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import tw.daniel.epubword.cover.model.CoverHandoff
+import tw.daniel.epubword.cover.model.createCoverHandoff
 import tw.daniel.epubword.data.DocumentRepository
 import tw.daniel.epubword.model.ConversionOptions
 import tw.daniel.epubword.model.ConversionResult
@@ -18,7 +22,6 @@ import tw.daniel.epubword.python.PythonConversionGateway
 import java.io.File
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicBoolean
-
 
 enum class WorkStatus {
     IDLE, STAGING, READY, CONVERTING, READY_TO_SAVE, SAVING, COMPLETED, CANCELLED, ERROR,
@@ -37,10 +40,14 @@ data class ConversionUiState(
     val pendingOutputName: String? = null,
     val saveRequestId: Long = 0,
     val handledSaveRequestId: Long = 0,
+    val coverHandoff: CoverHandoff? = null,
+    val coverHandoffRequestId: Long = 0,
+    val handledCoverHandoffRequestId: Long = 0,
 ) {
     val isBusy: Boolean get() = status in setOf(WorkStatus.STAGING, WorkStatus.CONVERTING, WorkStatus.SAVING)
     val canConvert: Boolean get() = inputName != null && !isBusy
     val canSave: Boolean get() = status == WorkStatus.READY_TO_SAVE && pendingOutputName != null
+    val canCreateCover: Boolean get() = result != null && inputName != null && !isBusy
 }
 
 class ConversionViewModel(application: Application) : AndroidViewModel(application) {
@@ -64,6 +71,7 @@ class ConversionViewModel(application: Application) : AndroidViewModel(applicati
                 statusMessage = "正在讀取文件…",
                 errorMessage = null,
                 result = null,
+                coverHandoff = null,
             )
             runCatching { repository.stageInput(uri) }
                 .onSuccess { input ->
@@ -127,6 +135,7 @@ class ConversionViewModel(application: Application) : AndroidViewModel(applicati
                 errorMessage = null,
                 result = null,
                 pendingOutputName = null,
+                coverHandoff = null,
             )
             try {
                 val result = gateway.convert(
@@ -222,6 +231,38 @@ class ConversionViewModel(application: Application) : AndroidViewModel(applicati
                         errorMessage = failure.message ?: "無法儲存文件。",
                     )
                 }
+        }
+    }
+
+    fun requestCoverHandoff() {
+        val input = stagedInput ?: return
+        val state = _uiState.value
+        val result = state.result ?: return
+        if (state.isBusy) return
+        activeJob = viewModelScope.launch {
+            runCatching {
+                val copied = withContext(Dispatchers.IO) { repository.copyForCoverSession(input) }
+                createCoverHandoff(copied, result, state.options.outputMode)
+            }.onSuccess { handoff ->
+                _uiState.value = _uiState.value.copy(
+                    coverHandoff = handoff,
+                    coverHandoffRequestId = _uiState.value.coverHandoffRequestId + 1L,
+                    errorMessage = null,
+                )
+            }.onFailure { failure ->
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = failure.message ?: "無法將來源交給封面工具。",
+                )
+            }
+        }
+    }
+
+    fun markCoverHandoffHandled(requestId: Long) {
+        if (requestId > _uiState.value.handledCoverHandoffRequestId) {
+            _uiState.value = _uiState.value.copy(
+                handledCoverHandoffRequestId = requestId,
+                coverHandoff = null,
+            )
         }
     }
 
