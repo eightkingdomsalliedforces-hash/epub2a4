@@ -22,6 +22,7 @@ import tw.daniel.epubword.cover.model.ElementKind
 import tw.daniel.epubword.cover.model.ElementTransform
 import tw.daniel.epubword.cover.model.ImageMode
 import tw.daniel.epubword.python.PythonCoverGateway
+import java.io.File
 import java.util.UUID
 import kotlin.math.max
 
@@ -35,7 +36,8 @@ class CoverViewModel @JvmOverloads constructor(
     private var stagedSource: StagedCoverSource? = null
     private val undoHistory = ArrayDeque<String>()
     private val redoHistory = ArrayDeque<String>()
-    private var previewGeneration = 0
+    private val previewDebouncer = PreviewDebouncer(viewModelScope) { renderPreviewNow(it) }
+    private var pendingExports: PendingCoverExports? = null
 
     fun selectSource(uri: Uri) {
         if (_uiState.value.isBusy) return
@@ -48,8 +50,10 @@ class CoverViewModel @JvmOverloads constructor(
                 }
             }.onSuccess { (staged, inspection) ->
                 stagedSource = staged
+                pendingExports = null
                 undoHistory.clear()
                 redoHistory.clear()
+                previewDebouncer.cancel()
                 val metadata = inspection.optJSONObject("metadata") ?: JSONObject()
                 val fixedPages = if (
                     !inspection.has("fixed_page_count") || inspection.isNull("fixed_page_count")
@@ -78,6 +82,7 @@ class CoverViewModel @JvmOverloads constructor(
                         canRedo = false,
                         exportPdfPath = null,
                         exportDocxPath = null,
+                        saveMessage = null,
                     )
                 }
             }.onFailure(::showError)
@@ -112,7 +117,7 @@ class CoverViewModel @JvmOverloads constructor(
     fun setImageMode(value: ImageMode) = _uiState.update { it.copy(imageMode = value) }
     fun setTemplate(value: String) = _uiState.update { it.copy(templateId = value) }
     fun setExportDpi(value: Int) {
-        if (value == 200 || value == 300) _uiState.update { it.copy(exportDpi = value) }
+        _uiState.update { it.copy(exportDpi = normalizeCoverExportDpi(value)) }
     }
 
     fun createProject() {
@@ -140,6 +145,7 @@ class CoverViewModel @JvmOverloads constructor(
                     gateway.applyTemplate(created, state.templateId)
                 }
             }.onSuccess { projectJson ->
+                pendingExports = null
                 undoHistory.clear()
                 redoHistory.clear()
                 setProjectImmediately(projectJson, clearSelection = true)
@@ -151,6 +157,10 @@ class CoverViewModel @JvmOverloads constructor(
     fun selectElement(elementId: String?) = _uiState.update { state ->
         val valid = elementId?.takeIf { id -> state.project?.elements?.any { it.id == id } == true }
         state.copy(selectedElementId = valid)
+    }
+
+    fun selectElementAt(pointMm: androidx.compose.ui.geometry.Offset) {
+        selectElement(_uiState.value.project?.topmostElementAt(pointMm))
     }
 
     fun toggleGuides() = _uiState.update { it.copy(guidesVisible = !it.guidesVisible) }
@@ -169,101 +179,64 @@ class CoverViewModel @JvmOverloads constructor(
 
     fun patchElement(elementId: String, patch: ElementPatch) {
         val project = _uiState.value.project ?: return
-        val updated = project.elements.map { element ->
-            if (element.id != elementId) element else element.copy(
-                transform = patch.transform ?: element.transform,
-                opacity = patch.opacity ?: element.opacity,
-                content = patch.content?.let { JSONObject(it.toString()) }
-                    ?: JSONObject(element.content.toString()),
-            )
-        }
-        if (updated == project.elements) return
-        commitProject(project.copy(elements = updated))
+        runCatching { project.patchElement(elementId, patch) }
+            .onSuccess { commitProject(it) }
+            .onFailure(::showError)
     }
 
     fun applyTransformPatch(patch: ElementTransformPatch) {
-        val element = _uiState.value.project?.elements?.firstOrNull { it.id == patch.elementId } ?: return
-        val current = element.transform
-        val scale = patch.scale.takeIf { it.isFinite() && it > 0.0 } ?: 1.0
-        patchElement(
-            patch.elementId,
-            ElementPatch(
-                transform = current.copy(
-                    xMm = current.xMm + patch.deltaXMm,
-                    yMm = current.yMm + patch.deltaYMm,
-                    widthMm = max(0.1, current.widthMm * scale),
-                    heightMm = max(0.1, current.heightMm * scale),
-                    rotationDeg = current.rotationDeg + patch.rotationDeltaDeg,
-                ),
-            ),
-        )
+        val project = _uiState.value.project ?: return
+        runCatching { project.applyTransformPatch(patch) }
+            .onSuccess { commitProject(it, selectId = patch.elementId) }
+            .onFailure(::showError)
     }
 
     fun addText() {
         val project = _uiState.value.project ?: return
-        val spine = project.manualSpineWidthMm ?: ((project.pageCount + 1) / 2) * project.paperCaliperMm
-        val element = CoverElement(
-            id = "android-text-${UUID.randomUUID()}",
-            kind = ElementKind.TEXT,
-            region = CoverRegion.FRONT,
-            transform = ElementTransform(
-                xMm = project.bleedMm + project.trimSize.widthMm + spine + 12.0,
-                yMm = project.bleedMm + 24.0,
-                widthMm = max(20.0, project.trimSize.widthMm - 24.0),
-                heightMm = 30.0,
-            ),
-            zIndex = (project.elements.maxOfOrNull(CoverElement::zIndex) ?: 0) + 1,
-            content = JSONObject()
-                .put("text", "新文字")
-                .put("font_size_pt", 24.0)
-                .put("color", "#111111")
-                .put("align", "center"),
-        )
-        commitProject(project.copy(elements = project.elements + element), selectId = element.id)
+        val (next, id) = project.addTextElement()
+        commitProject(next, selectId = id)
     }
 
     fun importLocalImage(uri: Uri) {
-        val project = _uiState.value.project ?: return
         viewModelScope.launch {
             runCatching { repository.stageLocalImage(uri) }
-                .onSuccess { file ->
-                    val spine = project.manualSpineWidthMm
-                        ?: ((project.pageCount + 1) / 2) * project.paperCaliperMm
-                    val element = CoverElement(
-                        id = "android-image-${UUID.randomUUID()}",
-                        kind = ElementKind.IMAGE,
-                        region = CoverRegion.FRONT,
-                        transform = ElementTransform(
-                            xMm = project.bleedMm + project.trimSize.widthMm + spine,
-                            yMm = project.bleedMm,
-                            widthMm = project.trimSize.widthMm,
-                            heightMm = project.trimSize.heightMm,
-                        ),
-                        zIndex = (project.elements.maxOfOrNull(CoverElement::zIndex) ?: 0) + 1,
-                        content = JSONObject()
-                            .put("path", file.absolutePath)
-                            .put("fit", "cover"),
-                    )
-                    commitProject(project.copy(elements = project.elements + element), selectId = element.id)
-                }
+                .onSuccess(::addImageFile)
                 .onFailure(::showError)
         }
     }
 
+    fun selectEmbeddedImage(assetId: String) {
+        val projectJson = _uiState.value.projectJson.takeIf(String::isNotBlank) ?: return
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    gateway.extractEmbeddedAsset(projectJson, assetId).getString("path")
+                }
+            }.onSuccess { addImageFile(File(it)) }
+                .onFailure(::showError)
+        }
+    }
+
+    private fun addImageFile(file: File) {
+        val project = _uiState.value.project ?: return
+        runCatching { project.addImageElement(file) }
+            .onSuccess { (next, id) -> commitProject(next, selectId = id) }
+            .onFailure(::showError)
+    }
+
     fun removeElement(elementId: String) {
         val project = _uiState.value.project ?: return
-        if (project.elements.none { it.id == elementId }) return
-        commitProject(
-            project.copy(elements = project.elements.filterNot { it.id == elementId }),
-            selectId = null,
-        )
+        runCatching { project.removeElement(elementId) }
+            .onSuccess { commitProject(it, selectId = null) }
+            .onFailure(::showError)
     }
 
     fun undo() {
         if (undoHistory.isEmpty()) return
         val current = _uiState.value.projectJson
-        if (current.isNotBlank()) redoHistory.addLast(current)
+        if (current.isNotBlank()) pushBounded(redoHistory, current)
         val restored = undoHistory.removeLast()
+        pendingExports = null
         setProjectImmediately(restored, clearSelection = true)
         schedulePreview(restored)
     }
@@ -273,8 +246,126 @@ class CoverViewModel @JvmOverloads constructor(
         val current = _uiState.value.projectJson
         if (current.isNotBlank()) pushBounded(undoHistory, current)
         val restored = redoHistory.removeLast()
+        pendingExports = null
         setProjectImmediately(restored, clearSelection = true)
         schedulePreview(restored)
+    }
+
+    fun prepareExport(dpi: Int) {
+        val normalizedDpi = normalizeCoverExportDpi(dpi)
+        val state = _uiState.value
+        val projectJson = state.projectJson.takeIf(String::isNotBlank)
+        if (!state.canExport || projectJson == null) {
+            _uiState.update { it.copy(errorMessage = "請先完成封面並確認正文頁數。") }
+            return
+        }
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    status = CoverStatus.EXPORTING,
+                    exportDpi = normalizedDpi,
+                    errorMessage = null,
+                    saveMessage = null,
+                )
+            }
+            try {
+                val pending = withContext(Dispatchers.IO) {
+                    val title = state.metadataTitle.ifBlank { state.project?.metadata?.title.orEmpty() }
+                        .ifBlank { "書籍" }
+                    val pdf = repository.createPdfFile(title).apply { delete() }
+                    val docx = repository.createDocxFile(title).apply { delete() }
+                    gateway.export(projectJson, pdf, docx, normalizedDpi)
+                    require(pdf.isFile && pdf.length() > 0L) { "PDF 封面輸出失敗。" }
+                    require(docx.isFile && docx.length() > 0L) { "DOCX 封面輸出失敗。" }
+                    PendingCoverExports(pdf, docx, title)
+                }
+                pendingExports = pending
+                _uiState.update {
+                    it.copy(
+                        status = CoverStatus.READY_TO_SAVE,
+                        exportPdfPath = pending.pdf.absolutePath,
+                        exportDocxPath = pending.docx.absolutePath,
+                        exportDirectoryRequestId = it.exportDirectoryRequestId + 1L,
+                        saveMessage = "PDF 與 DOCX 已在本機建立，請選擇儲存資料夾。",
+                    )
+                }
+            } catch (failure: OutOfMemoryError) {
+                _uiState.update {
+                    it.copy(
+                        status = CoverStatus.EDITING,
+                        errorMessage = if (normalizedDpi == 300) {
+                            "300 DPI 匯出需要更多記憶體。請關閉其他 App 後重試，或明確選擇 200 DPI。"
+                        } else {
+                            "200 DPI 匯出時記憶體不足。請關閉其他 App 後重試。"
+                        },
+                    )
+                }
+            } catch (failure: Throwable) {
+                _uiState.update {
+                    it.copy(
+                        status = CoverStatus.EDITING,
+                        errorMessage = failure.message ?: "封面匯出失敗。",
+                    )
+                }
+            }
+        }
+    }
+
+    fun markExportDirectoryRequestHandled(requestId: Long) = _uiState.update {
+        if (requestId > it.handledExportDirectoryRequestId) {
+            it.copy(handledExportDirectoryRequestId = requestId)
+        } else {
+            it
+        }
+    }
+
+    fun requestExportDirectoryAgain() = _uiState.update {
+        if (it.canChooseExportDirectory) {
+            it.copy(
+                exportDirectoryRequestId = it.exportDirectoryRequestId + 1L,
+                saveMessage = "請重新選擇儲存資料夾。",
+            )
+        } else {
+            it
+        }
+    }
+
+    fun exportDirectoryCancelled() = _uiState.update {
+        if (pendingExports != null) {
+            it.copy(
+                status = CoverStatus.READY_TO_SAVE,
+                saveMessage = "已取消選擇資料夾；本機輸出仍保留，可重新儲存。",
+            )
+        } else {
+            it.copy(status = CoverStatus.EDITING)
+        }
+    }
+
+    fun saveExports(treeUri: Uri) {
+        val pending = pendingExports ?: return
+        viewModelScope.launch {
+            _uiState.update { it.copy(status = CoverStatus.SAVING, errorMessage = null) }
+            runCatching {
+                repository.saveExportPair(pending.pdf, pending.docx, treeUri, pending.title)
+            }.onSuccess { result ->
+                _uiState.update {
+                    it.copy(
+                        status = if (result.isComplete) CoverStatus.COMPLETED else CoverStatus.READY_TO_SAVE,
+                        saveMessage = result.userMessage,
+                        errorMessage = result.errorMessage,
+                    )
+                }
+                if (result.isComplete) pendingExports = null
+            }.onFailure { failure ->
+                _uiState.update {
+                    it.copy(
+                        status = CoverStatus.READY_TO_SAVE,
+                        errorMessage = failure.message ?: "儲存封面輸出失敗。",
+                        saveMessage = "PDF 與 DOCX 尚未完整儲存，可重試。",
+                    )
+                }
+            }
+        }
     }
 
     private fun commitProject(project: CoverProject, selectId: String? = _uiState.value.selectedElementId) {
@@ -283,6 +374,7 @@ class CoverViewModel @JvmOverloads constructor(
         if (nextJson == current) return
         if (current.isNotBlank()) pushBounded(undoHistory, current)
         redoHistory.clear()
+        pendingExports = null
         setProjectImmediately(nextJson, selectId = selectId)
         schedulePreview(nextJson)
     }
@@ -299,34 +391,42 @@ class CoverViewModel @JvmOverloads constructor(
                 project = project,
                 projectJson = projectJson,
                 selectedElementId = if (clearSelection) null else selectId,
-                guides = buildGuides(project),
+                guides = project.editorGuides(),
                 canUndo = undoHistory.isNotEmpty(),
                 canRedo = redoHistory.isNotEmpty(),
+                exportPdfPath = null,
+                exportDocxPath = null,
+                saveMessage = null,
                 errorMessage = null,
             )
         }
     }
 
     private fun schedulePreview(projectJson: String) {
-        val generation = ++previewGeneration
-        viewModelScope.launch {
-            _uiState.update { it.copy(status = CoverStatus.RENDERING) }
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    gateway.renderPreview(projectJson, repository.createPreviewFile(), 1600)
-                        .getString("path")
-                }
-            }.onSuccess { path ->
-                if (generation == previewGeneration) _uiState.update {
-                    it.copy(status = CoverStatus.EDITING, previewPath = path, errorMessage = null)
-                }
-            }.onFailure { if (generation == previewGeneration) showError(it) }
+        previewDebouncer.schedule(projectJson)
+    }
+
+    private suspend fun renderPreviewNow(projectJson: String) {
+        if (_uiState.value.projectJson != projectJson) return
+        _uiState.update { it.copy(status = CoverStatus.RENDERING) }
+        runCatching {
+            withContext(Dispatchers.IO) {
+                gateway.renderPreview(projectJson, repository.createPreviewFile(), 1600)
+                    .getString("path")
+            }
+        }.onSuccess { path ->
+            if (_uiState.value.projectJson == projectJson) _uiState.update {
+                it.copy(status = CoverStatus.EDITING, previewPath = path, errorMessage = null)
+            }
+        }.onFailure {
+            if (_uiState.value.projectJson == projectJson) showError(it)
         }
     }
 
     fun dismissError() = _uiState.update {
         it.copy(
             status = when {
+                pendingExports != null -> CoverStatus.READY_TO_SAVE
                 it.project != null -> CoverStatus.EDITING
                 it.sourcePath != null -> CoverStatus.SETUP
                 else -> CoverStatus.IDLE
@@ -347,33 +447,21 @@ class CoverViewModel @JvmOverloads constructor(
     }
 
     override fun onCleared() {
+        previewDebouncer.cancel()
         gateway.close()
-        repository.clearSession()
+        repository.clearSession(keepForRetry = pendingExports != null)
         super.onCleared()
     }
+
+    private data class PendingCoverExports(
+        val pdf: File,
+        val docx: File,
+        val title: String,
+    )
 
     private companion object {
         const val MAX_HISTORY = 50
     }
-}
-
-private fun buildGuides(project: CoverProject): CoverGuides {
-    val spine = project.manualSpineWidthMm ?: ((project.pageCount + 1) / 2) * project.paperCaliperMm
-    val bleed = project.bleedMm
-    val trimW = project.trimSize.widthMm
-    val trimH = project.trimSize.heightMm
-    val back = MmRect(bleed, bleed, trimW, trimH)
-    val spineRect = MmRect(bleed + trimW, bleed, spine, trimH)
-    val front = MmRect(bleed + trimW + spine, bleed, trimW, trimH)
-    val safeInset = 5.0
-    return CoverGuides(
-        bleedRects = listOf(MmRect(0.0, 0.0, trimW * 2 + spine + bleed * 2, trimH + bleed * 2)),
-        regionRects = listOf(back, spineRect, front),
-        safeRects = listOf(
-            MmRect(back.xMm + safeInset, back.yMm + safeInset, max(0.0, back.widthMm - safeInset * 2), max(0.0, back.heightMm - safeInset * 2)),
-            MmRect(front.xMm + safeInset, front.yMm + safeInset, max(0.0, front.widthMm - safeInset * 2), max(0.0, front.heightMm - safeInset * 2)),
-        ),
-    )
 }
 
 private fun JSONObject.stringList(key: String): List<String> {
