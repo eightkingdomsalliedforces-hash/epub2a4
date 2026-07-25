@@ -21,6 +21,7 @@ def test_legacy_epub_modes_are_preserved() -> None:
         "four_up",
         "single_a5",
         "single_4x6",
+        "b6_on_a5",
     )
 
 

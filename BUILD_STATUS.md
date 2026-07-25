@@ -13,7 +13,21 @@
 
 - `Desktop PySide6 tests`：Python 3.13，Ubuntu／Windows／macOS，正式安裝 PySide6、pytest-qt、keyring、platformdirs。
 - `Android debug APK`：安裝 Android SDK、執行測試、建立 Debug APK並檢查 16 KB 對齊。
-- `Windows portable EXE`：執行共用與桌面測試、建立 PyInstaller onedir、檢查 Qt plugin、實際執行 `EPUB2A4.exe --portable-smoke-test`，只有完整 workflow GREEN 才視為本次版本已驗證。
+- `Windows portable EXE`：執行焦點功能測試、建立 PyInstaller onedir、檢查 Qt plugin、實際執行 `EPUB2A4.exe --portable-smoke-test`，並重新解壓 ZIP 驗證封裝內容。
+
+## 2026-07-25：進入 Windows 實機驗收階段
+
+本階段以最新 `main` 重新建立 Windows portable ZIP。只有 workflow 全綠、封裝後 EXE smoke 通過且 ZIP 驗證成功，才交付使用者進行實機驗收。
+
+實機驗收順序：
+
+1. 啟動 `EPUB2A4.exe`，確認首頁、轉換頁與封面工具可以正常開啟。
+2. 使用一個含書名、作者與 ISBN 的 EPUB 建立封面專案，確認 Google Books 與 Open Library 自動回傳正面封面候選。
+3. 設定 Google Custom Search API Key 與 Search Engine ID，確認正面、背面、書脊、完整書衣及參考照片搜尋均可用，且重新啟動後的憑證行為符合標準／portable 模式規則。
+4. 選擇候選圖片後人工修改分類，確認結果不會自動套用，並測試分區套用與完整書衣合成。
+5. 以同一本 EPUB 轉換 `B6 內容置於 A5 紙張`：分別輸出普通列印與附裁切標記版本。
+6. 在 Microsoft Word 檢查頁面尺寸為 A5、內容區為中央 B6、文字仍可編輯、圖片未超出裁切區，且裁切版本每頁有 8 段外部標記。
+7. 以 A5 紙張實際列印至少一頁，量測裁切後尺寸是否為 128 × 182 mm，並確認裁切線不穿過文字、圖片或頁碼。
 
 ## 本次新增、待使用者實機驗收
 
