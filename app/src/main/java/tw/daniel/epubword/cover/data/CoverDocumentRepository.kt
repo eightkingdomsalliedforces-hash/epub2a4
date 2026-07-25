@@ -8,7 +8,6 @@ import android.provider.OpenableColumns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileNotFoundException
 import java.util.UUID
 
 const val DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -61,6 +60,13 @@ data class SavedCoverFiles(
     val errorMessage: String? = null,
 ) {
     val isComplete: Boolean get() = pdfUri != null && docxUri != null && errorMessage == null
+
+    val userMessage: String get() = when {
+        pdfUri != null && docxUri != null -> "PDF 與 DOCX 已儲存。"
+        pdfUri != null -> "PDF 已儲存；DOCX 儲存失敗，可重試。"
+        docxUri != null -> "DOCX 已儲存；PDF 儲存失敗，可重試。"
+        else -> errorMessage ?: "PDF 與 DOCX 尚未儲存。"
+    }
 }
 
 class CoverDocumentRepository(private val context: Context) {
