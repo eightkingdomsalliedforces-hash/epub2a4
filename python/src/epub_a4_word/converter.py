@@ -91,6 +91,7 @@ def convert_epub(
         "four_up": "A6 四格小頁",
         "single_a5": "A5 單頁",
         "single_4x6": "4×6 英吋單頁",
+        "b6_on_a5": "B6 內容頁（A5 紙張）",
     }
     _notify(progress, 35, f"正在將內容分成{page_labels[settings.imposition_mode]}…")
     pages = paginate(book.blocks, settings, image_sizes)
