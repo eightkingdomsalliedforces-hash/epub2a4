@@ -135,6 +135,25 @@ def test_conversion_payload_confirms_actual_page_count(qtbot, tmp_path: Path) ->
     assert page.setup_panel.source_path == Path(payload["source_path"])
 
 
+def test_b6_conversion_payload_selects_b6_cover_trim(qtbot, tmp_path: Path) -> None:
+    page = CoverPage(controller=CoverController(working_dir=tmp_path, auto_preview=False))
+    qtbot.addWidget(page)
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"placeholder")
+
+    page.open_from_conversion(
+        {
+            "source_path": str(source),
+            "page_count": 180,
+            "trim_size_mm": {"width_mm": 128.0, "height_mm": 182.0},
+        }
+    )
+
+    assert page.setup_panel.trim_combo.currentText() == "B6"
+    assert page.setup_panel.page_count_spin.value() == 180
+    assert page.setup_panel.page_count_confirmed.isChecked()
+
+
 def test_project_changes_update_canvas_layers_and_inspector(
     qtbot, tmp_path: Path
 ) -> None:
