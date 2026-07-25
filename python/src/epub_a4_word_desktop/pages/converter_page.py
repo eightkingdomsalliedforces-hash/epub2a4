@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..conversion.controller import ConversionController
+from ..conversion.layout_preview import B6OnA5Preview
 from ..conversion.legacy_adapter import allowed_modes_for_path
 from ..conversion.models import ConversionCompletion, ConversionRequest
 
@@ -30,12 +31,17 @@ _MODE_LABELS = {
     "four_up": "A4 四格 A6",
     "single_a5": "A5 單頁",
     "single_4x6": "4×6 英吋單頁",
+    "b6_on_a5": "B6 內容置於 A5 紙張",
 }
 _MARGIN_LABELS = {
     "safe": "安全邊界",
     "maximized": "最大化內容",
     "borderless": "無外邊界",
 }
+_OUTPUT_MARK_LABELS = (
+    ("普通列印", "normal"),
+    ("附裁切標記", "crop_marks"),
+)
 
 
 class ConverterPage(QWidget):
@@ -67,6 +73,12 @@ class ConverterPage(QWidget):
         self.margin_combo = QComboBox(self)
         for value, label in _MARGIN_LABELS.items():
             self.margin_combo.addItem(label, value)
+
+        self.output_mark_combo = QComboBox(self)
+        self.output_mark_combo.setObjectName("conversion-output-mark")
+        for label, value in _OUTPUT_MARK_LABELS:
+            self.output_mark_combo.addItem(label, value)
+        self.layout_preview = B6OnA5Preview(self)
 
         self.font_edit = QLineEdit("Noto Serif CJK TC", self)
         self.body_size = QDoubleSpinBox(self)
@@ -116,6 +128,8 @@ class ConverterPage(QWidget):
         form.addRow("輸出 DOCX", output_row)
         form.addRow("輸出模式", self.mode_combo)
         form.addRow("邊界模式", self.margin_combo)
+        form.addRow("列印標記", self.output_mark_combo)
+        form.addRow("版面預覽", self.layout_preview)
         form.addRow("字型", self.font_edit)
         form.addRow("內文字級", self.body_size)
         form.addRow("標題字級", self.heading_size)
@@ -144,7 +158,10 @@ class ConverterPage(QWidget):
         self.controller.failed.connect(self._on_failed)
         self.controller.cancelled.connect(self._on_cancelled)
         self.source_edit.editingFinished.connect(self._sync_source_from_text)
+        self.mode_combo.currentIndexChanged.connect(self._sync_mode_controls)
+        self.output_mark_combo.currentIndexChanged.connect(self._sync_output_mark_preview)
         self._populate_modes(Path("book.epub"))
+        self._sync_mode_controls()
         self._set_running(False)
 
     def _populate_modes(self, source: Path) -> None:
@@ -152,9 +169,23 @@ class ConverterPage(QWidget):
         self.mode_combo.clear()
         modes = allowed_modes_for_path(source)
         for value in modes:
-            self.mode_combo.addItem(_MODE_LABELS[value], value)
+            self.mode_combo.addItem(_MODE_LABELS.get(value, value), value)
         if selected in modes:
             self.mode_combo.setCurrentIndex(self.mode_combo.findData(selected))
+        self._sync_mode_controls()
+
+    @Slot()
+    def _sync_mode_controls(self) -> None:
+        is_b6 = self.mode_combo.currentData() == "b6_on_a5"
+        self.output_mark_combo.setVisible(is_b6)
+        self.layout_preview.setVisible(is_b6)
+        self.cut_guides.setVisible(not is_b6)
+        self._sync_output_mark_preview()
+
+    @Slot()
+    def _sync_output_mark_preview(self) -> None:
+        mode = str(self.output_mark_combo.currentData() or "normal")
+        self.layout_preview.set_mark_mode(mode)
 
     def set_source_path(self, source: Path | str) -> None:
         path = Path(source).expanduser()
@@ -198,6 +229,11 @@ class ConverterPage(QWidget):
     def _build_request(self) -> ConversionRequest:
         mode = self.mode_combo.currentData()
         margin = self.margin_combo.currentData()
+        output_mark_mode = (
+            str(self.output_mark_combo.currentData() or "normal")
+            if mode == "b6_on_a5"
+            else "normal"
+        )
         return ConversionRequest(
             input_path=Path(self.source_edit.text().strip()).expanduser(),
             output_path=Path(self.output_edit.text().strip()).expanduser(),
@@ -208,6 +244,7 @@ class ConverterPage(QWidget):
             heading_font_pt=self.heading_size.value(),
             page_numbers=self.page_numbers.isChecked(),
             cut_guides=self.cut_guides.isChecked(),
+            output_mark_mode=output_mark_mode,
         )
 
     @Slot()
