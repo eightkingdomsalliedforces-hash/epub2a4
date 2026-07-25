@@ -50,6 +50,13 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
@@ -62,14 +69,9 @@ jobs:
           gradle-version: "8.13"
 
       - name: Run Kotlin unit tests first
+        env:
+          CHAQUOPY_PYTHON: python3.13
         run: gradle --no-daemon testDebugUnitTest --stacktrace
-
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-          cache: pip
-          cache-dependency-path: pyproject.toml
 
       - name: Install and verify Python core
         run: |
