@@ -16,6 +16,7 @@ from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtGui import QUndoStack
 
 from epub_a4_word.cover import service as shared_service
+from epub_a4_word.cover.composition import CompositionSelection
 from epub_a4_word.cover.geometry import calculate_layout
 from epub_a4_word.cover.models import (
     CoverElement,
@@ -25,6 +26,7 @@ from epub_a4_word.cover.models import (
     Region,
 )
 from epub_a4_word.cover.project_io import dumps_project, loads_project
+from epub_a4_word.cover.search.models import CandidateCategory
 
 from .commands import ReplaceProjectCommand
 from .models import patch_element
@@ -220,29 +222,124 @@ class CoverController(QObject):
             Region.SPREAD: layout.bleed_rect,
         }[region]
 
+    @staticmethod
+    def _region_for_category(category: CandidateCategory | str) -> Region:
+        value = CandidateCategory(category)
+        return {
+            CandidateCategory.BACK: Region.BACK,
+            CandidateCategory.SPINE: Region.SPINE,
+            CandidateCategory.FRONT: Region.FRONT,
+            CandidateCategory.FULL_SPREAD: Region.SPREAD,
+        }[value]
+
+    def _image_element(
+        self,
+        project: CoverProject,
+        source: Path,
+        region: Region,
+        *,
+        selection: CompositionSelection | None = None,
+        z_index: int,
+        element_id: str | None = None,
+    ) -> CoverElement:
+        copied = self._copy_local_image(source)
+        target = self._target_rect(project, region)
+        scale = selection.scale if selection else 1.0
+        offset_x = selection.offset_x if selection else 0.0
+        offset_y = selection.offset_y if selection else 0.0
+        width = target.width_mm * scale
+        height = target.height_mm * scale
+        transform = ElementTransform(
+            target.x_mm + (target.width_mm - width) / 2.0 + offset_x * target.width_mm,
+            target.y_mm + (target.height_mm - height) / 2.0 + offset_y * target.height_mm,
+            width,
+            height,
+        )
+        content: dict[str, Any] = {"path": str(copied), "fit": "cover"}
+        if selection:
+            content.update(
+                {
+                    "crop_left": selection.crop_left,
+                    "crop_top": selection.crop_top,
+                    "crop_right": selection.crop_right,
+                    "crop_bottom": selection.crop_bottom,
+                }
+            )
+        return CoverElement(
+            id=element_id or f"downloaded-image-{uuid4().hex}",
+            kind=ElementKind.IMAGE,
+            region=region,
+            transform=transform,
+            z_index=z_index,
+            content=content,
+        )
+
     def add_local_image(self, source_path: Path | str, region: Region | str) -> str:
         project = self._require_project()
         selected_region = region if isinstance(region, Region) else Region(str(region))
-        copied = self._copy_local_image(Path(source_path).expanduser().resolve())
-        target = self._target_rect(project, selected_region)
-        element_id = f"local-image-{uuid4().hex}"
         highest_z = max((element.z_index for element in project.elements), default=0)
-        element = CoverElement(
-            id=element_id,
-            kind=ElementKind.IMAGE,
-            region=selected_region,
-            transform=ElementTransform(
-                target.x_mm,
-                target.y_mm,
-                target.width_mm,
-                target.height_mm,
-            ),
+        element = self._image_element(
+            project,
+            Path(source_path).expanduser().resolve(),
+            selected_region,
             z_index=highest_z + 1,
-            content={"path": str(copied), "fit": "cover"},
+            element_id=f"local-image-{uuid4().hex}",
         )
         candidate = replace(project, elements=project.elements + (element,))
         self.replace_project(dumps_project(candidate), label="加入本機圖片")
-        return element_id
+        return element.id
+
+    def add_downloaded_images(
+        self,
+        selections: Mapping[CandidateCategory | str, CompositionSelection],
+    ) -> tuple[str, ...]:
+        project = self._require_project()
+        elements = list(project.elements)
+        highest_z = max((element.z_index for element in elements), default=0)
+        added: list[str] = []
+        order = (
+            CandidateCategory.BACK,
+            CandidateCategory.SPINE,
+            CandidateCategory.FRONT,
+        )
+        normalized = {CandidateCategory(key): value for key, value in selections.items()}
+        for category in order:
+            selection = normalized.get(category)
+            if selection is None:
+                continue
+            highest_z += 1
+            element = self._image_element(
+                project,
+                selection.path,
+                self._region_for_category(category),
+                selection=selection,
+                z_index=highest_z,
+            )
+            elements.append(element)
+            added.append(element.id)
+        if not added:
+            raise ValueError("沒有可套用到正面、背面或書脊的圖片。")
+        self.replace_project(
+            dumps_project(replace(project, elements=tuple(elements))),
+            label="套用搜尋封面分區圖片",
+        )
+        return tuple(added)
+
+    def add_composed_spread(self, source_path: Path | str) -> str:
+        project = self._require_project()
+        highest_z = max((element.z_index for element in project.elements), default=0)
+        element = self._image_element(
+            project,
+            Path(source_path).expanduser().resolve(),
+            Region.SPREAD,
+            z_index=highest_z + 1,
+            element_id=f"composed-spread-{uuid4().hex}",
+        )
+        self.replace_project(
+            dumps_project(replace(project, elements=project.elements + (element,))),
+            label="套用合成完整書衣",
+        )
+        return element.id
 
     def remove_element(self, element_id: str) -> None:
         project = self._require_project()

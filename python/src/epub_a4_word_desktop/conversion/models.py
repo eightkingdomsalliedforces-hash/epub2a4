@@ -9,14 +9,15 @@ from epub_a4_word.pagination import LayoutSettings
 
 from .legacy_adapter import allowed_modes_for_path
 
-
 _TRIM_SIZE_BY_MODE: dict[str, tuple[float, float]] = {
     "signature16": (105.0, 148.0),
     "four_up": (105.0, 148.0),
     "single_a5": (148.0, 210.0),
     "single_4x6": (101.6, 152.4),
+    "b6_on_a5": (128.0, 182.0),
 }
 _ALLOWED_MARGINS = {"safe", "maximized", "borderless"}
+_ALLOWED_MARK_MODES = {"normal", "crop_marks"}
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class ConversionRequest:
     heading_font_pt: float = 14.0
     page_numbers: bool = True
     cut_guides: bool = True
+    output_mark_mode: str = "normal"
 
     def validate(self) -> None:
         source = Path(self.input_path)
@@ -48,13 +50,16 @@ class ConversionRequest:
                 raise ValueError("輸出檔案不可覆蓋來源檔案。")
         except OSError:
             pass
-
         allowed = allowed_modes_for_path(source)
         if self.imposition_mode not in allowed:
             label = "DOCX" if suffix == ".docx" else "EPUB"
             raise ValueError(f"{label} 不支援所選輸出模式。")
         if self.margin_mode not in _ALLOWED_MARGINS:
             raise ValueError("邊界模式無效。")
+        if self.output_mark_mode not in _ALLOWED_MARK_MODES:
+            raise ValueError("輸出標記模式無效。")
+        if self.imposition_mode != "b6_on_a5" and self.output_mark_mode != "normal":
+            raise ValueError("只有 B6 內容置於 A5 紙張模式支援裁切標記。")
         if not self.font_name.strip():
             raise ValueError("字型名稱不可為空。")
         if self.body_font_pt <= 0 or self.heading_font_pt <= 0:
@@ -69,6 +74,7 @@ class ConversionRequest:
             heading_font_pt=float(self.heading_font_pt),
             page_numbers=bool(self.page_numbers),
             cut_guides=bool(self.cut_guides),
+            output_mark_mode=self.output_mark_mode,
         )
 
 
@@ -89,10 +95,7 @@ class ConversionCompletion:
             "source_path": str(self.source),
             "output_path": str(self.output_path),
             "page_count": self.actual_page_count,
-            "trim_size_mm": {
-                "width_mm": width_mm,
-                "height_mm": height_mm,
-            },
+            "trim_size_mm": {"width_mm": width_mm, "height_mm": height_mm},
             "title": self.title,
             "author": self.author,
         }
@@ -105,10 +108,7 @@ def trim_size_for_mode(imposition_mode: str) -> tuple[float, float]:
         raise ValueError(f"未知輸出模式：{imposition_mode}") from exc
 
 
-def make_completion(
-    request: ConversionRequest,
-    result: ConversionResult,
-) -> ConversionCompletion:
+def make_completion(request: ConversionRequest, result: ConversionResult) -> ConversionCompletion:
     return ConversionCompletion(
         source=Path(request.input_path),
         output_path=Path(result.output_path),
@@ -121,8 +121,5 @@ def make_completion(
     )
 
 
-def completion_payload(
-    request: ConversionRequest,
-    result: ConversionResult,
-) -> dict[str, Any]:
+def completion_payload(request: ConversionRequest, result: ConversionResult) -> dict[str, Any]:
     return dict(make_completion(request, result).to_cover_payload())
