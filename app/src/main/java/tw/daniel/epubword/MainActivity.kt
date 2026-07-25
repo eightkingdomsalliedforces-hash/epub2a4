@@ -9,6 +9,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import tw.daniel.epubword.cover.ui.CoverEditorCallbacks
 import tw.daniel.epubword.cover.ui.CoverSetupCallbacks
 import tw.daniel.epubword.cover.ui.CoverViewModel
 import tw.daniel.epubword.ui.AppRoot
@@ -27,19 +28,16 @@ class MainActivity : ComponentActivity() {
 
                 val inputLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument(),
-                ) { uri ->
-                    if (uri != null) conversionViewModel.selectInput(uri)
-                }
+                ) { uri -> if (uri != null) conversionViewModel.selectInput(uri) }
                 val outputLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.CreateDocument(DOCX_MIME),
-                ) { uri ->
-                    conversionViewModel.saveOutput(uri)
-                }
+                ) { uri -> conversionViewModel.saveOutput(uri) }
                 val coverSourceLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument(),
-                ) { uri ->
-                    if (uri != null) coverViewModel.selectSource(uri)
-                }
+                ) { uri -> if (uri != null) coverViewModel.selectSource(uri) }
+                val coverImageLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument(),
+                ) { uri -> if (uri != null) coverViewModel.importLocalImage(uri) }
 
                 LaunchedEffect(conversionState.saveRequestId, conversionState.pendingOutputName) {
                     val pendingName = conversionState.pendingOutputName
@@ -86,6 +84,18 @@ class MainActivity : ComponentActivity() {
                         onImageMode = coverViewModel::setImageMode,
                         onTemplate = coverViewModel::setTemplate,
                         onCreateProject = coverViewModel::createProject,
+                    ),
+                    coverEditorCallbacks = CoverEditorCallbacks(
+                        onUndo = coverViewModel::undo,
+                        onRedo = coverViewModel::redo,
+                        onApplyTemplate = coverViewModel::applyTemplate,
+                        onAddImage = { coverImageLauncher.launch(arrayOf("image/*")) },
+                        onAddText = coverViewModel::addText,
+                        onToggleGuides = coverViewModel::toggleGuides,
+                        onSelectElement = coverViewModel::selectElement,
+                        onPatchElement = coverViewModel::patchElement,
+                        onDeleteElement = coverViewModel::removeElement,
+                        onTransformElement = coverViewModel::applyTransformPatch,
                     ),
                 )
             }
