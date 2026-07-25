@@ -1,3 +1,4 @@
 Start the one-time pull-request repair workflow.
 Diagnostic retry after splitting the apply job into named steps.
 Transport-layer retry: concatenate, decode, SHA-256, and tar structure are isolated.
+Structural-integrity retry: record actual SHA and validate 40 entries plus key paths.
