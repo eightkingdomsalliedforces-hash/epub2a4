@@ -57,8 +57,13 @@ data class CoverUiState(
     val previewPath: String? = null,
     val selectedElementId: String? = null,
     val guidesVisible: Boolean = true,
+    val guides: CoverGuides = CoverGuides(),
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
+    val exportPdfPath: String? = null,
+    val exportDocxPath: String? = null,
+    val exportDpi: Int = 300,
+    val saveMessage: String? = null,
     val errorMessage: String? = null,
 ) {
     val isBusy: Boolean get() = status in setOf(
