@@ -26,12 +26,13 @@ class LegacyConversionRequest:
     heading_font_pt: float
     page_numbers: bool
     cut_guides: bool
+    output_mark_mode: str = "normal"
 
 
 def allowed_modes_for_path(path: Path) -> tuple[str, ...]:
     suffix = path.suffix.lower()
     if suffix == ".epub":
-        return ("signature16", "four_up", "single_a5", "single_4x6")
+        return ("signature16", "four_up", "single_a5", "single_4x6", "b6_on_a5")
     if suffix == ".docx":
         return ("single_a5", "single_4x6")
     return ()
@@ -47,6 +48,8 @@ def run_conversion(
         raise ValueError("輸入檔案只支援 EPUB 或 DOCX。")
     if request.imposition_mode not in allowed_modes:
         raise ValueError("所選輸出模式不適用於此檔案格式。")
+    if request.output_mark_mode not in {"normal", "crop_marks"}:
+        raise ValueError("列印標記模式無效。")
     if cancelled is not None and cancelled():
         raise ConversionCancelled("轉換已取消。")
 
@@ -64,6 +67,7 @@ def run_conversion(
         heading_font_pt=request.heading_font_pt,
         page_numbers=request.page_numbers,
         cut_guides=request.cut_guides,
+        output_mark_mode=request.output_mark_mode,
     )
     return convert_input(
         request.input_path,
