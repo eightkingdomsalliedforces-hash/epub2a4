@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
+
+from epub_a4_word_desktop.__main__ import main
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -37,6 +40,15 @@ def test_entry_supports_packaged_smoke_without_changing_legacy_order() -> None:
     legacy_position = text.index("--legacy-gui")
     widgets_position = text.find("PySide6.QtWidgets")
     assert widgets_position == -1 or legacy_position < widgets_position
+
+
+def test_portable_smoke_flag_uses_dedicated_short_lived_runner() -> None:
+    with patch(
+        "epub_a4_word_desktop.__main__.run_portable_smoke",
+        return_value=0,
+    ) as run:
+        assert main(["--portable-smoke-test"]) == 0
+        run.assert_called_once_with([])
 
 
 def test_workflow_runs_packaged_executable_not_only_python_sources() -> None:
