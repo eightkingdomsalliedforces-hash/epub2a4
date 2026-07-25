@@ -9,8 +9,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import tw.daniel.epubword.ui.AppRoot
 import tw.daniel.epubword.ui.ConversionViewModel
-import tw.daniel.epubword.ui.ConverterScreen
 import tw.daniel.epubword.ui.theme.EpubWordTheme
 
 class MainActivity : ComponentActivity() {
@@ -34,26 +34,17 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(state.saveRequestId, state.pendingOutputName) {
                     val pendingName = state.pendingOutputName
-                    if (
-                        state.saveRequestId > state.handledSaveRequestId &&
-                        pendingName != null
-                    ) {
+                    if (state.saveRequestId > state.handledSaveRequestId && pendingName != null) {
                         val requestId = state.saveRequestId
                         viewModel.markSaveDialogHandled(requestId)
                         outputLauncher.launch(pendingName)
                     }
                 }
 
-                ConverterScreen(
-                    state = state,
-                    onChooseInput = {
-                        inputLauncher.launch(
-                            arrayOf(
-                                EPUB_MIME,
-                                DOCX_MIME,
-                                "application/octet-stream",
-                            )
-                        )
+                AppRoot(
+                    conversionState = state,
+                    onChooseConversionSource = {
+                        inputLauncher.launch(arrayOf(EPUB_MIME, DOCX_MIME, "application/octet-stream"))
                     },
                     onOutputMode = viewModel::setOutputMode,
                     onMarginMode = viewModel::setMarginMode,
@@ -63,9 +54,9 @@ class MainActivity : ComponentActivity() {
                     onPageNumbers = viewModel::setPageNumbers,
                     onCutGuides = viewModel::setCutGuides,
                     onConvert = viewModel::convert,
-                    onCancel = viewModel::cancelConversion,
-                    onSave = viewModel::requestSave,
-                    onDismissError = viewModel::dismissError,
+                    onCancelConversion = viewModel::cancelConversion,
+                    onSaveConversion = viewModel::requestSave,
+                    onDismissConversionError = viewModel::dismissError,
                 )
             }
         }
