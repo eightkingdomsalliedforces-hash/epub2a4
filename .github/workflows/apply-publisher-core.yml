@@ -15,7 +15,7 @@ permissions:
 jobs:
   apply:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       PYTHONPATH: python/src
     steps:
@@ -30,39 +30,40 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Reassemble and apply source patch
+      - name: Apply, test, and publish core implementation
         shell: bash
         run: |
-          cat .github/implementation/publisher-core-*.b64 | base64 --decode > scripts/apply_publisher_core.py
-          python scripts/apply_publisher_core.py
+          set +e
+          {
+            cat .github/implementation/publisher-core-*.b64 | base64 --decode > scripts/apply_publisher_core.py
+            python scripts/apply_publisher_core.py
+            python -m pip install -e ".[test]"
+            python -m pytest -q \
+              python-tests/cover/test_isbn.py \
+              python-tests/cover/test_publisher_back_template.py \
+              python-tests/cover/test_image_transform.py \
+              python-tests/cover/test_templates.py \
+              python-tests/cover/test_render.py
+            python -m compileall -q python/src
+          } > publisher-core-result.log 2>&1
+          status=$?
+          cat publisher-core-result.log
 
-      - name: Install test dependencies
-        run: python -m pip install -e ".[test]"
-
-      - name: Run focused core tests
-        run: >-
-          python -m pytest -q
-          python-tests/cover/test_isbn.py
-          python-tests/cover/test_publisher_back_template.py
-          python-tests/cover/test_image_transform.py
-          python-tests/cover/test_templates.py
-          python-tests/cover/test_render.py
-
-      - name: Compile modified core
-        run: python -m compileall -q python/src
-
-      - name: Remove one-shot implementation files
-        shell: bash
-        run: |
-          rm -f scripts/apply_publisher_core.py
-          rm -f .github/implementation/publisher-core-*.b64
-          rm -f .github/workflows/apply-publisher-core.yml
-
-      - name: Commit verified implementation
-        shell: bash
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ "$status" -ne 0 ]; then
+            cp publisher-core-result.log .github/implementation/publisher-core-result.log
+            git add .github/implementation/publisher-core-result.log
+            git commit -m "chore: record publisher core patch failure" || true
+            git push origin HEAD:agent/publisher-back-isbn-image-transform
+            exit "$status"
+          fi
+
+          rm -f scripts/apply_publisher_core.py publisher-core-result.log
+          rm -f .github/implementation/publisher-core-*.b64
+          rm -f .github/implementation/publisher-core-result.log
+          rm -f .github/workflows/apply-publisher-core.yml
           git add -A
           git diff --cached --check
           git commit -m "feat: implement publisher cover core"
