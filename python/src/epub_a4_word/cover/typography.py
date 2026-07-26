@@ -8,9 +8,12 @@ POINTS_PER_INCH = 72.0
 
 _FONT_ROLE_CANDIDATES: dict[str, tuple[str, ...]] = {
     "publisher_heading": (
+        "DFPYuanW5-GB",
+        "DFPYuanW5",
+        "DFP Yuan W5",
         "DFYuan-W5",
-        "華康圓體 Std W5",
         "華康中圓體",
+        "華康圓體 Std W5",
         "Yuanti TC",
         "PingFang TC",
         "Microsoft JhengHei UI",
@@ -19,9 +22,12 @@ _FONT_ROLE_CANDIDATES: dict[str, tuple[str, ...]] = {
         "sans-serif",
     ),
     "publisher_details": (
+        "DFPYuanW3-GB",
+        "DFPYuanW3",
+        "DFP Yuan W3",
         "DFYuan-W3",
-        "華康圓體 Std W3",
         "華康細圓體",
+        "華康圓體 Std W3",
         "Yuanti TC",
         "PingFang TC",
         "Microsoft JhengHei UI",
