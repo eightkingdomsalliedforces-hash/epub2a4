@@ -115,6 +115,7 @@ def _validate_metadata(metadata: CoverMetadata) -> None:
         "publisher",
         "price",
         "publication_place",
+        "translator",
         "isbn_addon",
         "language",
     ):
@@ -207,6 +208,7 @@ def _metadata_from_dict(raw: Any) -> CoverMetadata:
         "publisher",
         "price",
         "publication_place",
+        "translator",
         "isbn_addon",
         "language",
         "page_count_is_estimate",
@@ -224,6 +226,7 @@ def _metadata_from_dict(raw: Any) -> CoverMetadata:
         publication_place=_string(
             data.get("publication_place", ""), "metadata.publication_place"
         ),
+        translator=_string(data.get("translator", ""), "metadata.translator"),
         isbn_addon=_string(data.get("isbn_addon", ""), "metadata.isbn_addon"),
         language=_string(data.get("language", ""), "metadata.language"),
         page_count_is_estimate=_boolean(
