@@ -79,8 +79,9 @@ def run_smoke(output_dir: Path | str) -> dict[str, Any]:
     result = {
         "route": window.current_route.value,
         "preview_path": str(Path(preview["path"]).resolve()),
-        "pdf_path": str(Path(export["pdf"]["path"]).resolve()),
-        "docx_path": str(Path(export["docx"]["path"]).resolve()),
+        "original_pdf_path": str(Path(export["original_pdf"]["path"]).resolve()),
+        "print_pdf_path": str(Path(export["print_pdf"]["path"]).resolve()),
+        "print_docx_path": str(Path(export["print_docx"]["path"]).resolve()),
     }
     window.close()
     application.processEvents()
@@ -90,7 +91,12 @@ def run_smoke(output_dir: Path | str) -> dict[str, Any]:
 def _verify_result(result: dict[str, Any]) -> None:
     if result.get("route") != "cover":
         raise RuntimeError(f"desktop smoke wrong route: {result.get('route')}")
-    for key in ("preview_path", "pdf_path", "docx_path"):
+    for key in (
+        "preview_path",
+        "original_pdf_path",
+        "print_pdf_path",
+        "print_docx_path",
+    ):
         if not Path(str(result[key])).is_file():
             raise RuntimeError(f"desktop smoke missing {key}: {result[key]}")
 
