@@ -24,9 +24,15 @@ from PySide6.QtWidgets import (
 )
 
 from epub_a4_word.cover.project_io import loads_project
-from epub_a4_word.cover.search.models import CandidateCategory, SearchCandidate
+from epub_a4_word.cover.search.models import (
+    CandidateCategory,
+    ResolvedAlias,
+    SearchCandidate,
+    alias_key,
+)
 from epub_a4_word.cover.search.pipeline import ProviderSelection
 
+from .alias_decision_row import AliasDecisionRow
 from .credential_dialog import CredentialDialog
 from .search_controller import SearchController
 
@@ -165,6 +171,10 @@ class CoverSearchPanel(QWidget):
         self.project_fingerprint = ""
         self.candidates: dict[tuple[str, str], SearchCandidate] = {}
         self.selected: dict[str, SearchCandidate] = {}
+        self.accepted_aliases: dict[str, ResolvedAlias] = {}
+        self.ignored_alias_keys: set[str] = set()
+        self.pending_aliases: dict[str, ResolvedAlias] = {}
+        self.alias_rows: list[AliasDecisionRow] = []
         self.cards: list[CandidateCard] = []
         self._columns = 0
         self.network = QNetworkAccessManager(self)
@@ -175,6 +185,10 @@ class CoverSearchPanel(QWidget):
         self.status_label.setWordWrap(True)
         self.resolution_label = QLabel("", self)
         self.resolution_label.setWordWrap(True)
+        self.alias_box = QGroupBox("需要確認的書名別名", self)
+        self.alias_box.setVisible(False)
+        self.alias_rows_layout = QVBoxLayout(self.alias_box)
+        self.alias_rows_layout.addWidget(QLabel("確認後才會使用該名稱重新搜尋。", self.alias_box))
 
         self.google_books_checkbox = QCheckBox("Google Books", self)
         self.open_library_checkbox = QCheckBox("Open Library", self)
@@ -233,6 +247,7 @@ class CoverSearchPanel(QWidget):
         layout.addLayout(actions)
         layout.addWidget(self.status_label)
         layout.addWidget(self.resolution_label)
+        layout.addWidget(self.alias_box)
         layout.addWidget(self.scroll, 1)
         layout.addWidget(selection_box)
 
@@ -278,6 +293,10 @@ class CoverSearchPanel(QWidget):
         self.project_fingerprint = fingerprint
         self.candidates.clear()
         self.selected.clear()
+        self.accepted_aliases.clear()
+        self.ignored_alias_keys.clear()
+        self.pending_aliases.clear()
+        self._rebuild_alias_rows(())
         self._rebuild_cards()
         self._update_selection_summary()
         self._update_search_enabled()
@@ -316,6 +335,8 @@ class CoverSearchPanel(QWidget):
             self.metadata,
             selection,
             self.manual_alias_edit.text().strip(),
+            tuple(self.accepted_aliases.values()),
+            frozenset(self.ignored_alias_keys),
         )
         enabled = []
         if selection.google_books:
@@ -392,17 +413,59 @@ class CoverSearchPanel(QWidget):
         else:
             self.status_label.setText("找不到候選封面；本機與內嵌圖片仍可正常使用。")
         aliases = getattr(response, "resolved_aliases", ())
+        pending = getattr(response, "pending_aliases", ())
+        self._rebuild_alias_rows(pending)
         isbns = getattr(response, "resolved_isbns", ())
-        alias_text = "、".join(
-            f"{item.value}{'（需確認）' if item.confidence == 'medium' else ''}"
+        confirmed_text = "、".join(
+            item.value
             for item in aliases
+            if item.confidence != "medium" or alias_key(item) in self.accepted_aliases
         )
         details = []
-        if alias_text:
-            details.append("解析名稱：" + alias_text)
+        if confirmed_text:
+            details.append("可使用名稱：" + confirmed_text)
         if isbns:
             details.append("解析 ISBN：" + "、".join(isbns))
         self.resolution_label.setText("；".join(details))
+
+    def _clear_alias_rows(self) -> None:
+        while self.alias_rows_layout.count() > 1:
+            item = self.alias_rows_layout.takeAt(1)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.alias_rows.clear()
+
+    def _rebuild_alias_rows(self, aliases) -> None:
+        self._clear_alias_rows()
+        self.pending_aliases = {
+            alias_key(alias): alias
+            for alias in aliases
+            if alias_key(alias) not in self.ignored_alias_keys
+            and alias_key(alias) not in self.accepted_aliases
+        }
+        for alias in self.pending_aliases.values():
+            row = AliasDecisionRow(alias, self.alias_box)
+            row.accepted.connect(self._accept_alias)
+            row.ignored.connect(self._ignore_alias)
+            self.alias_rows.append(row)
+            self.alias_rows_layout.addWidget(row)
+        self.alias_box.setVisible(bool(self.alias_rows))
+
+    def _accept_alias(self, alias: ResolvedAlias) -> None:
+        key = alias_key(alias)
+        self.accepted_aliases[key] = alias
+        self.ignored_alias_keys.discard(key)
+        self.pending_aliases.pop(key, None)
+        self._rebuild_alias_rows(tuple(self.pending_aliases.values()))
+        self._search()
+
+    def _ignore_alias(self, key: str) -> None:
+        normalized = str(key).casefold().strip()
+        self.accepted_aliases.pop(normalized, None)
+        self.ignored_alias_keys.add(normalized)
+        self.pending_aliases.pop(normalized, None)
+        self._rebuild_alias_rows(tuple(self.pending_aliases.values()))
 
     def _search_failed(self, mode: str, message: str) -> None:
         self.status_label.setText(f"{mode} 搜尋失敗：{message}；已取得的候選不會被清除。")
@@ -421,6 +484,11 @@ class CoverSearchPanel(QWidget):
             self.metadata,
             candidate,
             self.manual_alias_edit.text().strip(),
+        )
+        self.controller.remember_confirmed_aliases(
+            self.metadata,
+            tuple(self.accepted_aliases.values()),
+            isbn=candidate.isbn,
         )
         self._update_selection_summary()
 

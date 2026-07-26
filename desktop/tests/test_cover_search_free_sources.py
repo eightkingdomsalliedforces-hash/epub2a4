@@ -72,3 +72,50 @@ def test_missing_google_key_does_not_disable_no_key_sources(qtbot, tmp_path) -> 
 
     assert controller.stored_credential() is None
     assert panel.search_button.isEnabled()
+
+
+def test_pending_aliases_are_separate_rows_and_accept_restarts_search(
+    qtbot, tmp_path, monkeypatch
+) -> None:
+    from epub_a4_word.cover.search.models import ResolvedAlias, SearchResponse, alias_key
+
+    controller = SearchController()
+    panel = CoverSearchPanel(controller, auto_search=False)
+    qtbot.addWidget(panel)
+    panel.bind_project(_project_json(tmp_path))
+    alias = ResolvedAlias(
+        "A Certain Magical Index",
+        "en",
+        "wikidata",
+        "medium",
+        ("書名相符",),
+    )
+    calls = []
+    monkeypatch.setattr(panel, "_search", lambda: calls.append("search"))
+
+    panel._results_ready("public", SearchResponse(pending_aliases=(alias,)))
+
+    assert len(panel.alias_rows) == 1
+    panel.alias_rows[0].accepted.emit(alias)
+    assert panel.accepted_aliases[alias_key(alias)] == alias
+    assert calls == ["search"]
+
+
+def test_ignoring_pending_alias_removes_only_that_row(qtbot, tmp_path) -> None:
+    from epub_a4_word.cover.search.models import ResolvedAlias, SearchResponse, alias_key
+
+    controller = SearchController()
+    panel = CoverSearchPanel(controller, auto_search=False)
+    qtbot.addWidget(panel)
+    panel.bind_project(_project_json(tmp_path))
+    first = ResolvedAlias("Alias One", "en", "wikidata", "medium")
+    second = ResolvedAlias("Alias Two", "ja", "wikidata", "medium")
+
+    panel._results_ready(
+        "public",
+        SearchResponse(pending_aliases=(first, second)),
+    )
+    panel.alias_rows[0].ignored.emit(alias_key(first))
+
+    assert alias_key(first) in panel.ignored_alias_keys
+    assert [row.alias for row in panel.alias_rows] == [second]

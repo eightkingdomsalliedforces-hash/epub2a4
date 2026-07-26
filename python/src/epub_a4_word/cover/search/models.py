@@ -43,6 +43,18 @@ class ResolvedAlias:
     reasons: tuple[str, ...] = ()
 
 
+
+
+def alias_key(alias: ResolvedAlias) -> str:
+    return "|".join(
+        (
+            alias.source.casefold().strip(),
+            (alias.language or "").casefold().strip(),
+            " ".join(alias.value.casefold().split()),
+        )
+    )
+
+
 @dataclass(frozen=True)
 class QueryItem:
     kind: str
@@ -230,6 +242,7 @@ class SearchResponse:
     candidates: tuple[SearchCandidate, ...] = ()
     warnings: tuple[str, ...] = ()
     resolved_aliases: tuple[ResolvedAlias, ...] = ()
+    pending_aliases: tuple[ResolvedAlias, ...] = ()
     resolved_isbns: tuple[str, ...] = ()
     query_items: tuple[QueryItem, ...] = ()
 
@@ -246,6 +259,16 @@ class SearchResponse:
                     "reasons": list(item.reasons),
                 }
                 for item in self.resolved_aliases
+            ],
+            "pending_aliases": [
+                {
+                    "value": item.value,
+                    "language": item.language,
+                    "source": item.source,
+                    "confidence": item.confidence,
+                    "reasons": list(item.reasons),
+                }
+                for item in self.pending_aliases
             ],
             "resolved_isbns": list(self.resolved_isbns),
             "query_items": [

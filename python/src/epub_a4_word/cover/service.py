@@ -12,6 +12,7 @@ from epub_a4_word.epub import estimate_epub_page_count
 from epub_a4_word.pagination import LayoutSettings
 
 from .docx_export import export_docx
+from .export_plan import build_export_plan
 from .geometry import calculate_layout
 from .metadata import CoverMetadataInspection, inspect_metadata
 from .models import (
@@ -24,7 +25,7 @@ from .models import (
     Region,
     TrimSize,
 )
-from .pdf_export import ExportResult, export_pdf
+from .pdf_export import ExportResult, export_original_pdf, export_pdf
 from .project_io import CoverValidationError, dumps_project, loads_project
 from .render import render_preview as _render_preview
 from .templates import apply_template as _apply_template
@@ -444,6 +445,32 @@ def render_preview(project_json: str, output_png: str, max_px: int = 1600) -> di
         "width_px": result.width_px,
         "height_px": result.height_px,
         "warnings": list(result.warnings),
+    }
+
+
+def export_cover_bundle(
+    project_json: str,
+    original_pdf_path: str,
+    print_pdf_path: str,
+    print_docx_path: str,
+    dpi: int = 300,
+) -> dict[str, Any]:
+    project = loads_project(project_json)
+    export_plan = build_export_plan(project)
+    original_result = export_original_pdf(project, Path(original_pdf_path), dpi=dpi)
+    print_pdf_result = export_pdf(project, Path(print_pdf_path), dpi=dpi)
+    print_docx_result = export_docx(project, Path(print_docx_path))
+    return {
+        "original_pdf": _result_dict(original_result),
+        "print_pdf": _result_dict(print_pdf_result),
+        "print_docx": _result_dict(print_docx_result),
+        "print_plan": {
+            "mode": export_plan.print_plan.mode,
+            "page_count": len(export_plan.print_plan.pages),
+            "overlap_mm": export_plan.overlap_mm,
+            "back_cover_blank": export_plan.back_cover_blank,
+        },
+        "dpi": dpi,
     }
 
 

@@ -165,6 +165,7 @@ def build_query_plan(
     manual_alias: str = "",
     aliases: Iterable[ResolvedAlias] = (),
     isbns: Iterable[str] = (),
+    accepted_aliases: Iterable[ResolvedAlias] = (),
 ) -> QueryPlan:
     items: list[QueryItem] = []
     seen: set[tuple[str, str]] = set()
@@ -214,6 +215,15 @@ def build_query_plan(
         kind="title", value=manual_alias, language="", confidence="high",
         source="user", reason="user-provided formal title alias",
     )
+    for alias in accepted_aliases:
+        append(
+            kind="title",
+            value=alias.value,
+            language=alias.language or "",
+            confidence="high",
+            source=alias.source,
+            reason="user-confirmed alias",
+        )
     append(
         kind="title", value=identity.original_title, language=identity.language,
         confidence="high", source="epub", reason="original EPUB title",

@@ -20,10 +20,13 @@ def _identity_digest(identity: BookIdentity, *, include_volume: bool) -> str:
 
 
 def _alias_dict(alias: ResolvedAlias) -> dict[str, object]:
+    # An alias reaches persistent storage only after the user selected a
+    # matching cover. Cached entries are therefore confirmed and must be
+    # reusable without prompting again on the next search.
     return {
         "value": alias.value,
         "language": alias.language,
-        "confidence": alias.confidence,
+        "confidence": "high",
     }
 
 

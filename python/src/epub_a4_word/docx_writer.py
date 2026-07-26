@@ -8,7 +8,7 @@ from typing import Mapping, Sequence
 from PIL import Image, UnidentifiedImageError
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_ROW_HEIGHT_RULE, WD_TABLE_ALIGNMENT
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
@@ -17,6 +17,7 @@ from .crop_marks import CropMarkFrame, add_crop_marks
 from .imposition import ImpositionMode, build_imposition
 from .models import ImageBlock, TextBlock, TextRun
 from .pagination import LayoutSettings, MiniPage, resolve_layout
+from .text_metrics import paragraph_metrics
 
 TWIPS_PER_CM = 1440.0 / 2.54
 _SINGLE_PAGE_TABLE_MODES = frozenset({"single_a5", "single_4x6", "b6_on_a5"})
@@ -134,12 +135,19 @@ def _add_text_block(cell, block: TextBlock, settings: LayoutSettings, first: boo
         _clear_paragraph(paragraph)
     fmt = paragraph.paragraph_format
     fmt.space_before = Pt(0)
-    fmt.space_after = Pt(settings.heading_spacing_pt if block.style == "heading" else settings.paragraph_spacing_pt)
-    fmt.line_spacing = settings.line_spacing
     font_size = settings.heading_font_pt if block.style == "heading" else settings.body_font_pt
+    metrics = paragraph_metrics(
+        font_size,
+        settings.line_spacing,
+        settings.heading_spacing_pt
+        if block.style == "heading"
+        else settings.paragraph_spacing_pt,
+    )
+    fmt.line_spacing_rule = WD_LINE_SPACING.EXACTLY
+    fmt.line_spacing = Pt(metrics.line_height_pt)
+    fmt.space_after = Pt(metrics.spacing_after_pt)
     if block.style == "heading":
         paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        fmt.keep_with_next = True
     elif block.style == "quote":
         fmt.left_indent = Pt(font_size * 1.5)
         fmt.right_indent = Pt(font_size * 1.5)

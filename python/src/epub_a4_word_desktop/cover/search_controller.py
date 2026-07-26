@@ -63,12 +63,16 @@ class SharedSearchFacade:
         credential: ProviderCredential | None = None,
         selection: ProviderSelection | None = None,
         manual_alias: str = "",
+        accepted_aliases: tuple[ResolvedAlias, ...] = (),
+        ignored_alias_keys: frozenset[str] = frozenset(),
     ):
         return self.pipeline.search(
             metadata,
             selection=selection or ProviderSelection(),
             google_api_key=credential.api_key if credential is not None else "",
             manual_alias=manual_alias,
+            accepted_aliases=accepted_aliases,
+            ignored_alias_keys=ignored_alias_keys,
         )
 
     def search_general(
@@ -167,6 +171,8 @@ class SearchController(QObject):
         metadata: Mapping[str, object],
         selection: ProviderSelection | None = None,
         manual_alias: str = "",
+        accepted_aliases: tuple[ResolvedAlias, ...] = (),
+        ignored_alias_keys: frozenset[str] = frozenset(),
     ) -> None:
         credential = self.stored_credential()
         self._start_search(
@@ -176,6 +182,8 @@ class SearchController(QObject):
                 credential,
                 selection or ProviderSelection(),
                 manual_alias,
+                accepted_aliases,
+                ignored_alias_keys,
             ),
         )
 
@@ -207,6 +215,16 @@ class SearchController(QObject):
             ),
             isbn=candidate.isbn,
         )
+
+    def remember_confirmed_aliases(
+        self,
+        metadata: Mapping[str, object],
+        aliases: tuple[ResolvedAlias, ...],
+        *,
+        isbn: str = "",
+    ) -> None:
+        for alias in aliases:
+            self.service.remember_alias(metadata, alias, isbn=isbn)
 
     def clear_alias_cache(self) -> None:
         self.service.clear_alias_cache()

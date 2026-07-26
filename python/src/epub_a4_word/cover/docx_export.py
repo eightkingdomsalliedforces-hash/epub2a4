@@ -25,14 +25,6 @@ from .print_plan import PrintMark, PrintPage, build_print_plan
 from .project_io import validate_project
 
 
-_LABELS = {
-    "spread": "完整封面",
-    "back": "封底",
-    "spine": "書脊",
-    "front": "正面",
-}
-
-
 def _intersection(first: RectMm, second: RectMm) -> RectMm | None:
     left = max(first.x_mm, second.x_mm)
     top = max(first.y_mm, second.y_mm)
@@ -190,7 +182,14 @@ def _add_elements(paragraph, project: CoverProject, page: PrintPage, drawing_id:
 
 
 def _label_rect(mark: PrintMark) -> RectMm:
-    return RectMm(mark.x1_mm - 18.0, max(0.0, mark.y1_mm - 2.5), 36.0, 5.0)
+    width = 90.0 if mark.role == "instruction" else 60.0
+    height = 7.0 if mark.role == "label" else 6.0
+    return RectMm(
+        mark.x1_mm - width / 2.0,
+        max(0.0, mark.y1_mm - height / 2.0),
+        width,
+        height,
+    )
 
 
 def _add_print_marks(paragraph, page: PrintPage) -> None:
@@ -204,15 +203,17 @@ def _add_print_marks(paragraph, page: PrintPage) -> None:
                 x2_mm=mark.x2_mm,
                 y2_mm=mark.y2_mm,
                 behind_text=True,
+                dash_style=mark.line_style,
             )
         elif mark.kind == "label":
+            font_size = 10.0 if mark.role == "label" else 8.0
             shape = make_text_box_shape(
                 shape_id=f"label-{page.name}-{index}",
                 rect=_label_rect(mark),
                 rotation_deg=0.0,
-                text=_LABELS.get(page.name, mark.label or page.name),
+                text=mark.label,
                 font_family="sans-serif",
-                font_size_pt=7.0,
+                font_size_pt=font_size,
                 color="#000000",
                 align="center",
                 line_spacing=1.0,
@@ -220,26 +221,6 @@ def _add_print_marks(paragraph, page: PrintPage) -> None:
                 z_index=-1,
             )
             paragraph._p.append(shape)
-    if page.name != "spread":
-        direction = make_text_box_shape(
-            shape_id=f"assembly-{page.name}",
-            rect=RectMm(
-                page.destination_rect.x_mm,
-                min(page.paper_size_mm[1] - 6.0, page.destination_rect.bottom_mm + 1.0),
-                page.destination_rect.width_mm,
-                5.0,
-            ),
-            rotation_deg=0.0,
-            text="← 5 mm 拼接重疊區 →",
-            font_family="sans-serif",
-            font_size_pt=6.0,
-            color="#000000",
-            align="center",
-            line_spacing=1.0,
-            behind_text=True,
-            z_index=-1,
-        )
-        paragraph._p.append(direction)
 
 
 def _validate_docx(output: Path, expected_sections: int) -> None:

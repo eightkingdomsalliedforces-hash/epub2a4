@@ -10,14 +10,14 @@ from pypdf.generic import RectangleObject
 from .geometry import calculate_layout
 from .models import CoverProject
 from .print_plan import build_print_plan
-from .render import render_print_page
+from .render import render_print_page, render_spread
 
 
 @dataclass(frozen=True)
 class ExportResult:
     path: Path
     page_count: int
-    mode: Literal["single", "split"]
+    mode: Literal["single", "two_page", "original"]
     dpi: int
     warnings: tuple[str, ...] = ()
 
@@ -95,6 +95,53 @@ def _validate_pdf(
                 f"{actual[0]:.3f} × {actual[1]:.3f} mm != "
                 f"{expected[0]:.3f} × {expected[1]:.3f} mm"
             )
+
+
+
+def export_original_pdf(
+    project: CoverProject,
+    output_path: Path | str,
+    dpi: int = 300,
+) -> ExportResult:
+    if dpi not in {200, 300}:
+        raise ValueError("PDF DPI 只支援 200 或 300。")
+
+    output = Path(output_path)
+    if output.suffix.lower() != ".pdf":
+        raise ValueError("PDF 輸出路徑必須使用 .pdf 副檔名。")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    layout = calculate_layout(project)
+    image = render_spread(project, dpi).convert("RGB")
+    size_mm = ((layout.bleed_rect.width_mm, layout.bleed_rect.height_mm),)
+    try:
+        image.save(
+            output,
+            "PDF",
+            resolution=float(dpi),
+            title=project.metadata.title,
+            author=project.metadata.author,
+        )
+        _normalize_pdf_boxes(
+            output,
+            size_mm,
+            title=project.metadata.title,
+            author=project.metadata.author,
+        )
+        _validate_pdf(output, size_mm)
+    except Exception as exc:
+        output.unlink(missing_ok=True)
+        if isinstance(exc, (CoverExportError, ValueError)):
+            raise
+        raise CoverExportError(f"原始尺寸 PDF 匯出失敗：{exc}") from exc
+    finally:
+        image.close()
+
+    raw_warnings = project.background.get("warnings", ())
+    if isinstance(raw_warnings, (list, tuple)):
+        warnings = tuple(str(item) for item in raw_warnings)
+    else:
+        warnings = (str(raw_warnings),) if raw_warnings else ()
+    return ExportResult(output, 1, "original", dpi, warnings)
 
 
 def export_pdf(

@@ -242,3 +242,92 @@ def test_alias_cache_reuses_series_alias_but_never_old_volume_isbn(tmp_path: Pat
     assert "epub" not in serialized.casefold()
     assert "body" not in serialized.casefold()
     assert all("isbn" not in item.reasons for item in loaded)
+
+
+def test_ignored_alias_is_not_returned_as_pending(tmp_path: Path) -> None:
+    alias = ResolvedAlias(
+        value="A Certain Magical Index",
+        language="en",
+        source="wikidata",
+        confidence="medium",
+        reasons=("same work",),
+    )
+    resolver = FakeResolver(AliasResolution((alias,), ()))
+    pipeline, _ = _pipeline(tmp_path, resolver=resolver)
+
+    response = pipeline.search(
+        {"title": "魔法禁書目錄", "author": "鎌池和馬", "language": "zh-TW"},
+        selection=ProviderSelection(
+            open_library=True,
+            google_books=False,
+            gutendex=False,
+        ),
+        ignored_alias_keys=frozenset(
+            {"wikidata|en|a certain magical index"}
+        ),
+    )
+
+    assert all(
+        item.value != "A Certain Magical Index"
+        for item in response.pending_aliases
+    )
+
+
+def test_accepted_medium_alias_is_queried_but_remains_resolved_metadata(
+    tmp_path: Path,
+) -> None:
+    alias = ResolvedAlias(
+        value="A Certain Magical Index",
+        language="en",
+        source="wikidata",
+        confidence="medium",
+        reasons=("same work",),
+    )
+    resolver = FakeResolver(AliasResolution((alias,), ()))
+    open_library = FakeProvider("open_library")
+    pipeline, _ = _pipeline(
+        tmp_path,
+        resolver=resolver,
+        open_library=open_library,
+    )
+
+    response = pipeline.search(
+        {"title": "魔法禁書目錄", "author": "鎌池和馬", "language": "zh-TW"},
+        selection=ProviderSelection(
+            open_library=True,
+            google_books=False,
+            gutendex=False,
+        ),
+        accepted_aliases=(alias,),
+    )
+
+    assert any(
+        request.title == "A Certain Magical Index"
+        for request in open_library.requests
+    )
+    assert alias in response.resolved_aliases
+    assert alias not in response.pending_aliases
+
+
+def test_alias_cache_promotes_remembered_medium_alias_to_confirmed_high(
+    tmp_path: Path,
+) -> None:
+    cache = AliasCache(tmp_path / "aliases.json")
+    identity = normalize_book_identity(title="魔法禁書目錄 01", author="鎌池和馬")
+    cache.remember(
+        identity,
+        ResolvedAlias(
+            value="A Certain Magical Index",
+            language="en",
+            source="wikidata",
+            confidence="medium",
+            reasons=("user confirmed",),
+        ),
+    )
+
+    loaded = cache.load(identity)
+
+    assert len(loaded) == 1
+    assert loaded[0].value == "A Certain Magical Index"
+    assert loaded[0].confidence == "high"
+    assert loaded[0].source == "local_cache"

@@ -19,6 +19,8 @@ class PrintMark:
     x2_mm: float | None = None
     y2_mm: float | None = None
     label: str = ""
+    role: Literal["crop", "alignment", "overlap", "label", "instruction"] = "crop"
+    line_style: Literal["solid", "dashed", "dotted"] = "solid"
 
 
 @dataclass(frozen=True)
@@ -40,7 +42,7 @@ class PrintPage:
 
 @dataclass(frozen=True)
 class PrintPlan:
-    mode: Literal["single", "split"]
+    mode: Literal["single", "two_page"]
     pages: tuple[PrintPage, ...]
 
 
@@ -73,9 +75,8 @@ def _choose_orientation(source: RectMm) -> tuple[str, tuple[float, float]]:
     if not candidates:
         raise CoverLayoutError(
             f"列印裁片 {source.width_mm:.3f} × {source.height_mm:.3f} mm "
-            "無法以 1:1 放入 A4。"
+            "無法以 1:1 放入 A4；已停用自動縮放。"
         )
-    # Prefer the larger minimum margin; use portrait as deterministic tie-breaker.
     candidates.sort(key=lambda item: (item[0], item[1] == "portrait"), reverse=True)
     _, orientation, paper = candidates[0]
     return orientation, paper
@@ -100,11 +101,24 @@ def _to_page_point(
     )
 
 
+def _outside_label_y(destination: RectMm, paper_height_mm: float) -> float:
+    if destination.y_mm >= 8.0:
+        return destination.y_mm - 5.0
+    if paper_height_mm - destination.bottom_mm >= 8.0:
+        return destination.bottom_mm + 5.0
+    return max(1.5, destination.y_mm - 1.5)
+
+
 def _build_marks(
     layout: CoverLayout,
     source: RectMm,
     destination: RectMm,
+    paper: tuple[float, float],
     label: str,
+    *,
+    instruction: str = "",
+    overlap_start_mm: float | None = None,
+    overlap_end_mm: float | None = None,
 ) -> tuple[PrintMark, ...]:
     marks: list[PrintMark] = []
     trim_corners = (
@@ -138,6 +152,7 @@ def _build_marks(
                 page_y,
                 page_x,
                 page_y + vertical_direction * mark_length,
+                role="crop",
             )
         )
         marks.append(
@@ -147,18 +162,73 @@ def _build_marks(
                 page_y,
                 page_x + horizontal_direction * mark_length,
                 page_y,
+                role="crop",
             )
         )
 
-    label_y = max(3.0, destination.y_mm - 5.0)
+    label_y = _outside_label_y(destination, paper[1])
     marks.append(
         PrintMark(
             "label",
             destination.x_mm + destination.width_mm / 2.0,
             label_y,
             label=label,
+            role="label",
         )
     )
+    if instruction:
+        instruction_y = (
+            label_y - 4.0
+            if label_y < destination.y_mm
+            else label_y + 4.0
+        )
+        marks.append(
+            PrintMark(
+                "label",
+                destination.x_mm + destination.width_mm / 2.0,
+                instruction_y,
+                label=instruction,
+                role="instruction",
+            )
+        )
+
+    overlap_values = tuple(
+        value
+        for value in (overlap_start_mm, overlap_end_mm)
+        if value is not None and source.x_mm <= value <= source.right_mm
+    )
+    for value in overlap_values:
+        x, top = _to_page_point(value, source.y_mm, source, destination)
+        _, bottom = _to_page_point(value, source.bottom_mm, source, destination)
+        marks.append(
+            PrintMark(
+                "line",
+                x,
+                top,
+                x,
+                bottom,
+                role="overlap",
+                line_style="dashed",
+            )
+        )
+    if len(overlap_values) == 2:
+        center = sum(overlap_values) / 2.0
+        x, _ = _to_page_point(center, source.y_mm, source, destination)
+        overlap_label_y = (
+            label_y - 8.0
+            if label_y < destination.y_mm
+            else label_y + 8.0
+        )
+        marks.append(
+            PrintMark(
+                "label",
+                x,
+                overlap_label_y,
+                label="重疊黏貼區",
+                role="overlap",
+                line_style="dashed",
+            )
+        )
     return tuple(marks)
 
 
@@ -167,8 +237,12 @@ def _page(
     name: str,
     source: RectMm,
     layout: CoverLayout,
+    label: str,
+    instruction: str = "",
     left_overlap_mm: float = 0.0,
     right_overlap_mm: float = 0.0,
+    overlap_start_mm: float | None = None,
+    overlap_end_mm: float | None = None,
     force_landscape: bool = False,
 ) -> PrintPage:
     if force_landscape:
@@ -188,12 +262,45 @@ def _page(
         scale=1.0,
         left_overlap_mm=left_overlap_mm,
         right_overlap_mm=right_overlap_mm,
-        marks=_build_marks(layout, source, destination, name),
+        marks=_build_marks(
+            layout,
+            source,
+            destination,
+            paper,
+            label,
+            instruction=instruction,
+            overlap_start_mm=overlap_start_mm,
+            overlap_end_mm=overlap_end_mm,
+        ),
+    )
+
+
+def _two_page_sources(
+    layout: CoverLayout,
+    total_overlap_mm: float,
+) -> tuple[RectMm, RectMm]:
+    overlap_each_side = total_overlap_mm / 2.0
+    spine_center = layout.spine_rect.x_mm + layout.spine_rect.width_mm / 2.0
+    back_right = min(layout.bleed_rect.right_mm, spine_center + overlap_each_side)
+    front_left = max(layout.bleed_rect.x_mm, spine_center - overlap_each_side)
+    return (
+        RectMm(
+            layout.bleed_rect.x_mm,
+            layout.bleed_rect.y_mm,
+            back_right - layout.bleed_rect.x_mm,
+            layout.bleed_rect.height_mm,
+        ),
+        RectMm(
+            front_left,
+            layout.bleed_rect.y_mm,
+            layout.bleed_rect.right_mm - front_left,
+            layout.bleed_rect.height_mm,
+        ),
     )
 
 
 def build_print_plan(layout: CoverLayout) -> PrintPlan:
-    """Build an exact 1:1 A4 plan without ever scaling the finished cover."""
+    """Build an exact 1:1 A4 plan without scaling the finished cover."""
 
     if _fits(layout.bleed_rect, A4_LANDSCAPE):
         return PrintPlan(
@@ -203,61 +310,58 @@ def build_print_plan(layout: CoverLayout) -> PrintPlan:
                     name="spread",
                     source=layout.bleed_rect,
                     layout=layout,
+                    label="完整書衣",
+                    instruction="100% 實際大小列印，請關閉「符合紙張大小」",
                     force_landscape=True,
                 ),
             ),
         )
 
-    overlap_mm = 5.0
-    actual_back_overlap = min(overlap_mm, layout.spine_rect.width_mm)
-    back_source = RectMm(
-        layout.bleed_rect.x_mm,
-        layout.bleed_rect.y_mm,
-        layout.spine_rect.x_mm + actual_back_overlap - layout.bleed_rect.x_mm,
-        layout.bleed_rect.height_mm,
-    )
-
-    spine_left = max(layout.back_rect.x_mm, layout.spine_rect.x_mm - overlap_mm)
-    spine_right = min(layout.front_rect.right_mm, layout.spine_rect.right_mm + overlap_mm)
-    spine_source = RectMm(
-        spine_left,
-        layout.bleed_rect.y_mm,
-        spine_right - spine_left,
-        layout.bleed_rect.height_mm,
-    )
-    actual_left_overlap = layout.spine_rect.x_mm - spine_left
-    actual_right_overlap = spine_right - layout.spine_rect.right_mm
-
-    actual_front_overlap = min(overlap_mm, layout.spine_rect.width_mm)
-    front_left = layout.spine_rect.right_mm - actual_front_overlap
-    front_source = RectMm(
-        front_left,
-        layout.bleed_rect.y_mm,
-        layout.bleed_rect.right_mm - front_left,
-        layout.bleed_rect.height_mm,
-    )
-
-    return PrintPlan(
-        mode="split",
-        pages=(
-            _page(
-                name="back",
-                source=back_source,
-                layout=layout,
-                right_overlap_mm=actual_back_overlap,
+    failure_dimensions: tuple[RectMm, RectMm] | None = None
+    total_overlap = 10.0
+    while total_overlap >= 5.0 - _TOLERANCE_MM:
+        back_source, front_source = _two_page_sources(layout, total_overlap)
+        failure_dimensions = (back_source, front_source)
+        try:
+            _choose_orientation(back_source)
+            _choose_orientation(front_source)
+        except CoverLayoutError:
+            total_overlap -= 0.5
+            continue
+        overlap_each_side = total_overlap / 2.0
+        overlap_start = front_source.x_mm
+        overlap_end = back_source.right_mm
+        return PrintPlan(
+            mode="two_page",
+            pages=(
+                _page(
+                    name="back_side",
+                    source=back_source,
+                    layout=layout,
+                    label="第 1 頁／2：封底側",
+                    instruction="100% 實際大小列印，請關閉「符合紙張大小」",
+                    right_overlap_mm=overlap_each_side,
+                    overlap_start_mm=overlap_start,
+                    overlap_end_mm=overlap_end,
+                ),
+                _page(
+                    name="front_side",
+                    source=front_source,
+                    layout=layout,
+                    label="第 2 頁／2：正面側",
+                    instruction="100% 實際大小列印，請關閉「符合紙張大小」",
+                    left_overlap_mm=overlap_each_side,
+                    overlap_start_mm=overlap_start,
+                    overlap_end_mm=overlap_end,
+                ),
             ),
-            _page(
-                name="spine",
-                source=spine_source,
-                layout=layout,
-                left_overlap_mm=actual_left_overlap,
-                right_overlap_mm=actual_right_overlap,
-            ),
-            _page(
-                name="front",
-                source=front_source,
-                layout=layout,
-                left_overlap_mm=actual_front_overlap,
-            ),
-        ),
+        )
+
+    assert failure_dimensions is not None
+    back_source, front_source = failure_dimensions
+    raise CoverLayoutError(
+        "封面無法在不縮放的情況下拆成兩張 A4："
+        f"封底側 {back_source.width_mm:.3f} × {back_source.height_mm:.3f} mm，"
+        f"正面側 {front_source.width_mm:.3f} × {front_source.height_mm:.3f} mm；"
+        "自動縮放已停用。"
     )

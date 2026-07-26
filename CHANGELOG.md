@@ -11,6 +11,8 @@
 - Reworked A5, 4×6, and B6-on-A5 single-page DOCX output to use one top-level table with one exact-height non-splittable row per physical page.
 - Added rendered PDF regressions requiring N source pages to produce N physical pages with no leading, interstitial, or trailing blank pages.
 - Added exact size checks for A5 at 148 × 210 mm and 4×6 at 101.6 × 152.4 mm.
+- Unified pagination and DOCX writing around exact fixed Word line heights and paragraph spacing.
+- Added conservative bottom safety budgets to A5, 4×6, B6-on-A5, A4 four-up, and 16-page signature output.
 
 ### Embedded cover handling
 
@@ -31,6 +33,7 @@
 - Added a local confirmed-alias cache which can reuse series aliases but never reuses an old volume ISBN for a new volume.
 - Added independent provider warnings so one failed or rate-limited source does not discard successful candidates from other sources.
 - Removed Google Custom Search from the active desktop cover-search UI.
+- Added explicit confirm-and-use and ignore actions for medium-confidence multilingual aliases; unconfirmed aliases no longer enter provider queries or permanent cache.
 
 ### Desktop and packaging
 
@@ -40,6 +43,9 @@
 - Added Windows, macOS, and Linux desktop coverage for the new controls.
 - Added source-layout checks for the EPUB structure and free multilingual search modules.
 - Updated Windows portable focused tests to cover single-page output and the new search pipeline.
+- Replaced the confusing back/spine/front three-page cover print set with one A4 page when possible or exactly two pages named back side and front side.
+- Added a separate single-page original-size full-spread PDF and clear A4 PDF/DOCX filenames.
+- Added export preview thumbnails, readable 100% print and overlap labels, blank-back confirmation, and atomic replacement of all three output files.
 
 ### Known limitations
 
