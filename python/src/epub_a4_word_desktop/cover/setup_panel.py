@@ -35,6 +35,7 @@ class CoverSetupValues:
     bleed_mm: float
     image_mode: ImageMode
     template_id: str
+    translator: str = ""
     confirmed_back_cover_asset_id: str | None = None
 
     def settings(self, working_dir: Path | str) -> dict[str, Any]:
@@ -51,6 +52,7 @@ class CoverSetupValues:
             "show_crop_marks": True,
             "show_assembly_marks": True,
             "image_mode": self.image_mode.value,
+            "translator": self.translator.strip(),
             **(
                 {"confirmed_back_cover_asset_id": self.confirmed_back_cover_asset_id}
                 if self.confirmed_back_cover_asset_id
@@ -97,6 +99,8 @@ class CoverSetupPanel(QWidget):
         self.page_count_spin.setValue(160)
         self.page_count_confirmed = QCheckBox("我已確認正文頁數", self)
         self.page_count_note = QLabel("", self)
+        self.translator_edit = QLineEdit(self)
+        self.translator_edit.setPlaceholderText("例如：李彥樺")
         self.cover_status_note = QLabel("", self)
         self.confirm_back_cover = QCheckBox("將可能的封底作為封底使用", self)
         self.confirm_back_cover.setVisible(False)
@@ -146,6 +150,7 @@ class CoverSetupPanel(QWidget):
         form.addRow("來源", source_row)
         form.addRow("成品尺寸", self.trim_combo)
         form.addRow("正文頁數", self.page_count_spin)
+        form.addRow("譯者", self.translator_edit)
         form.addRow("", self.page_count_confirmed)
         form.addRow("", self.page_count_note)
         form.addRow("封面辨識", self.cover_status_note)
@@ -347,6 +352,7 @@ class CoverSetupPanel(QWidget):
             bleed_mm=self.bleed_spin.value(),
             image_mode=ImageMode(str(self.image_mode_combo.currentData())),
             template_id=str(self.template_combo.currentData()),
+            translator=self.translator_edit.text().strip(),
             confirmed_back_cover_asset_id=(
                 self._back_cover_candidate_asset_id
                 if self.confirm_back_cover.isChecked()
