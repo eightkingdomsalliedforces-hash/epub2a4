@@ -36,6 +36,7 @@ def test_publisher_template_creates_only_non_empty_editable_fields(
             publisher="範例出版社",
             price="NT$320",
             publication_place="台北",
+            translator="李彥樺",
             isbn_addon="50320",
         ),
     )
@@ -59,8 +60,16 @@ def test_publisher_template_creates_only_non_empty_editable_fields(
     assert heading.region is Region.BACK
     assert heading.content["text"] == "範例出版社"
     assert heading.content["font_role"] == "publisher_heading"
-    assert details.content["text"] == "NT$320\n台北"
+    assert details.content["text"] == "定價：NT$320\n台北\n譯者：李彥樺"
     assert details.content["font_role"] == "publisher_details"
+    assert heading.content["group_id"] == "publisher-info-stack"
+    assert details.content["group_id"] == "publisher-info-stack"
+    assert heading.content["layout_role"] == "heading"
+    assert details.content["layout_role"] == "details"
+    assert heading.transform.x_mm == pytest.approx(details.transform.x_mm)
+    assert details.transform.y_mm == pytest.approx(
+        heading.transform.y_mm + heading.transform.height_mm + 1.0
+    )
     assert "back-publisher-info" not in result.elements_by_id
     assert not any(element.kind is ElementKind.IMAGE for element in result.elements)
 
@@ -92,11 +101,15 @@ def test_publisher_template_matches_reference_layout(
     assert _relative_transform(barcode.transform, safe) == pytest.approx(
         (0.03, 0.060, 0.44, 0.125), abs=0.015
     )
-    assert _relative_transform(heading.transform, safe) == pytest.approx(
-        (0.49, 0.025, 0.38, 0.035), abs=0.015
-    )
-    assert _relative_transform(details.transform, safe) == pytest.approx(
-        (0.49, 0.064, 0.38, 0.105), abs=0.015
+    heading_relative = _relative_transform(heading.transform, safe)
+    details_relative = _relative_transform(details.transform, safe)
+    assert heading_relative[0] == pytest.approx(0.49, abs=0.015)
+    assert heading_relative[1] == pytest.approx(0.025, abs=0.015)
+    assert heading_relative[2] == pytest.approx(0.38, abs=0.015)
+    assert details_relative[0] == pytest.approx(0.49, abs=0.015)
+    assert details_relative[2] == pytest.approx(0.38, abs=0.015)
+    assert details.transform.y_mm == pytest.approx(
+        heading.transform.y_mm + heading.transform.height_mm + 1.0
     )
     slot = result.background["publisher_logo_slot"]
     assert (
@@ -111,6 +124,24 @@ def test_publisher_template_matches_reference_layout(
     assert details.content["font_size_pt"] == pytest.approx(6.5)
     assert heading.content["align"] == "left"
     assert details.content["align"] == "left"
+
+
+def test_publisher_details_start_at_stack_top_when_heading_is_missing(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    project = sample_project()
+    project = replace(
+        project,
+        metadata=replace(project.metadata, publisher="", price="NT$110"),
+    )
+    result = apply_template(project, "publisher_back_matter")
+    safe = calculate_layout(result).back_safe_rect
+
+    assert "back-publisher-heading" not in result.elements_by_id
+    details = result.elements_by_id["back-publisher-details"]
+    assert details.transform.y_mm == pytest.approx(
+        safe.y_mm + safe.height_mm * 0.025
+    )
 
 
 def test_publisher_template_hides_missing_fields_without_placeholders(
