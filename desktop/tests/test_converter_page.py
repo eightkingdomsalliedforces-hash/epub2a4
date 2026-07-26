@@ -130,3 +130,37 @@ def test_progress_failure_and_cancel_update_page_state(qtbot) -> None:
     controller.cancelled.emit()
     assert page.status_label.text() == "轉換已取消。"
     assert page.start_button.isEnabled() is True
+
+
+def test_body_only_option_defaults_checked_and_tracks_source_type(qtbot, tmp_path: Path) -> None:
+    controller = FakeController()
+    page = ConverterPage(controller)
+    qtbot.addWidget(page)
+
+    assert page.content_only.isChecked() is True
+    assert "正文插圖" in page.content_only.toolTip()
+
+    epub = tmp_path / "book.epub"
+    epub.write_bytes(b"epub")
+    page.set_source_path(epub)
+    assert page.content_only.isEnabled() is True
+
+    docx = tmp_path / "book.docx"
+    docx.write_bytes(b"docx")
+    page.set_source_path(docx)
+    assert page.content_only.isEnabled() is False
+    assert "DOCX" in page.content_only.toolTip()
+
+
+def test_body_only_option_is_included_in_conversion_request(qtbot, tmp_path: Path) -> None:
+    controller = FakeController()
+    page = ConverterPage(controller)
+    qtbot.addWidget(page)
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"epub")
+    page.set_source_path(source)
+    page.content_only.setChecked(False)
+
+    page._start_conversion()
+
+    assert controller.started[-1].content_only is False

@@ -134,3 +134,19 @@ def test_controller_cancel_marks_held_worker_cancelled(qtbot, tmp_path: Path) ->
         pool.worker.run()
 
     assert controller.is_running is False
+
+
+def test_worker_passes_body_only_setting_to_shared_conversion(qtbot, tmp_path: Path) -> None:
+    request = make_request(tmp_path, mode="single_a5")
+    request = ConversionRequest(**{**request.__dict__, "content_only": False})
+    result = make_result(request.output_path, mode="single_a5")
+    worker = ConversionWorker(request, Event())
+
+    with patch(
+        "epub_a4_word_desktop.conversion.controller.convert_input",
+        return_value=result,
+    ) as convert:
+        with qtbot.waitSignal(worker.signals.completed):
+            worker.run()
+
+    assert convert.call_args.kwargs["content_only"] is False

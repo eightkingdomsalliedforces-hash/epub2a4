@@ -38,11 +38,12 @@ def test_convert_file_builds_settings_for_epub(monkeypatch, tmp_path: Path):
     output = tmp_path / "result.docx"
     captured = {}
 
-    def fake_convert(input_path, output_path, settings, progress):
+    def fake_convert(input_path, output_path, settings, progress, *, content_only=True):
         captured.update(
             input_path=Path(input_path),
             output_path=Path(output_path),
             settings=settings,
+            content_only=content_only,
         )
         progress(42, "排版中")
         output.write_bytes(b"docx")
@@ -83,6 +84,7 @@ def test_convert_file_builds_settings_for_epub(monkeypatch, tmp_path: Path):
     assert captured["settings"].imposition_mode == "signature16"
     assert captured["settings"].margin_mode == "safe"
     assert captured["settings"].body_font_pt == 9.0
+    assert captured["content_only"] is True
     assert callback.events == [(42, "排版中")]
     assert result["output_path"] == str(output)
     assert result["warnings"] == ["提醒"]
@@ -233,3 +235,40 @@ def test_cover_bridge_wrappers_return_compact_json(monkeypatch, tmp_path: Path):
     assert json.loads(android_bridge.cover_apply_template_json("{}", "minimal_text"))["template"] == "minimal_text"
     assert json.loads(android_bridge.cover_render_preview_json("{}", str(tmp_path / "p.png"), 900))["width_px"] == 800
     assert json.loads(android_bridge.cover_export_json("{}", "a.pdf", "a.docx", 200))["dpi"] == 200
+
+
+def test_android_bridge_passes_body_only_choice_to_epub_conversion(monkeypatch, tmp_path: Path):
+    import android_bridge
+
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"fixture")
+    output = tmp_path / "result.docx"
+    captured = {}
+
+    def fake_convert(input_path, output_path, settings, progress, *, content_only=True):
+        captured["content_only"] = content_only
+        output.write_bytes(b"docx")
+        return SimpleNamespace(
+            output_path=output,
+            title="",
+            author="",
+            mini_page_count=1,
+            a4_page_count=1,
+            image_count=0,
+            warnings=(),
+            imposition_mode=settings.imposition_mode,
+            paper_sheet_count=1,
+            signature_count=0,
+            padded_mini_page_count=1,
+            source_format="epub",
+        )
+
+    monkeypatch.setattr(android_bridge, "convert_input", fake_convert)
+
+    android_bridge.convert_file(
+        str(source),
+        str(output),
+        json.dumps({"imposition_mode": "single_a5", "content_only": False}),
+    )
+
+    assert captured["content_only"] is False

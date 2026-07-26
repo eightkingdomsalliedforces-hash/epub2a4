@@ -89,6 +89,12 @@ class ConverterPage(QWidget):
         self.page_numbers.setChecked(True)
         self.cut_guides = QCheckBox("顯示裁切／折線", self)
         self.cut_guides.setChecked(True)
+        self.content_only = QCheckBox("只輸出內文，不含封面與封底", self)
+        self.content_only.setObjectName("conversion-content-only")
+        self.content_only.setChecked(True)
+        self.content_only.setToolTip(
+            "只排除已明確辨識或由你確認的 EPUB 封面頁；不會刪除正文插圖。"
+        )
         self.b6_preview = B6OnA5Preview(self)
 
         self.start_button = QPushButton("開始轉換", self)
@@ -131,6 +137,7 @@ class ConverterPage(QWidget):
         form.addRow("標題字級", self.heading_size)
         form.addRow("", self.page_numbers)
         form.addRow("", self.cut_guides)
+        form.addRow("", self.content_only)
 
         action_layout = QHBoxLayout()
         action_layout.addWidget(self.back_button)
@@ -167,6 +174,13 @@ class ConverterPage(QWidget):
             self.mode_combo.addItem(_MODE_LABELS[value], value)
         if selected in modes:
             self.mode_combo.setCurrentIndex(self.mode_combo.findData(selected))
+        is_epub = source.suffix.lower() == ".epub"
+        self.content_only.setEnabled(is_epub)
+        self.content_only.setToolTip(
+            "只排除已明確辨識或由你確認的 EPUB 封面頁；不會刪除正文插圖。"
+            if is_epub
+            else "DOCX 重排不含 EPUB 封面辨識，因此此選項不適用。"
+        )
         self._sync_mode_controls()
 
     def _sync_mode_controls(self, _value: object = None) -> None:
@@ -228,6 +242,7 @@ class ConverterPage(QWidget):
                 if mode == "b6_on_a5"
                 else "normal"
             ),
+            content_only=self.content_only.isChecked(),
         )
 
     @Slot()
@@ -253,6 +268,8 @@ class ConverterPage(QWidget):
         self.cancel_button.setEnabled(running)
         self.source_button.setEnabled(not running)
         self.output_button.setEnabled(not running)
+        if self.source_edit.text().strip().lower().endswith(".epub"):
+            self.content_only.setEnabled(not running)
 
     @Slot(int, str)
     def _on_progress(self, percent: int, message: str) -> None:

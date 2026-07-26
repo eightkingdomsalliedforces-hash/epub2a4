@@ -1,47 +1,46 @@
 # 重建狀態
 
-## 已驗證
+## 已完成的自動化範圍
 
-- Python 轉換核心與 Android Bridge：既有完整測試套件通過。
-- 共用封面核心已通過 CoverProject schema、PDF／DOCX 結構、golden geometry 與 service bridge 驗收。
-- 桌面 PySide6 既有功能由 GitHub Actions 在 Ubuntu、Windows、macOS 的 Python 3.13 與 Qt offscreen 執行。
-- Windows 可攜式 PyInstaller onedir、Qt `qwindows.dll`、封裝後 EXE smoke 與 ZIP 驗證已有成功基準。
-- 新增封面搜尋／分類、下載限制、完整書衣合成及 B6-on-A5 幾何的焦點檢查。
-- B6-on-A5 測試文件保持 A5 紙張、中央 128 × 182 mm 內容區，裁切模式產生 8 段外部標記。
+- 共用 EPUB／DOCX 轉換核心與 Android Bridge 測試。
+- EPUB OPF、manifest、spine、guide、landmarks 與正面／封底角色辨識。
+- EPUB 預設只輸出內文，以及保留原始封面／封底的反向選項。
+- A5、4×6、B6-on-A5 的 OOXML 空白頁回歸與 PDF 頁數驗證。
+- A5 148 × 210 mm、4×6 101.6 × 152.4 mm 的尺寸驗證。
+- EPUB 正面與明確封底作為兩個獨立可編輯圖片元素。
+- 中可信度封底需使用者確認後才能採用。
+- Google Books API-key-only、Open Library、Gutendex 與 Wikidata 跨語言名稱解析。
+- 書名正規化、卷數拆分、ISBN 校驗、查詢去重、來源錯誤隔離及本機別名快取。
+- Windows／macOS／Ubuntu PySide6 測試架構。
+- Windows PyInstaller onedir、Qt `qwindows.dll`、封裝後 EXE smoke、ZIP 與 SHA-256 驗證架構。
 
-## GitHub Actions 驗證
+## 本次必須重新執行的 GitHub Actions
 
-- `Desktop PySide6 tests`：Python 3.13，Ubuntu／Windows／macOS，正式安裝 PySide6、pytest-qt、keyring、platformdirs。
-- `Android debug APK`：安裝 Android SDK、執行測試、建立 Debug APK並檢查 16 KB 對齊。
-- `Windows portable EXE`：執行焦點功能測試、建立 PyInstaller onedir、檢查 Qt plugin、實際執行 `EPUB2A4.exe --portable-smoke-test`，並重新解壓 ZIP 驗證封裝內容。
+- `Desktop PySide6 tests`：Ubuntu／Windows／macOS，Python 3.13。
+- `Android debug APK`：Kotlin 單元測試、共用 Python、Debug APK、16 KB alignment。
+- `Windows portable EXE`：焦點回歸、PyInstaller、封裝後 EXE smoke、ZIP 重新解壓驗證。
 
-## 2026-07-25：進入 Windows 實機驗收階段
+只有全部 required checks 通過後才能合併與交付新版 Windows ZIP。
 
-本階段以最新 `main` 重新建立 Windows portable ZIP。只有 workflow 全綠、封裝後 EXE smoke 通過且 ZIP 驗證成功，才交付使用者進行實機驗收。
+## Windows 實機驗收
 
-實機驗收順序：
+CI 全綠後仍需在使用者的 Windows Microsoft Word 實際驗證：
 
-1. 啟動 `EPUB2A4.exe`，確認首頁、轉換頁與封面工具可以正常開啟。
-2. 使用一個含書名、作者與 ISBN 的 EPUB 建立封面專案，確認 Google Books 與 Open Library 自動回傳正面封面候選。
-3. 設定 Google Custom Search API Key 與 Search Engine ID，確認正面、背面、書脊、完整書衣及參考照片搜尋均可用，且重新啟動後的憑證行為符合標準／portable 模式規則。
-4. 選擇候選圖片後人工修改分類，確認結果不會自動套用，並測試分區套用與完整書衣合成。
-5. 以同一本 EPUB 轉換 `B6 內容置於 A5 紙張`：分別輸出普通列印與附裁切標記版本。
-6. 在 Microsoft Word 檢查頁面尺寸為 A5、內容區為中央 B6、文字仍可編輯、圖片未超出裁切區，且裁切版本每頁有 8 段外部標記。
-7. 以 A5 紙張實際列印至少一頁，量測裁切後尺寸是否為 128 × 182 mm，並確認裁切線不穿過文字、圖片或頁碼。
+1. 建立三頁 A5 文件，確認 Word 顯示三頁且紙張為 148 × 210 mm。
+2. 建立三頁 4×6 文件，確認 Word 顯示三頁且紙張為 101.6 × 152.4 mm。
+3. 建立 B6-on-A5 文件，確認沒有前置、頁間或尾端空白頁。
+4. 使用含正面與封底的 EPUB，確認封面專案顯示兩張獨立圖片且沒有自動文字／條碼。
+5. 使用只有中文譯名的 EPUB，確認可由 Wikidata／Google Books 補出原名或 ISBN，再查 Open Library。
+6. 未設定 Google API Key 時，確認 Open Library 與 Project Gutenberg 仍能搜尋。
+7. 勾選「只輸出內文」時不輸出已確認封面／封底；取消後恢復 EPUB 原始閱讀順序。
+8. 實際列印至少一頁，核對縮放、裁切位置及印表機驅動沒有自動改紙張。
 
-## 本次新增、待使用者實機驗收
+## 尚待人工或發佈基礎設施處理
 
-- Windows 依中繼資料自動搜尋 Google Books 與 Open Library 正面封面。
-- 已設定使用者憑證時，自動搜尋正面、背面、書脊、完整書衣與實拍參考圖。
-- 候選自動分類但可人工修正；不自動套用、不生成圖片。
-- 分區編輯與背面 → 書脊 → 正面完整書衣合成。
-- EPUB 語意重排成 B6 內容置於 A5 紙張，普通列印或附裁切標記。
-- 真實 Google Books、Open Library、Google Custom Search 結果、Windows 系統憑證庫、Word 列印裁切位置與原生 UI 視覺仍需使用者在 Windows 實機確認。
+- Microsoft Word 與實體印表機的最終驗收。
+- Android 實體裝置人工轉換與儲存驗收。
+- Windows Authenticode、安裝程式與自動更新。
+- macOS 簽章與公證。
+- 外部免費服務的即時可用性與限流狀況；程式只能隔離錯誤，不能保證第三方永遠在線。
 
-## 尚待驗證或後續計畫
-
-- Android UI 的實體裝置人工驗收仍待完成；本次 Windows 功能不修改 Android UI。
-- 尚未執行 Windows Authenticode 簽章、安裝程式、自動更新或 macOS 公證。
-- Word 與 LibreOffice 對浮動物件、字型替代及 VML 裁切標記可能略有差異。
-
-Android 轉換應用程式仍維持 API 24–36、arm64-v8a，文件轉換在本機執行且不要求傳統全域儲存權限。
+Android 仍維持 API 24–36、arm64-v8a，文件轉換不要求網路或傳統全域儲存權限。桌面封面搜尋不會上傳 EPUB、DOCX、PDF、正文或本機圖片。

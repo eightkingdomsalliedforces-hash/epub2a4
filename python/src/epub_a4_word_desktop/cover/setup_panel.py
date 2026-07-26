@@ -35,6 +35,7 @@ class CoverSetupValues:
     bleed_mm: float
     image_mode: ImageMode
     template_id: str
+    confirmed_back_cover_asset_id: str | None = None
 
     def settings(self, working_dir: Path | str) -> dict[str, Any]:
         return {
@@ -50,6 +51,11 @@ class CoverSetupValues:
             "show_crop_marks": True,
             "show_assembly_marks": True,
             "image_mode": self.image_mode.value,
+            **(
+                {"confirmed_back_cover_asset_id": self.confirmed_back_cover_asset_id}
+                if self.confirmed_back_cover_asset_id
+                else {}
+            ),
         }
 
 
@@ -91,6 +97,10 @@ class CoverSetupPanel(QWidget):
         self.page_count_spin.setValue(160)
         self.page_count_confirmed = QCheckBox("我已確認正文頁數", self)
         self.page_count_note = QLabel("", self)
+        self.cover_status_note = QLabel("", self)
+        self.confirm_back_cover = QCheckBox("將可能的封底作為封底使用", self)
+        self.confirm_back_cover.setVisible(False)
+        self._back_cover_candidate_asset_id: str | None = None
 
         self.paper_combo = QComboBox(self)
         for label, caliper in self.PAPER_PRESETS:
@@ -137,6 +147,8 @@ class CoverSetupPanel(QWidget):
         form.addRow("正文頁數", self.page_count_spin)
         form.addRow("", self.page_count_confirmed)
         form.addRow("", self.page_count_note)
+        form.addRow("封面辨識", self.cover_status_note)
+        form.addRow("", self.confirm_back_cover)
         form.addRow("紙張預設", self.paper_combo)
         form.addRow("紙張厚度", self.caliper_spin)
         form.addRow("自動書脊", self.spine_label)
@@ -247,6 +259,49 @@ class CoverSetupPanel(QWidget):
         estimated = False
         if isinstance(metadata, dict):
             estimated = bool(metadata.get("page_count_is_estimate", False))
+            embedded = metadata.get("embedded_images", ())
+            roles = {
+                str(item.get("role", ""))
+                for item in embedded
+                if isinstance(item, dict)
+            } if isinstance(embedded, (list, tuple)) else set()
+            front_status = (
+                "已找到正面封面"
+                if roles.intersection({"cover", "front_cover"})
+                else "未找到正面封面"
+            )
+            candidate = next(
+                (
+                    item
+                    for item in embedded
+                    if isinstance(item, dict)
+                    and item.get("role") == "back_cover_candidate"
+                    and isinstance(item.get("id"), str)
+                    and str(item.get("id")).strip()
+                ),
+                None,
+            ) if isinstance(embedded, (list, tuple)) else None
+            if "back_cover" in roles:
+                back_status = "已找到封底"
+                self._back_cover_candidate_asset_id = None
+                self.confirm_back_cover.setChecked(False)
+                self.confirm_back_cover.setVisible(False)
+            elif candidate is not None:
+                back_status = "可能的封底需確認"
+                self._back_cover_candidate_asset_id = str(candidate["id"])
+                self.confirm_back_cover.setChecked(False)
+                self.confirm_back_cover.setVisible(True)
+            else:
+                back_status = "未找到封底"
+                self._back_cover_candidate_asset_id = None
+                self.confirm_back_cover.setChecked(False)
+                self.confirm_back_cover.setVisible(False)
+            self.cover_status_note.setText(f"{front_status}；{back_status}")
+        else:
+            self._back_cover_candidate_asset_id = None
+            self.confirm_back_cover.setChecked(False)
+            self.confirm_back_cover.setVisible(False)
+            self.cover_status_note.setText("")
         estimated = bool(inspection.get("page_count_estimated", estimated))
         if count is not None:
             self.page_count_spin.setValue(int(count))
@@ -291,6 +346,11 @@ class CoverSetupPanel(QWidget):
             bleed_mm=self.bleed_spin.value(),
             image_mode=ImageMode(str(self.image_mode_combo.currentData())),
             template_id=str(self.template_combo.currentData()),
+            confirmed_back_cover_asset_id=(
+                self._back_cover_candidate_asset_id
+                if self.confirm_back_cover.isChecked()
+                else None
+            ),
         )
 
     def _emit_create(self) -> None:

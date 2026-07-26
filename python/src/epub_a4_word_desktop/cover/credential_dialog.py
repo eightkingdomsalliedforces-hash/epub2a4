@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
-    QDialogButtonBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -31,17 +29,13 @@ class CredentialDialog(QDialog):
         parent=None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Google 圖片搜尋設定")
+        self.setWindowTitle("Google Books API 設定")
         self.setModal(True)
         self.portable = portable
 
         self.api_key = QLineEdit(initial.api_key if initial else "", self)
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key.setPlaceholderText("Google API Key（Books 與圖片搜尋共用）")
-        self.search_engine_id = QLineEdit(
-            initial.search_engine_id if initial else "", self
-        )
-        self.search_engine_id.setPlaceholderText("Programmable Search Engine ID")
+        self.api_key.setPlaceholderText("Google Books API Key")
         self.reveal = QCheckBox("顯示 API Key", self)
         self.reveal.toggled.connect(
             lambda checked: self.api_key.setEchoMode(
@@ -51,7 +45,6 @@ class CredentialDialog(QDialog):
 
         form = QFormLayout()
         form.addRow("API Key", self.api_key)
-        form.addRow("Search Engine ID", self.search_engine_id)
         form.addRow("", self.reveal)
 
         warning = QLabel(
@@ -89,13 +82,12 @@ class CredentialDialog(QDialog):
     def _value(self) -> ProviderCredential | None:
         value = ProviderCredential(
             self.api_key.text().strip(),
-            self.search_engine_id.text().strip(),
         )
         if not value.complete:
             QMessageBox.warning(
                 self,
                 "資料不完整",
-                "API Key 與 Search Engine ID 都必須填寫。",
+                "請填入 Google Books API Key。",
             )
             return None
         return value
@@ -129,4 +121,3 @@ class CredentialDialog(QDialog):
     def _clear(self) -> None:
         self.clear_requested.emit()
         self.api_key.clear()
-        self.search_engine_id.clear()

@@ -85,3 +85,26 @@ def test_cancelled_request_stops_before_shared_conversion(tmp_path: Path) -> Non
 
 def test_legacy_gui_module_does_not_import_pyside6() -> None:
     assert "PySide6" not in inspect.getsource(legacy_gui)
+
+
+def test_legacy_conversion_passes_body_only_setting(tmp_path: Path) -> None:
+    request = LegacyConversionRequest(
+        input_path=tmp_path / "book.epub",
+        output_path=tmp_path / "book.docx",
+        imposition_mode="four_up",
+        margin_mode="safe",
+        font_name="Noto Serif CJK TC",
+        body_font_pt=9.0,
+        heading_font_pt=14.0,
+        page_numbers=True,
+        cut_guides=True,
+        content_only=False,
+    )
+
+    with patch(
+        "epub_a4_word_desktop.conversion.legacy_adapter.convert_input",
+        return_value=object(),
+    ) as convert:
+        run_conversion(request)
+
+    assert convert.call_args.kwargs["content_only"] is False

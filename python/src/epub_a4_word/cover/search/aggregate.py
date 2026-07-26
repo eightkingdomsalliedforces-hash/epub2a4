@@ -13,7 +13,12 @@ from .models import (
     SearchResponse,
 )
 
-PROVIDER_ORDER = {"google_books": 0, "open_library": 1, "google_custom": 2}
+PROVIDER_ORDER = {
+    "google_books": 0,
+    "open_library": 1,
+    "gutendex": 2,
+    "google_custom": 3,
+}
 QUERY_TERMS = {
     SearchKind.FRONT: ("封面", "front cover"),
     SearchKind.BACK: ("背面 封底", "back cover"),

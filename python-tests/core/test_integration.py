@@ -69,8 +69,9 @@ def test_convert_epub_single_page_modes_report_one_sheet_per_content_page(sample
         assert result.padded_mini_page_count == result.mini_page_count
 
         document = Document(output)
-        assert len(document.tables) == result.mini_page_count
-        assert all(len(table.rows) == 1 for table in document.tables)
+        assert len(document.tables) == 1
+        assert len(document.tables[0].rows) == result.mini_page_count
+        assert all(len(row.cells) == 1 for row in document.tables[0].rows)
 
 
 def test_convert_input_dispatches_docx_to_reflow(tmp_path: Path) -> None:
@@ -94,3 +95,22 @@ def test_convert_input_dispatches_docx_to_reflow(tmp_path: Path) -> None:
     assert [p.text for p in converted.paragraphs] == ["同一段第一句。同一段第二句。", "第二段。"]
     assert result.source_format == "docx"
     assert result.imposition_mode == "single_4x6"
+
+
+def test_convert_epub_defaults_to_body_only_but_can_preserve_covers(
+    cover_epub_factory, tmp_path: Path
+) -> None:
+    body_only = convert_epub(
+        cover_epub_factory(),
+        tmp_path / "body-only.docx",
+        LayoutSettings(imposition_mode="single_a5"),
+    )
+    with_covers = convert_epub(
+        cover_epub_factory(),
+        tmp_path / "with-covers.docx",
+        LayoutSettings(imposition_mode="single_a5"),
+        content_only=False,
+    )
+
+    assert body_only.image_count == 0
+    assert with_covers.image_count == 2

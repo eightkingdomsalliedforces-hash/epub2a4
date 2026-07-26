@@ -74,6 +74,8 @@ class GoogleBooksProvider:
                     preview_url=preview_url,
                     image_url=image_url,
                     source_page=source,
+                    language=str(info.get("language", "")),
+                    publisher=str(info.get("publisher", "")),
                     media_type="image/jpeg",
                     rights=str(info.get("rights", "")),
                     classification_confidence=0.95,

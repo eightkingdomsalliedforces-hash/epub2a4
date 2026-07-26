@@ -34,4 +34,13 @@ class ConversionModelsTest {
         assertTrue(json.contains("\"margin_mode\":\"safe\""))
         assertTrue(json.contains("Noto \\\"Serif\\\""))
     }
+    @Test
+    fun contentOnlyDefaultsOnAndIsSerialized() {
+        val defaults = ConversionOptions()
+        val disabled = defaults.copy(contentOnly = false).toJson()
+
+        assertTrue(defaults.contentOnly)
+        assertTrue(disabled.contains("\"content_only\":false"))
+    }
+
 }

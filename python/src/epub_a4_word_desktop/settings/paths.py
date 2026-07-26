@@ -21,6 +21,14 @@ class RuntimePaths:
     def portable(self) -> bool:
         return self.mode == "portable"
 
+    @property
+    def google_books_credentials_path(self) -> Path:
+        return self.config_dir / "google-books-credentials.json"
+
+    @property
+    def alias_cache_path(self) -> Path:
+        return self.config_dir / "cover-title-aliases.json"
+
 
 def resolve_runtime_paths(executable_dir: Path | str) -> RuntimePaths:
     executable = Path(executable_dir).expanduser().resolve()

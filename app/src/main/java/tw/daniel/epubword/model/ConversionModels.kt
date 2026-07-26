@@ -46,6 +46,7 @@ data class ConversionOptions(
     val paragraphSpacingPt: Double = 2.5,
     val pageNumbers: Boolean = true,
     val cutGuides: Boolean = true,
+    val contentOnly: Boolean = true,
 ) {
     fun normalizedFor(kind: InputKind): ConversionOptions {
         val allowed = OutputMode.allowedFor(kind)
@@ -67,6 +68,7 @@ data class ConversionOptions(
             "paragraph_spacing_pt" to paragraphSpacingPt.jsonNumber(),
             "page_numbers" to pageNumbers.toString(),
             "cut_guides" to cutGuides.toString(),
+            "content_only" to contentOnly.toString(),
         )
         return values.entries.joinToString(prefix = "{", postfix = "}") { (key, value) ->
             "${key.jsonQuoted()}:$value"

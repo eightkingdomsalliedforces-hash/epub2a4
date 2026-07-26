@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
                     onHeadingFontSize = conversionViewModel::setHeadingFontPt,
                     onPageNumbers = conversionViewModel::setPageNumbers,
                     onCutGuides = conversionViewModel::setCutGuides,
+                    onContentOnly = conversionViewModel::setContentOnly,
                     onConvert = conversionViewModel::convert,
                     onCancelConversion = conversionViewModel::cancelConversion,
                     onSaveConversion = conversionViewModel::requestSave,

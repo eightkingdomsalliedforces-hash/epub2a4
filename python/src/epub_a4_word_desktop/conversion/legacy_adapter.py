@@ -27,6 +27,7 @@ class LegacyConversionRequest:
     page_numbers: bool
     cut_guides: bool
     output_mark_mode: str = "normal"
+    content_only: bool = True
 
 
 def allowed_modes_for_path(path: Path) -> tuple[str, ...]:
@@ -69,4 +70,10 @@ def run_conversion(
         cut_guides=request.cut_guides,
         output_mark_mode=request.output_mark_mode,
     )
-    return convert_input(request.input_path, request.output_path, settings, report)
+    return convert_input(
+        request.input_path,
+        request.output_path,
+        settings,
+        report,
+        content_only=request.content_only,
+    )

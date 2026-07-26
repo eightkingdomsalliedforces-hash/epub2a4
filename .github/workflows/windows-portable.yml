@@ -13,6 +13,8 @@ on:
       - "packaging/windows/**"
       - "pyproject.toml"
       - "README.md"
+      - "CHANGELOG.md"
+      - "BUILDING.md"
       - "BUILD_STATUS.md"
   pull_request:
     branches:
@@ -25,6 +27,8 @@ on:
       - "packaging/windows/**"
       - "pyproject.toml"
       - "README.md"
+      - "CHANGELOG.md"
+      - "BUILDING.md"
       - "BUILD_STATUS.md"
 
 permissions:
@@ -68,6 +72,9 @@ jobs:
         run: >-
           python -m pytest
           python-tests/cover/search/test_windows_search_core.py
+          python-tests/cover/test_search_pipeline.py
+          python-tests/cover/test_service.py
+          python-tests/test_single_page_blank_page_regression.py
           python-tests/test_b6_on_a5.py
           python-tests/cover/test_composition.py
           -q --junitxml=windows-portable-tests.xml

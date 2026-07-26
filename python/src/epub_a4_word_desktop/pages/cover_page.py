@@ -39,7 +39,7 @@ from epub_a4_word_desktop.cover.export_worker import ExportWorker, export_paths
 from epub_a4_word_desktop.cover.inspector import ElementInspector
 from epub_a4_word_desktop.cover.layers_panel import LayersPanel
 from epub_a4_word_desktop.cover.project_files import open_project_bundle, save_project_bundle
-from epub_a4_word_desktop.cover.search_controller import SearchController
+from epub_a4_word_desktop.cover.search_controller import SearchController, SharedSearchFacade
 from epub_a4_word_desktop.cover.search_panel import CoverSearchPanel
 from epub_a4_word_desktop.cover.setup_panel import CoverSetupPanel, CoverSetupValues
 from epub_a4_word_desktop.settings.credentials import (
@@ -138,7 +138,7 @@ class CoverPage(QWidget):
         if runtime_paths is not None:
             if portable:
                 persistent = PortableCredentialStore(
-                    runtime_paths.config_dir / "google-image-search-credentials.json"
+                    runtime_paths.google_books_credentials_path
                 )
                 persistent_available = True
             else:
@@ -154,7 +154,13 @@ class CoverPage(QWidget):
             persistent,
             SessionCredentialStore(),
         )
+        search_service = SharedSearchFacade(
+            alias_cache_path=(
+                runtime_paths.alias_cache_path if runtime_paths is not None else None
+            )
+        )
         self.search_controller = SearchController(
+            service=search_service,
             credential_store=credential_store,
             parent=self,
         )

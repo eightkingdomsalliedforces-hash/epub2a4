@@ -425,11 +425,12 @@ def _clip_layer(
 def _element_clip(project: CoverProject, layout: CoverLayout, element: CoverElement) -> RectMm | None:
     element_rect = _transform_rect(element)
     if element.kind is ElementKind.IMAGE:
-        mode_rect = (
-            layout.front_rect
-            if project.image_mode is ImageMode.FRONT_ONLY
-            else layout.bleed_rect
-        )
+        if project.image_mode is ImageMode.FRONT_ONLY:
+            mode_rect = layout.front_rect
+        elif project.image_mode is ImageMode.SEPARATE_COVERS:
+            mode_rect = _region_rect(layout, element.region)
+        else:
+            mode_rect = layout.bleed_rect
         return _intersection(element_rect, mode_rect)
     return _intersection(element_rect, _region_rect(layout, element.region))
 

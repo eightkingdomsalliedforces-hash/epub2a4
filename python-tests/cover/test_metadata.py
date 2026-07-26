@@ -23,7 +23,7 @@ def test_epub_reads_opf_metadata_and_embedded_cover(fixtures_dir: Path) -> None:
         "id": "cover-item",
         "href": "OEBPS/images/cover.png",
         "media_type": "image/png",
-        "role": "cover",
+        "role": "front_cover",
         "width_px": 12,
         "height_px": 18,
     }
@@ -40,7 +40,7 @@ def test_epub_reads_opf_metadata_and_embedded_cover(fixtures_dir: Path) -> None:
 def test_epub2_meta_cover_is_detected(fixtures_dir: Path) -> None:
     result = inspect_metadata(fixtures_dir / "cover/metadata-epub2.epub")
     assert result.metadata.embedded_images[0]["id"] == "cover-item"
-    assert result.metadata.embedded_images[0]["role"] == "cover"
+    assert result.metadata.embedded_images[0]["role"] == "front_cover"
 
 
 def test_docx_reads_core_properties_and_pages(fixtures_dir: Path) -> None:
@@ -92,3 +92,66 @@ def test_estimate_epub_page_count_returns_at_least_one(fixtures_dir: Path) -> No
         LayoutSettings(imposition_mode="single_a5"),
     )
     assert count == 1
+
+
+
+def _build_front_back_epub(path: Path, *, generic_back: bool = False) -> Path:
+    from io import BytesIO
+    from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
+
+    from PIL import Image
+
+    def png() -> bytes:
+        output = BytesIO()
+        Image.new("RGB", (600, 900), "white").save(output, format="PNG")
+        return output.getvalue()
+
+    back_id = "plate-page" if generic_back else "back-cover-page"
+    back_href = "plate.xhtml" if generic_back else "back-cover.xhtml"
+    guide = "" if generic_back else "<guide><reference type='back-cover' href='Text/back-cover.xhtml'/></guide>"
+    container = """<?xml version='1.0'?>
+    <container xmlns='urn:oasis:names:tc:opendocument:xmlns:container' version='1.0'>
+      <rootfiles><rootfile full-path='OEBPS/content.opf' media-type='application/oebps-package+xml'/></rootfiles>
+    </container>"""
+    opf = f"""<?xml version='1.0' encoding='utf-8'?>
+    <package xmlns='http://www.idpf.org/2007/opf' xmlns:dc='http://purl.org/dc/elements/1.1/' version='3.0'>
+      <metadata><dc:title>前後封面測試</dc:title></metadata>
+      <manifest>
+        <item id='front-page' href='Text/front.xhtml' media-type='application/xhtml+xml'/>
+        <item id='chapter' href='Text/chapter.xhtml' media-type='application/xhtml+xml'/>
+        <item id='{back_id}' href='Text/{back_href}' media-type='application/xhtml+xml'/>
+        <item id='front-image' href='Images/front.png' media-type='image/png' properties='cover-image'/>
+        <item id='back-image' href='Images/back.png' media-type='image/png'/>
+      </manifest>
+      <spine><itemref idref='front-page'/><itemref idref='chapter'/><itemref idref='{back_id}'/></spine>
+      {guide}
+    </package>"""
+    front = "<html xmlns='http://www.w3.org/1999/xhtml'><body><img src='../Images/front.png'/></body></html>"
+    chapter = "<html xmlns='http://www.w3.org/1999/xhtml'><body><p>正文</p></body></html>"
+    back = "<html xmlns='http://www.w3.org/1999/xhtml'><body><img src='../Images/back.png'/></body></html>"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("mimetype", "application/epub+zip", compress_type=ZIP_STORED)
+        archive.writestr("META-INF/container.xml", container, compress_type=ZIP_DEFLATED)
+        archive.writestr("OEBPS/content.opf", opf, compress_type=ZIP_DEFLATED)
+        archive.writestr("OEBPS/Text/front.xhtml", front, compress_type=ZIP_DEFLATED)
+        archive.writestr("OEBPS/Text/chapter.xhtml", chapter, compress_type=ZIP_DEFLATED)
+        archive.writestr(f"OEBPS/Text/{back_href}", back, compress_type=ZIP_DEFLATED)
+        archive.writestr("OEBPS/Images/front.png", png(), compress_type=ZIP_DEFLATED)
+        archive.writestr("OEBPS/Images/back.png", png(), compress_type=ZIP_DEFLATED)
+    return path
+
+
+def test_epub_metadata_assigns_front_and_high_confidence_back_roles(tmp_path: Path) -> None:
+    result = inspect_metadata(_build_front_back_epub(tmp_path / "front-back.epub"))
+    roles = {item["href"]: item["role"] for item in result.metadata.embedded_images}
+    assert roles["OEBPS/Images/front.png"] == "front_cover"
+    assert roles["OEBPS/Images/back.png"] == "back_cover"
+
+
+def test_epub_metadata_marks_medium_back_as_candidate(tmp_path: Path) -> None:
+    result = inspect_metadata(
+        _build_front_back_epub(tmp_path / "candidate.epub", generic_back=True)
+    )
+    roles = {item["href"]: item["role"] for item in result.metadata.embedded_images}
+    assert roles["OEBPS/Images/front.png"] == "front_cover"
+    assert roles["OEBPS/Images/back.png"] == "back_cover_candidate"

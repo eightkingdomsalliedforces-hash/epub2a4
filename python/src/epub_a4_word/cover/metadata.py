@@ -13,6 +13,8 @@ from PIL import Image, UnidentifiedImageError
 from lxml import etree
 from pypdf import PdfReader
 
+from epub_a4_word.epub_structure import CoverConfidence, inspect_epub_structure
+
 from .models import CoverMetadata
 
 
@@ -43,16 +45,10 @@ def inspect_metadata(source_path: Path | str) -> CoverMetadataInspection:
 def _inspect_epub(source: Path) -> CoverMetadataInspection:
     warnings: list[str] = []
     try:
+        structure = inspect_epub_structure(source)
         with ZipFile(source) as archive:
             names = set(archive.namelist())
-            container_root = _parse_xml(archive.read("META-INF/container.xml"), "EPUB container.xml")
-            rootfile = next(_iter_local(container_root, "rootfile"), None)
-            if rootfile is None or not rootfile.get("full-path"):
-                raise ValueError("EPUB container.xml 沒有 OPF 路徑。")
-            opf_path = str(rootfile.get("full-path"))
-            if opf_path not in names:
-                raise ValueError(f"EPUB 缺少套件檔：{opf_path}")
-            package = _parse_xml(archive.read(opf_path), "EPUB OPF")
+            package = _parse_xml(archive.read(structure.opf_path), "EPUB OPF")
 
             metadata_node = next(_iter_local(package, "metadata"), None)
             title = _first_local_text(metadata_node, "title")
@@ -62,62 +58,39 @@ def _inspect_epub(source: Path) -> CoverMetadataInspection:
             language = _first_local_text(metadata_node, "language")
             isbn = _epub_identifier(package, metadata_node)
 
-            items: list[dict[str, str]] = []
-            for node in _iter_local(package, "item"):
-                item_id = node.get("id", "")
-                href = node.get("href", "")
-                if not item_id or not href:
-                    continue
-                resolved = _archive_path(opf_path, href)
-                media_type = node.get("media-type", "")
-                properties = node.get("properties", "")
-                if media_type.startswith("image/") or _looks_like_image(resolved):
-                    items.append(
-                        {
-                            "id": item_id,
-                            "href": resolved,
-                            "media_type": media_type or _media_type_from_name(resolved),
-                            "properties": properties,
-                        }
-                    )
-
-            cover_id = next(
-                (
-                    item["id"]
-                    for item in items
-                    if "cover-image" in item["properties"].split()
-                ),
-                "",
-            )
-            if not cover_id and metadata_node is not None:
-                for meta in _iter_local(metadata_node, "meta"):
-                    if (meta.get("name") or "").lower() == "cover":
-                        cover_id = meta.get("content", "")
-                        if cover_id:
-                            break
-            if not cover_id and items:
-                cover_id = items[0]["id"]
-
-            ordered_items = sorted(items, key=lambda item: item["id"] != cover_id)
+            detection = structure.detection
             embedded_images: list[dict[str, Any]] = []
-            for item in ordered_items:
+            for item in structure.manifest.values():
+                if not (item.media_type.startswith("image/") or _looks_like_image(item.href)):
+                    continue
                 width_px: int | None = None
                 height_px: int | None = None
-                href = item["href"]
-                if href not in names:
-                    warnings.append(f"找不到內嵌圖片：{href}")
+                if item.href not in names:
+                    warnings.append(f"找不到內嵌圖片：{item.href}")
                 else:
-                    width_px, height_px = _image_dimensions(archive.read(href), href, warnings)
+                    width_px, height_px = _image_dimensions(archive.read(item.href), item.href, warnings)
+
+                role = "image"
+                if item.href == detection.front_resource:
+                    role = "front_cover"
+                elif item.href == detection.back_resource:
+                    role = (
+                        "back_cover"
+                        if detection.back_confidence is CoverConfidence.HIGH
+                        else "back_cover_candidate"
+                    )
                 embedded_images.append(
                     {
-                        "id": item["id"],
-                        "href": href,
-                        "media_type": item["media_type"],
-                        "role": "cover" if item["id"] == cover_id else "image",
+                        "id": item.id,
+                        "href": item.href,
+                        "media_type": item.media_type or _media_type_from_name(item.href),
+                        "role": role,
                         "width_px": width_px,
                         "height_px": height_px,
                     }
                 )
+            priority = {"front_cover": 0, "back_cover": 1, "back_cover_candidate": 2, "image": 3}
+            embedded_images.sort(key=lambda item: (priority[item["role"]], item["id"]))
     except KeyError as exc:
         raise ValueError(f"EPUB 缺少必要檔案：{exc.args[0]}") from exc
     except BadZipFile as exc:

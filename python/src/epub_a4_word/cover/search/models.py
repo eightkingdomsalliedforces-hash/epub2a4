@@ -24,6 +24,43 @@ class CandidateCategory(StrEnum):
 
 
 @dataclass(frozen=True)
+class BookIdentity:
+    original_title: str
+    normalized_title: str
+    author: str
+    normalized_author: str
+    volume: str
+    isbn: str
+    language: str
+
+
+@dataclass(frozen=True)
+class ResolvedAlias:
+    value: str
+    language: str | None
+    source: str
+    confidence: str
+    reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class QueryItem:
+    kind: str
+    value: str
+    author: str
+    language: str
+    confidence: str
+    source: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class QueryPlan:
+    identity: BookIdentity
+    items: tuple[QueryItem, ...]
+
+
+@dataclass(frozen=True)
 class CoverSearchRequest:
     kind: SearchKind = SearchKind.FRONT
     query: str = ""
@@ -57,11 +94,11 @@ class CoverSearchRequest:
 @dataclass(frozen=True)
 class ProviderCredential:
     api_key: str
-    search_engine_id: str
+    search_engine_id: str = ""
 
     @property
     def complete(self) -> bool:
-        return bool(self.api_key.strip() and self.search_engine_id.strip())
+        return bool(self.api_key.strip())
 
 
 @dataclass(frozen=True)
@@ -83,6 +120,8 @@ class SearchCandidate:
     preview_url: str
     image_url: str
     source_page: str
+    language: str = ""
+    publisher: str = ""
     width_px: int | None = None
     height_px: int | None = None
     media_type: str = ""
@@ -147,6 +186,8 @@ class SearchCandidate:
             "preview_url": self.preview_url,
             "image_url": self.image_url,
             "source_page": self.source_page,
+            "language": self.language,
+            "publisher": self.publisher,
             "width_px": self.width_px,
             "height_px": self.height_px,
             "media_type": self.media_type,
@@ -171,6 +212,8 @@ class SearchCandidate:
             preview_url=str(raw.get("preview_url", "")),
             image_url=str(raw.get("image_url", "")),
             source_page=str(raw.get("source_page", "")),
+            language=str(raw.get("language", "")),
+            publisher=str(raw.get("publisher", "")),
             width_px=_optional_int(raw.get("width_px")),
             height_px=_optional_int(raw.get("height_px")),
             media_type=str(raw.get("media_type", "")),
@@ -186,11 +229,37 @@ class SearchCandidate:
 class SearchResponse:
     candidates: tuple[SearchCandidate, ...] = ()
     warnings: tuple[str, ...] = ()
+    resolved_aliases: tuple[ResolvedAlias, ...] = ()
+    resolved_isbns: tuple[str, ...] = ()
+    query_items: tuple[QueryItem, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
             "candidates": [item.to_dict() for item in self.candidates],
             "warnings": list(self.warnings),
+            "resolved_aliases": [
+                {
+                    "value": item.value,
+                    "language": item.language,
+                    "source": item.source,
+                    "confidence": item.confidence,
+                    "reasons": list(item.reasons),
+                }
+                for item in self.resolved_aliases
+            ],
+            "resolved_isbns": list(self.resolved_isbns),
+            "query_items": [
+                {
+                    "kind": item.kind,
+                    "value": item.value,
+                    "author": item.author,
+                    "language": item.language,
+                    "confidence": item.confidence,
+                    "source": item.source,
+                    "reason": item.reason,
+                }
+                for item in self.query_items
+            ],
         }
 
 

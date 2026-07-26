@@ -54,13 +54,20 @@ def convert_epub(
     output_path: Path | str,
     settings: LayoutSettings | None = None,
     progress: ProgressCallback | None = None,
+    *,
+    content_only: bool = True,
+    confirmed_back_cover_page: str | None = None,
 ) -> ConversionResult:
     settings = settings or LayoutSettings()
     source = Path(input_path)
     output = Path(output_path)
 
     _notify(progress, 5, "正在讀取 EPUB…")
-    book = parse_epub(source)
+    book = parse_epub(
+        source,
+        content_only=content_only,
+        confirmed_back_cover_page=confirmed_back_cover_page,
+    )
     warnings = list(book.warnings)
     referenced_images = {
         block.resource_path for block in book.blocks if isinstance(block, ImageBlock)
@@ -125,12 +132,22 @@ def convert_input(
     output_path: Path | str,
     settings: LayoutSettings | None = None,
     progress: ProgressCallback | None = None,
+    *,
+    content_only: bool = True,
+    confirmed_back_cover_page: str | None = None,
 ) -> ConversionResult:
     """Convert an EPUB or reflow an existing DOCX based on its extension."""
     source = Path(input_path)
     suffix = source.suffix.lower()
     if suffix == ".epub":
-        return convert_epub(source, output_path, settings, progress)
+        return convert_epub(
+            source,
+            output_path,
+            settings,
+            progress,
+            content_only=content_only,
+            confirmed_back_cover_page=confirmed_back_cover_page,
+        )
     if suffix == ".docx":
         from .word_reflow import convert_docx
         return convert_docx(source, output_path, settings, progress)

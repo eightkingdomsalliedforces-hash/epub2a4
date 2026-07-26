@@ -19,6 +19,7 @@ from .models import ImageBlock, TextBlock, TextRun
 from .pagination import LayoutSettings, MiniPage, resolve_layout
 
 TWIPS_PER_CM = 1440.0 / 2.54
+_SINGLE_PAGE_TABLE_MODES = frozenset({"single_a5", "single_4x6", "b6_on_a5"})
 
 
 def _cm_to_twips(value: float) -> int:
@@ -314,7 +315,7 @@ def write_docx(
         for cell in row.cells:
             cell.width = Cm(settings.cell_width_cm)
 
-    if imposition_mode == "b6_on_a5":
+    if imposition_mode in _SINGLE_PAGE_TABLE_MODES:
         if plan.sides:
             table = document.add_table(rows=len(plan.sides), cols=1)
             configure_table(table)

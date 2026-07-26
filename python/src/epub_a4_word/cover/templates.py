@@ -350,11 +350,12 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
     else:
         background.pop("warnings", None)
 
-    image_mode = (
-        ImageMode.FULL_SPREAD
-        if canonical_template_id == "full_spread"
-        else ImageMode.FRONT_ONLY
-    )
+    if canonical_template_id == "full_spread":
+        image_mode = ImageMode.FULL_SPREAD
+    elif project.image_mode is ImageMode.SEPARATE_COVERS:
+        image_mode = ImageMode.SEPARATE_COVERS
+    else:
+        image_mode = ImageMode.FRONT_ONLY
     return replace(
         project,
         image_mode=image_mode,

@@ -109,6 +109,7 @@ class ConversionViewModel(application: Application) : AndroidViewModel(applicati
     fun setHeadingFontPt(value: Double) = updateOptions { copy(headingFontPt = value) }
     fun setPageNumbers(value: Boolean) = updateOptions { copy(pageNumbers = value) }
     fun setCutGuides(value: Boolean) = updateOptions { copy(cutGuides = value) }
+    fun setContentOnly(value: Boolean) = updateOptions { copy(contentOnly = value) }
 
     private fun updateOptions(transform: ConversionOptions.() -> ConversionOptions) {
         if (_uiState.value.isBusy) return

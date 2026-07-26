@@ -49,6 +49,7 @@ _ALLOWED_SETTINGS = {
     "show_assembly_marks",
     "cover_image_path",
     "image_mode",
+    "confirmed_back_cover_asset_id",
 }
 
 
@@ -173,42 +174,80 @@ def _copy_asset(source: Path, assets_dir: Path) -> Path:
     return _write_asset_bytes(source.read_bytes(), source.name, assets_dir)
 
 
-def _extract_epub_cover(
+def _extract_epub_cover_assets(
     source: Path,
     inspection: CoverMetadataInspection,
     assets_dir: Path,
-) -> Path | None:
-    selected = next(
+    *,
+    confirmed_back_cover_asset_id: str = "",
+) -> tuple[Path | None, Path | None]:
+    front = next(
         (
             item
             for item in inspection.metadata.embedded_images
-            if item.get("role") == "cover" and isinstance(item.get("href"), str)
+            if item.get("role") in {"cover", "front_cover"} and isinstance(item.get("href"), str)
         ),
         None,
     )
-    if selected is None:
-        return None
-    href = str(selected["href"])
+    confirmed_id = confirmed_back_cover_asset_id.strip()
+    back = next(
+        (
+            item
+            for item in inspection.metadata.embedded_images
+            if (
+                item.get("role") == "back_cover"
+                or (
+                    confirmed_id
+                    and item.get("role") == "back_cover_candidate"
+                    and item.get("id") == confirmed_id
+                )
+            )
+            and isinstance(item.get("href"), str)
+        ),
+        None,
+    )
+    if front is None and back is None:
+        return None, None
+
+    extracted: dict[str, Path] = {}
     try:
         with ZipFile(source) as package:
-            data = package.read(href)
-    except (BadZipFile, KeyError) as exc:
-        raise CoverValidationError(f"無法提取 EPUB 封面圖片：{href}") from exc
-    return _write_asset_bytes(data, href, assets_dir)
+            for selected in (front, back):
+                if selected is None:
+                    continue
+                href = str(selected["href"])
+                try:
+                    data = package.read(href)
+                except KeyError as exc:
+                    raise CoverValidationError(f"無法提取 EPUB 封面圖片：{href}") from exc
+                extracted[href] = _write_asset_bytes(data, href, assets_dir)
+    except BadZipFile as exc:
+        raise CoverValidationError("無法提取 EPUB 封面圖片：EPUB 壓縮檔無效。") from exc
+
+    front_path = extracted.get(str(front["href"])) if front is not None else None
+    back_path = extracted.get(str(back["href"])) if back is not None else None
+    return front_path, back_path
 
 
-def _cover_asset(
+def _cover_assets(
     source: Path,
     inspection: CoverMetadataInspection,
     settings: dict[str, Any],
     assets_dir: Path,
-) -> Path | None:
+) -> tuple[Path | None, Path | None]:
     explicit = settings.get("cover_image_path")
     if explicit is not None:
-        return _copy_asset(Path(str(explicit)).expanduser().resolve(), assets_dir)
+        return _copy_asset(Path(str(explicit)).expanduser().resolve(), assets_dir), None
     if inspection.source_type == "epub":
-        return _extract_epub_cover(source, inspection, assets_dir)
-    return None
+        return _extract_epub_cover_assets(
+            source,
+            inspection,
+            assets_dir,
+            confirmed_back_cover_asset_id=str(
+                settings.get("confirmed_back_cover_asset_id", "")
+            ),
+        )
+    return None, None
 
 
 def _trim_size(settings: dict[str, Any]) -> TrimSize:
@@ -296,24 +335,63 @@ def new_project(source_path: str, settings_json: str) -> str:
             show_assembly_marks=bool(settings.get("show_assembly_marks", True)),
         ),
     )
-    asset = _cover_asset(source, inspection, settings, assets_dir)
-    if asset is not None:
+    front_asset, back_asset = _cover_assets(source, inspection, settings, assets_dir)
+    if front_asset is not None:
         layout = calculate_layout(project)
-        target = layout.bleed_rect if image_mode is ImageMode.FULL_SPREAD else layout.front_rect
-        image = CoverElement(
-            id="source-cover-image",
-            kind=ElementKind.IMAGE,
-            region=Region.SPREAD if image_mode is ImageMode.FULL_SPREAD else Region.FRONT,
-            transform=ElementTransform(
-                target.x_mm,
-                target.y_mm,
-                target.width_mm,
-                target.height_mm,
-            ),
-            z_index=-15,
-            content={"path": str(asset), "fit": "cover"},
-        )
-        project = replace(project, elements=(image,))
+        if image_mode is ImageMode.FULL_SPREAD:
+            target = layout.bleed_rect
+            elements = (
+                CoverElement(
+                    id="source-cover-image",
+                    kind=ElementKind.IMAGE,
+                    region=Region.SPREAD,
+                    transform=ElementTransform(
+                        target.x_mm,
+                        target.y_mm,
+                        target.width_mm,
+                        target.height_mm,
+                    ),
+                    z_index=-15,
+                    content={"path": str(front_asset), "fit": "cover"},
+                ),
+            )
+        else:
+            front_target = layout.front_rect
+            elements_list = [
+                CoverElement(
+                    id="source-cover-image",
+                    kind=ElementKind.IMAGE,
+                    region=Region.FRONT,
+                    transform=ElementTransform(
+                        front_target.x_mm,
+                        front_target.y_mm,
+                        front_target.width_mm,
+                        front_target.height_mm,
+                    ),
+                    z_index=-15,
+                    content={"path": str(front_asset), "fit": "cover"},
+                )
+            ]
+            if back_asset is not None:
+                back_target = layout.back_rect
+                elements_list.append(
+                    CoverElement(
+                        id="source-back-cover-image",
+                        kind=ElementKind.IMAGE,
+                        region=Region.BACK,
+                        transform=ElementTransform(
+                            back_target.x_mm,
+                            back_target.y_mm,
+                            back_target.width_mm,
+                            back_target.height_mm,
+                        ),
+                        z_index=-15,
+                        content={"path": str(back_asset), "fit": "cover"},
+                    )
+                )
+                image_mode = ImageMode.SEPARATE_COVERS
+            elements = tuple(elements_list)
+        project = replace(project, image_mode=image_mode, elements=elements)
     return dumps_project(project)
 
 

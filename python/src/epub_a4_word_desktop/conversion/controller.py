@@ -46,6 +46,7 @@ class ConversionWorker(QRunnable):
                 self.request.output_path,
                 self.request.to_layout_settings(),
                 self._progress,
+                content_only=self.request.content_only,
             )
             self._check_cancelled()
         except ConversionCancelled:

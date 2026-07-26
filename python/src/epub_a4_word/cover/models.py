@@ -7,6 +7,7 @@ from typing import Any
 
 class ImageMode(StrEnum):
     FRONT_ONLY = "front_only"
+    SEPARATE_COVERS = "separate_covers"
     FULL_SPREAD = "full_spread"
 
 

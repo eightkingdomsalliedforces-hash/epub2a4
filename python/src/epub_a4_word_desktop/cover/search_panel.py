@@ -8,12 +8,14 @@ from PySide6.QtCore import QUrl, Signal, Qt
 from PySide6.QtGui import QDesktopServices, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFrame,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -23,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from epub_a4_word.cover.project_io import loads_project
 from epub_a4_word.cover.search.models import CandidateCategory, SearchCandidate
+from epub_a4_word.cover.search.pipeline import ProviderSelection
 
 from .credential_dialog import CredentialDialog
 from .search_controller import SearchController
@@ -170,15 +173,35 @@ class CoverSearchPanel(QWidget):
         self.metadata_label.setWordWrap(True)
         self.status_label = QLabel("", self)
         self.status_label.setWordWrap(True)
-        self.configure_credentials_button = QPushButton("設定圖片搜尋", self)
-        self.search_public_button = QPushButton("重新搜尋公開書庫", self)
-        self.search_general_button = QPushButton("搜尋正面／背面／書脊／完整書衣", self)
-        self.search_general_button.setEnabled(False)
+        self.resolution_label = QLabel("", self)
+        self.resolution_label.setWordWrap(True)
+
+        self.google_books_checkbox = QCheckBox("Google Books", self)
+        self.open_library_checkbox = QCheckBox("Open Library", self)
+        self.gutendex_checkbox = QCheckBox("Project Gutenberg", self)
+        for checkbox in (
+            self.google_books_checkbox,
+            self.open_library_checkbox,
+            self.gutendex_checkbox,
+        ):
+            checkbox.setChecked(True)
+        self.manual_alias_edit = QLineEdit(self)
+        self.manual_alias_edit.setPlaceholderText(
+            "原文書名／英文名／其他正式別名（選填）"
+        )
+        self.search_button = QPushButton("搜尋封面", self)
+        self.search_button.setEnabled(False)
+        self.search_public_button = self.search_button
+        self.configure_credentials_button = QPushButton("Google Books API 設定", self)
+        self.clear_alias_cache_button = QPushButton("清除別名快取", self)
 
         actions = QHBoxLayout()
-        actions.addWidget(self.search_public_button)
-        actions.addWidget(self.search_general_button)
+        actions.addWidget(self.google_books_checkbox)
+        actions.addWidget(self.open_library_checkbox)
+        actions.addWidget(self.gutendex_checkbox)
+        actions.addWidget(self.search_button)
         actions.addWidget(self.configure_credentials_button)
+        actions.addWidget(self.clear_alias_cache_button)
         actions.addStretch(1)
 
         self.grid_host = QWidget(self)
@@ -206,14 +229,22 @@ class CoverSearchPanel(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.metadata_label)
+        layout.addWidget(self.manual_alias_edit)
         layout.addLayout(actions)
         layout.addWidget(self.status_label)
+        layout.addWidget(self.resolution_label)
         layout.addWidget(self.scroll, 1)
         layout.addWidget(selection_box)
 
-        self.search_public_button.clicked.connect(self._search_public)
-        self.search_general_button.clicked.connect(self._search_general)
+        self.search_button.clicked.connect(self._search)
         self.configure_credentials_button.clicked.connect(self._configure_credentials)
+        self.clear_alias_cache_button.clicked.connect(self._clear_alias_cache)
+        for checkbox in (
+            self.google_books_checkbox,
+            self.open_library_checkbox,
+            self.gutendex_checkbox,
+        ):
+            checkbox.toggled.connect(self._update_search_enabled)
         self.apply_segmented_button.clicked.connect(
             lambda: self.apply_requested.emit("segmented", dict(self.selected))
         )
@@ -224,6 +255,7 @@ class CoverSearchPanel(QWidget):
         self.controller.search_failed.connect(self._search_failed)
         self.controller.credential_required.connect(self._credential_missing)
         self._update_credential_state()
+        self._update_search_enabled()
 
     def bind_project(self, project_json: str) -> None:
         project = loads_project(project_json)
@@ -248,45 +280,69 @@ class CoverSearchPanel(QWidget):
         self.selected.clear()
         self._rebuild_cards()
         self._update_selection_summary()
+        self._update_search_enabled()
         if not self.auto_search:
             self.status_label.setText("封面搜尋已準備完成；按搜尋按鈕後才會連線。")
             self._update_credential_state()
             return
-        self._search_public()
-        credential = self.controller.stored_credential()
-        if credential is not None and credential.complete:
-            self.controller.search_general(self.metadata, credential)
-            self.status_label.setText("正在背景搜尋公開書庫與完整封面素材…")
-        else:
-            self.status_label.setText("正在搜尋公開書庫；設定圖片搜尋後可找背面、書脊與完整書衣。")
+        self._search()
         self._update_credential_state()
 
-    def _search_public(self) -> None:
+    def _provider_selection(self) -> ProviderSelection:
+        return ProviderSelection(
+            google_books=self.google_books_checkbox.isChecked(),
+            open_library=self.open_library_checkbox.isChecked(),
+            gutendex=self.gutendex_checkbox.isChecked(),
+        )
+
+    def _update_search_enabled(self, _checked: object = None) -> None:
+        selection = self._provider_selection()
+        ready = bool(self.metadata) and selection.any_enabled
+        self.search_button.setEnabled(ready)
+        if self.metadata and not selection.any_enabled:
+            self.status_label.setText("至少啟用一個封面搜尋來源。")
+
+    def _search(self) -> None:
         if not self.metadata:
+            return
+        selection = self._provider_selection()
+        if not selection.any_enabled:
+            self.status_label.setText("至少啟用一個封面搜尋來源。")
             return
         if not any(str(self.metadata.get(key, "")).strip() for key in ("isbn", "title")):
             self.status_label.setText("缺少 ISBN 與書名，無法自動搜尋公開書庫。")
             return
-        self.controller.search_public(self.metadata)
-        self.status_label.setText("正在搜尋 Google Books 與 Open Library…")
+        self.controller.search_public(
+            self.metadata,
+            selection,
+            self.manual_alias_edit.text().strip(),
+        )
+        enabled = []
+        if selection.google_books:
+            enabled.append("Google Books")
+        if selection.open_library:
+            enabled.append("Open Library")
+        if selection.gutendex:
+            enabled.append("Project Gutenberg")
+        self.status_label.setText("正在搜尋：" + "、".join(enabled) + "…")
 
-    def _search_general(self) -> None:
-        if self.metadata:
-            self.controller.search_general(self.metadata)
-            self.status_label.setText("正在搜尋正面、背面、書脊、完整書衣與實拍參考圖…")
+    def _search_public(self) -> None:
+        self._search()
 
     def _credential_missing(self) -> None:
         self.configure_credentials_button.show()
-        self.search_general_button.setEnabled(False)
-        self.status_label.setText("尚未設定 Google 圖片搜尋；公開書庫搜尋仍可使用。")
+        self.status_label.setText(
+            "尚未設定 Google Books API Key；Open Library 與 Project Gutenberg 仍可使用。"
+        )
+        self._update_search_enabled()
 
     def _update_credential_state(self) -> None:
         credential = self.controller.stored_credential()
         ready = credential is not None and credential.complete
-        self.search_general_button.setEnabled(ready and bool(self.metadata))
         self.configure_credentials_button.setText(
-            "修改圖片搜尋設定" if ready else "設定圖片搜尋"
+            "修改 Google Books API 設定" if ready else "Google Books API 設定"
         )
+        self._update_search_enabled()
 
     def _configure_credentials(self) -> None:
         dialog = CredentialDialog(
@@ -314,11 +370,15 @@ class CoverSearchPanel(QWidget):
             self.controller.save_session_credential(value)
         self._update_credential_state()
         if self.metadata:
-            self.controller.search_general(self.metadata, value)
+            self._search()
 
     def _clear_credentials(self) -> None:
         self.controller.clear_credentials()
         self._update_credential_state()
+
+    def _clear_alias_cache(self) -> None:
+        self.controller.clear_alias_cache()
+        self.resolution_label.setText("已清除本機書名別名快取。")
 
     def _results_ready(self, mode: str, response) -> None:
         for candidate in response.candidates:
@@ -331,6 +391,18 @@ class CoverSearchPanel(QWidget):
             self.status_label.setText(f"已取得 {len(self.candidates)} 張候選圖片。")
         else:
             self.status_label.setText("找不到候選封面；本機與內嵌圖片仍可正常使用。")
+        aliases = getattr(response, "resolved_aliases", ())
+        isbns = getattr(response, "resolved_isbns", ())
+        alias_text = "、".join(
+            f"{item.value}{'（需確認）' if item.confidence == 'medium' else ''}"
+            for item in aliases
+        )
+        details = []
+        if alias_text:
+            details.append("解析名稱：" + alias_text)
+        if isbns:
+            details.append("解析 ISBN：" + "、".join(isbns))
+        self.resolution_label.setText("；".join(details))
 
     def _search_failed(self, mode: str, message: str) -> None:
         self.status_label.setText(f"{mode} 搜尋失敗：{message}；已取得的候選不會被清除。")
@@ -345,6 +417,11 @@ class CoverSearchPanel(QWidget):
             )
             return
         self.selected[selected_category.value] = candidate
+        self.controller.remember_selected_alias(
+            self.metadata,
+            candidate,
+            self.manual_alias_edit.text().strip(),
+        )
         self._update_selection_summary()
 
     def _update_selection_summary(self) -> None:
