@@ -42,13 +42,17 @@ def test_points_are_converted_to_scene_millimetres() -> None:
 
 
 def test_font_roles_prioritize_round_dyna_and_ocr_families() -> None:
-    assert font_candidates("publisher_heading")[:2] == (
+    assert font_candidates("publisher_heading")[:4] == (
+        "DFPYuanW5-GB",
+        "DFPYuanW5",
+        "DFP Yuan W5",
         "DFYuan-W5",
-        "華康圓體 Std W5",
     )
-    assert font_candidates("publisher_details")[:2] == (
+    assert font_candidates("publisher_details")[:4] == (
+        "DFPYuanW3-GB",
+        "DFPYuanW3",
+        "DFP Yuan W3",
         "DFYuan-W3",
-        "華康圓體 Std W3",
     )
     assert font_candidates("ocr")[:4] == (
         "OCR-B",
