@@ -15,11 +15,13 @@ from PIL import (
     ImageOps,
 )
 
+from .barcode_layout import BarcodeTextAnchor, build_barcode_layout
 from .fonts import resolve_font
-from .isbn import encode_ean13_modules, encode_ean_addon_modules, normalize_isbn
+from .isbn import normalize_isbn
 from .geometry import CoverLayout, RectMm, calculate_layout
 from .models import CoverElement, CoverProject, ElementKind, ImageMode, Region
 from .print_plan import PrintMark, PrintPage
+from .typography import font_candidates
 
 
 @dataclass(frozen=True)
@@ -335,10 +337,15 @@ def _render_horizontal_text(
     # dimensions are already at export DPI, so use an explicit per-element DPI.
     dpi = int(content.get("_render_dpi", 300))
     size_px = max(1, round(font_size_pt / 72.0 * dpi))
+    families = font_candidates(
+        str(content.get("font_role", "default")),
+        content.get("font_families", content.get("font_family", "sans-serif")),
+    )
     font = resolve_font(
-        str(content.get("font_family", "sans-serif")),
+        families[0],
         content.get("font_path") if isinstance(content.get("font_path"), str) else None,
         size_px,
+        families[1:],
     )
     color = _parse_color(content.get("color", "#111111"), "#111111")
     lines = _wrap_text(draw, str(content.get("text", "")), font, max(1, size[0]))
@@ -432,40 +439,57 @@ def _prepare_shape(element: CoverElement, size: tuple[int, int], dpi: int) -> Im
 
 
 def _prepare_barcode(element: CoverElement, size: tuple[int, int], dpi: int) -> Image.Image:
+    del dpi
     isbn = normalize_isbn(element.content.get("isbn", element.content.get("text", "")))
     canvas = Image.new("RGBA", size, (0, 0, 0, 0))
     if len(isbn) != 13:
         return canvas
-    modules = encode_ean13_modules(isbn)
-    addon_modules = encode_ean_addon_modules(element.content.get("addon", ""))
-    quiet = 9
-    separator = 8 if addon_modules else 0
-    total_modules = quiet * 2 + len(modules) + separator + len(addon_modules)
-    module_width = max(1, size[0] // max(1, total_modules))
-    used_width = total_modules * module_width
-    origin_x = max(0, (size[0] - used_width) // 2)
-    text_height = max(10, round(size[1] * 0.22))
-    bar_height = max(1, size[1] - text_height)
+    layout = build_barcode_layout(isbn, element.content.get("addon", ""))
     draw = ImageDraw.Draw(canvas)
-    x = origin_x + quiet * module_width
-    for bit in modules:
-        if bit == "1":
-            draw.rectangle((x, 0, x + module_width - 1, bar_height - 1), fill="black")
-        x += module_width
-    if addon_modules:
-        x += separator * module_width
-        addon_top = max(1, round(bar_height * 0.12))
-        for bit in addon_modules:
-            if bit == "1":
-                draw.rectangle(
-                    (x, addon_top, x + module_width - 1, bar_height - 1), fill="black"
-                )
-            x += module_width
-    font = resolve_font("sans-serif", None, max(8, round(text_height * 0.70)))
-    label = " ".join((isbn[:3], isbn[3:]))
-    draw.text((origin_x + quiet * module_width, bar_height + 1), label, fill="black", font=font)
-    return _apply_alpha(canvas, float(element.opacity))
+    width, height = size
+    for bar in layout.bars:
+        left = round(bar.x * width)
+        top = round(bar.top * height)
+        right = max(left + 1, round((bar.x + bar.width) * width))
+        bottom = max(top + 1, round(bar.bottom * height))
+        draw.rectangle((left, top, right - 1, bottom - 1), fill="black")
 
+    families = font_candidates(
+        "ocr",
+        element.content.get("font_families", element.content.get("font_family", "OCR-B")),
+    )
+    font = resolve_font(
+        families[0],
+        element.content.get("font_path")
+        if isinstance(element.content.get("font_path"), str)
+        else None,
+        max(8, round(height * 0.13)),
+        families[1:],
+    )
+
+    def draw_anchor(anchor: BarcodeTextAnchor) -> None:
+        left = round(anchor.left * width)
+        top = round(anchor.top * height)
+        right = max(left + 1, round(anchor.right * width))
+        bottom = max(top + 1, round(anchor.bottom * height))
+        box = draw.textbbox((0, 0), anchor.text, font=font)
+        text_width = max(0, box[2] - box[0])
+        text_height = max(0, box[3] - box[1])
+        if anchor.align == "left":
+            x = left
+        elif anchor.align == "right":
+            x = max(left, right - text_width)
+        else:
+            x = left + max(0, (right - left - text_width) // 2)
+        y = top + max(0, (bottom - top - text_height) // 2) - box[1]
+        draw.text((x, y), anchor.text, fill="black", font=font)
+
+    draw_anchor(layout.first_digit)
+    draw_anchor(layout.left_digits)
+    draw_anchor(layout.right_digits)
+    if layout.addon_digits is not None:
+        draw_anchor(layout.addon_digits)
+    return _apply_alpha(canvas, float(element.opacity))
 
 def _clip_layer(
     layer: Image.Image,
