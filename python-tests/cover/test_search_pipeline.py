@@ -187,9 +187,12 @@ def test_manual_alias_is_first_title_query_and_duplicate_queries_run_once(tmp_pa
         manual_alias=" original title ",
     )
 
-    title_requests = [request.title for request in open_library.requests if request.title]
-    assert title_requests[0] == "original title"
-    assert sum(value.casefold() == "original title" for value in title_requests) == 1
+    title_requests = [request for request in open_library.requests if request.title]
+    assert title_requests[0].title == "original title"
+    assert sum(
+        request.title.casefold() == "original title" and request.author == "Author"
+        for request in title_requests
+    ) == 1
 
 
 def test_provider_failure_preserves_other_results(tmp_path: Path) -> None:
@@ -331,3 +334,63 @@ def test_alias_cache_promotes_remembered_medium_alias_to_confirmed_high(
     assert loaded[0].value == "A Certain Magical Index"
     assert loaded[0].confidence == "high"
     assert loaded[0].source == "local_cache"
+
+
+def test_cross_language_title_retries_without_author_when_exact_author_search_is_empty(
+    tmp_path: Path,
+) -> None:
+    alias = ResolvedAlias(
+        value="A Certain Magical Index",
+        language="en",
+        source="wikidata",
+        confidence="high",
+        reasons=("same work",),
+    )
+    resolver = FakeResolver(AliasResolution((alias,), ()))
+
+    def open_library_callback(request):
+        if request.title == alias.value and not request.author:
+            return SearchResponse(
+                (
+                    SearchCandidate(
+                        provider="open_library",
+                        candidate_id="OL32593075M",
+                        query_kind=SearchKind.FRONT,
+                        proposed_category=CandidateCategory.FRONT,
+                        title="A Certain Magical Index, Vol. 1 - light novel",
+                        author="鎌池和馬",
+                        isbn="9780316339124",
+                        preview_url="https://covers.openlibrary.org/b/id/1-M.jpg",
+                        image_url="https://covers.openlibrary.org/b/id/1-L.jpg",
+                        source_page="https://openlibrary.org/books/OL32593075M",
+                        media_type="image/jpeg",
+                    ),
+                )
+            )
+        return SearchResponse()
+
+    open_library = FakeProvider("open_library", open_library_callback)
+    pipeline, _ = _pipeline(
+        tmp_path,
+        resolver=resolver,
+        open_library=open_library,
+    )
+
+    response = pipeline.search(
+        {"title": "魔法禁書目錄", "author": "镰池和马", "language": "zh-TW"},
+        selection=ProviderSelection(
+            open_library=True,
+            google_books=False,
+            gutendex=False,
+        ),
+    )
+
+    matching_requests = [
+        request
+        for request in open_library.requests
+        if request.title == "A Certain Magical Index"
+    ]
+    assert [request.author for request in matching_requests] == ["镰池和马", ""]
+    assert [candidate.candidate_id for candidate in response.candidates] == [
+        "OL32593075M"
+    ]
