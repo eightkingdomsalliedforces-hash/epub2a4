@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 
 from .geometry import CoverLayout, RectMm, calculate_layout
 from .isbn import normalize_ean_addon, normalize_isbn
+from .publisher_info_layout import layout_publisher_info
 from .models import (
     CoverElement,
     CoverProject,
@@ -383,59 +384,67 @@ def _publisher_back_matter(
         )
 
     info_x = safe.x_mm + safe.width_mm * 0.49
+    info_y = safe.y_mm + safe.height_mm * 0.025
     info_width = safe.width_mm * 0.38
-    publisher = project.metadata.publisher.strip()
-    if publisher:
-        heading_rect = RectMm(
-            info_x,
-            safe.y_mm + safe.height_mm * 0.025,
-            info_width,
-            safe.height_mm * 0.035,
+    info_layout = layout_publisher_info(
+        metadata=project.metadata,
+        x_mm=info_x,
+        y_mm=info_y,
+        max_width_mm=info_width,
+        max_height_mm=max(1.0, safe.bottom_mm - info_y),
+    )
+    shared_content = {
+        "group_id": "publisher-info-stack",
+        "layout_warnings": list(info_layout.warnings),
+    }
+    if info_layout.heading_rect is not None:
+        heading = text_element(
+            "back-publisher-heading",
+            Region.BACK,
+            info_layout.heading_rect,
+            info_layout.heading_text,
+            info_layout.heading_font_pt,
+            align="left",
+            font_weight=500,
+            z_index=20,
+            font_role="publisher_heading",
+            font_family="DFPYuanW5-GB",
+            vertical_align="top",
         )
         elements.append(
-            text_element(
-                "back-publisher-heading",
-                Region.BACK,
-                heading_rect,
-                publisher,
-                7.5,
-                align="left",
-                font_weight=500,
-                z_index=20,
-                font_role="publisher_heading",
-                font_family="DFYuan-W5",
-                vertical_align="top",
+            replace(
+                heading,
+                content={
+                    **heading.content,
+                    **shared_content,
+                    "layout_role": "heading",
+                },
             )
         )
 
-    detail_lines = tuple(
-        value.strip()
-        for value in (
-            project.metadata.price,
-            project.metadata.publication_place,
-        )
-        if value.strip()
-    )
-    if detail_lines:
-        details_rect = RectMm(
-            info_x,
-            safe.y_mm + safe.height_mm * 0.064,
-            info_width,
-            safe.height_mm * 0.105,
+    if info_layout.details_rect is not None:
+        details = text_element(
+            "back-publisher-details",
+            Region.BACK,
+            info_layout.details_rect,
+            "\n".join(info_layout.detail_lines),
+            info_layout.details_font_pt,
+            align="left",
+            z_index=20,
+            font_role="publisher_details",
+            font_family="DFPYuanW3-GB",
+            vertical_align="top",
+            line_spacing=1.12,
         )
         elements.append(
-            text_element(
-                "back-publisher-details",
-                Region.BACK,
-                details_rect,
-                "\n".join(detail_lines),
-                6.5,
-                align="left",
-                z_index=20,
-                font_role="publisher_details",
-                font_family="DFYuan-W3",
-                vertical_align="top",
-                line_spacing=1.15,
+            replace(
+                details,
+                content={
+                    **details.content,
+                    **shared_content,
+                    "layout_role": "details",
+                    "line_spacing_mm": info_layout.details_line_spacing_mm,
+                },
             )
         )
     return tuple(elements)
@@ -493,6 +502,14 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
     for warning in new_warnings:
         if warning not in warnings:
             warnings.append(warning)
+    for element in generated:
+        layout_warnings = element.content.get("layout_warnings", ())
+        if not isinstance(layout_warnings, (list, tuple)):
+            continue
+        for warning in layout_warnings:
+            text = str(warning).strip()
+            if text and text not in warnings:
+                warnings.append(text)
     if warnings:
         background["warnings"] = warnings
     else:
