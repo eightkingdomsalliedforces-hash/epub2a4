@@ -192,19 +192,18 @@ class CoverCanvas(QGraphicsView):
         self._syncing_group_selection = True
         try:
             self.scene().clearSelection()
-            if element_id is None:
-                return
-            try:
-                item = self.items_by_id[element_id]
-            except KeyError as exc:
-                raise KeyError(f"找不到畫布元素：{element_id}") from exc
-            for member_id in self.group_members_by_element.get(
-                element_id, (element_id,)
-            ):
-                member = self.items_by_id.get(member_id)
-                if member is not None:
-                    member.setSelected(True)
-            self.centerOn(item)
+            if element_id is not None:
+                try:
+                    item = self.items_by_id[element_id]
+                except KeyError as exc:
+                    raise KeyError(f"找不到畫布元素：{element_id}") from exc
+                for member_id in self.group_members_by_element.get(
+                    element_id, (element_id,)
+                ):
+                    member = self.items_by_id.get(member_id)
+                    if member is not None:
+                        member.setSelected(True)
+                self.centerOn(item)
         finally:
             self._syncing_group_selection = False
         self.element_selected.emit(element_id)
