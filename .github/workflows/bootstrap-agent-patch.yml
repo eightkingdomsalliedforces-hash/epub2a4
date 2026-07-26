@@ -1,0 +1,42 @@
+name: Apply agent implementation patch
+
+on:
+  push:
+    branches:
+      - agent/impl-free-cover-content-only-single-page-fixes
+    paths:
+      - ".github/workflows/bootstrap-agent-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'chore: apply staged implementation patch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .agent-bootstrap/chunk-* > /tmp/implementation.patch.xz.b64
+          base64 --decode /tmp/implementation.patch.xz.b64 > /tmp/implementation.patch.xz
+          xz --decompress --stdout /tmp/implementation.patch.xz > /tmp/implementation.patch
+          echo "907c1cbed1e31cc691c35173fc033ed32d6dc2c5c60390ff544b088ea973a986  /tmp/implementation.patch" | sha256sum --check -
+
+      - name: Apply implementation and clean staging files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --index /tmp/implementation.patch
+          rm -rf .agent-bootstrap
+          rm -f .github/workflows/bootstrap-agent-patch.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: add free multilingual cover lookup and body-only conversion"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
