@@ -83,3 +83,18 @@ def test_medium_back_cover_remains_until_user_confirms_it(cover_epub_factory) ->
         "OEBPS/Images/back.png"
     ]
     assert [block.resource_path for block in confirmed.blocks if isinstance(block, ImageBlock)] == []
+
+
+def test_empty_spine_document_before_body_does_not_create_leading_page_break(
+    cover_epub_factory,
+) -> None:
+    from epub_a4_word.models import PageBreakBlock
+
+    book = parse_epub(cover_epub_factory(leading_empty=True))
+
+    assert [block.text for block in book.blocks if isinstance(block, TextBlock)] == [
+        "第一章",
+        "唯一正文內容。",
+    ]
+    assert book.blocks
+    assert not isinstance(book.blocks[0], PageBreakBlock)

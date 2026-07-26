@@ -271,12 +271,14 @@ def parse_epub(
             if document_path not in names:
                 book.warnings.append(f"找不到章節檔案：{document_path}")
                 continue
-            if emitted_document:
-                book.blocks.append(PageBreakBlock())
             raw = archive.read(document_path)
             parser = "xml" if "xml" in media_type else "lxml"
             soup = BeautifulSoup(raw, parser)
             document_blocks = list(_xhtml_blocks(soup, document_path, names, book.warnings))
+            if not document_blocks:
+                continue
+            if emitted_document:
+                book.blocks.append(PageBreakBlock())
             book.blocks.extend(document_blocks)
             emitted_document = True
 
