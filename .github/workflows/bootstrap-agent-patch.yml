@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - ".github/workflows/bootstrap-agent-patch.yml"
-      - ".agent-bootstrap/**"
 
 permissions:
   contents: write
@@ -20,28 +19,22 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
-      - name: Verify chunk 00
-        run: echo "abc6573e34f3ebb49f9e15fbeaf2bd2e42b8d43092a62712085ec6fcf0f737fe  .agent-bootstrap/chunk-00" | sha256sum --check -
-      - name: Verify chunk 01
-        run: echo "71f9a538cbe905979d3977dffbc9fa278ff049020a318010044bd0deeb308141  .agent-bootstrap/chunk-01" | sha256sum --check -
-      - name: Verify chunk 02
-        run: echo "45c3c0972398fd4c63f847985b2d9c9b22ce4eedc44376c82972b2970ddae866  .agent-bootstrap/chunk-02" | sha256sum --check -
-      - name: Verify chunk 03
-        run: echo "3f9b93e7009e2854749b86aa452af36ff6ca09b7cc7096672a311bb9a3a855af  .agent-bootstrap/chunk-03" | sha256sum --check -
-      - name: Verify chunk 04
-        run: echo "0fd4d74e4740a6927ef5b00dcf8017079ee656e8349601bef7baa1891ca585df  .agent-bootstrap/chunk-04" | sha256sum --check -
-      - name: Verify chunk 05
-        run: echo "3f055e71876c9a11e1bf326bcda102adef729f670ebcf919195e810465f3f303  .agent-bootstrap/chunk-05" | sha256sum --check -
-      - name: Verify chunk 06
-        run: echo "e2462808732c3a7ad16bb8e07df7ab6c3be10eeb3e4739afa3c2fb1b14a8f572  .agent-bootstrap/chunk-06" | sha256sum --check -
-      - name: Verify chunk 07
-        run: echo "ba129bfbff6ef9a03ec97b823c1c1e4ac19c7b6db2228a805a554efbbf869a2b  .agent-bootstrap/chunk-07" | sha256sum --check -
-      - name: Verify chunk 08
-        run: echo "53dba994c785eda8266f03834cd8b53753086eb51c4c49fd1d1d20199771421b  .agent-bootstrap/chunk-08" | sha256sum --check -
-      - name: Verify chunk 09
-        run: echo "ac0bf9f7c1473fa3fcefc1250f8d2b960d29c092b323a590346730210cb9b38c  .agent-bootstrap/chunk-09" | sha256sum --check -
+      - name: Verify staged chunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "abc6573e34f3ebb49f9e15fbeaf2bd2e42b8d43092a62712085ec6fcf0f737fe  .agent-bootstrap/chunk-00" | sha256sum --check -
+          echo "71f9a538cbe905979d3977dffbc9fa278ff049020a318010044bd0deeb308141  .agent-bootstrap/chunk-01" | sha256sum --check -
+          echo "45c3c0972398fd4c63f847985b2d9c9b22ce4eedc44376c82972b2970ddae866  .agent-bootstrap/chunk-02" | sha256sum --check -
+          echo "3f9b93e7009e2854749b86aa452af36ff6ca09b7cc7096672a311bb9a3a855af  .agent-bootstrap/chunk-03" | sha256sum --check -
+          echo "0fd4d74e4740a6927ef5b00dcf8017079ee656e8349601bef7baa1891ca585df  .agent-bootstrap/chunk-04" | sha256sum --check -
+          echo "3f055e71876c9a11e1bf326bcda102adef729f670ebcf919195e810465f3f303  .agent-bootstrap/chunk-05" | sha256sum --check -
+          echo "e2462808732c3a7ad16bb8e07df7ab6c3be10eeb3e4739afa3c2fb1b14a8f572  .agent-bootstrap/chunk-06" | sha256sum --check -
+          echo "ba129bfbff6ef9a03ec97b823c1c1e4ac19c7b6db2228a805a554efbbf869a2b  .agent-bootstrap/chunk-07" | sha256sum --check -
+          echo "53dba994c785eda8266f03834cd8b53753086eb51c4c49fd1d1d20199771421b  .agent-bootstrap/chunk-08" | sha256sum --check -
+          echo "ac0bf9f7c1473fa3fcefc1250f8d2b960d29c092b323a590346730210cb9b38c  .agent-bootstrap/chunk-09" | sha256sum --check -
 
-      - name: Reconstruct patch
+      - name: Reconstruct and apply patch
         shell: bash
         run: |
           set -euo pipefail
@@ -49,19 +42,15 @@ jobs:
           base64 --decode /tmp/implementation.patch.xz.b64 > /tmp/implementation.patch.xz
           xz --decompress --stdout /tmp/implementation.patch.xz > /tmp/implementation.patch
           echo "907c1cbed1e31cc691c35173fc033ed32d6dc2c5c60390ff544b088ea973a986  /tmp/implementation.patch" | sha256sum --check -
+          git apply --check /tmp/implementation.patch
+          git apply --index /tmp/implementation.patch
 
-      - name: Check patch applies
-        run: git apply --check /tmp/implementation.patch
-
-      - name: Apply patch
-        run: git apply --index /tmp/implementation.patch
-
-      - name: Commit implementation and remove staging files
+      - name: Commit non-workflow implementation
         shell: bash
         run: |
           set -euo pipefail
+          git checkout HEAD -- .github/workflows/desktop.yml .github/workflows/windows-portable.yml
           rm -rf .agent-bootstrap
-          rm -f .github/workflows/bootstrap-agent-patch.yml
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
