@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from PIL import Image
@@ -17,6 +18,14 @@ from epub_a4_word.cover.models import (
 from epub_a4_word.cover.project_io import dumps_project, loads_project
 from epub_a4_word_desktop.cover.controller import CoverController
 from epub_a4_word_desktop.cover.models import patch_element
+
+
+class CapturingPool:
+    def __init__(self) -> None:
+        self.worker = None
+
+    def start(self, worker) -> None:
+        self.worker = worker
 
 
 def make_project(tmp_path: Path) -> CoverProject:
@@ -142,3 +151,52 @@ def test_replace_project_with_clear_history_disables_undo(tmp_path: Path) -> Non
     assert controller.can_undo is True
     controller.replace_project(original, clear_history=True)
     assert controller.can_undo is False
+
+
+def test_editor_preview_excludes_interactive_items_to_avoid_ghosting(tmp_path: Path) -> None:
+    image_path = make_png(tmp_path / "interactive.png")
+    project = make_project(tmp_path)
+    project = replace(
+        project,
+        elements=project.elements
+        + (
+            CoverElement(
+                id="front-image",
+                kind=ElementKind.IMAGE,
+                region=Region.FRONT,
+                transform=ElementTransform(116.0, 3.0, 105.0, 148.0),
+                z_index=0,
+                content={"path": str(image_path), "fit": "cover"},
+            ),
+            CoverElement(
+                id="back-barcode",
+                kind=ElementKind.BARCODE_PLACEHOLDER,
+                region=Region.BACK,
+                transform=ElementTransform(8.0, 8.0, 38.0, 18.0),
+                z_index=10,
+                content={"isbn": "9780306406157"},
+            ),
+            CoverElement(
+                id="background-shape",
+                kind=ElementKind.SHAPE,
+                region=Region.BACK,
+                transform=ElementTransform(3.0, 3.0, 105.0, 148.0),
+                z_index=-10,
+                content={"shape": "rectangle", "fill": "#ffffff", "stroke": None},
+            ),
+        ),
+    )
+    pool = CapturingPool()
+    controller = CoverController(
+        service=object(),
+        pool=pool,
+        working_dir=tmp_path,
+        auto_preview=False,
+    )
+    controller.replace_project(dumps_project(project), clear_history=True)
+
+    controller._start_preview()
+
+    assert pool.worker is not None
+    preview_project = loads_project(pool.worker.project_json)
+    assert tuple(element.id for element in preview_project.elements) == ("background-shape",)
