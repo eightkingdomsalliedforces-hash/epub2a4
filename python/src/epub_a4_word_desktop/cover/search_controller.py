@@ -65,6 +65,7 @@ class SharedSearchFacade:
         manual_alias: str = "",
         accepted_aliases: tuple[ResolvedAlias, ...] = (),
         ignored_alias_keys: frozenset[str] = frozenset(),
+        exhaustive: bool = True,
     ):
         return self.pipeline.search(
             metadata,
@@ -73,6 +74,7 @@ class SharedSearchFacade:
             manual_alias=manual_alias,
             accepted_aliases=accepted_aliases,
             ignored_alias_keys=ignored_alias_keys,
+            exhaustive=exhaustive,
         )
 
     def search_general(
@@ -173,6 +175,7 @@ class SearchController(QObject):
         manual_alias: str = "",
         accepted_aliases: tuple[ResolvedAlias, ...] = (),
         ignored_alias_keys: frozenset[str] = frozenset(),
+        exhaustive: bool = True,
     ) -> None:
         credential = self.stored_credential()
         self._start_search(
@@ -184,6 +187,7 @@ class SearchController(QObject):
                 manual_alias,
                 accepted_aliases,
                 ignored_alias_keys,
+                exhaustive,
             ),
         )
 

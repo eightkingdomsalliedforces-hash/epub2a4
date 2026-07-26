@@ -54,3 +54,11 @@ def test_invalid_conversion_payload_does_not_switch_route(qtbot) -> None:
     with pytest.raises(ValueError, match="缺少"):
         window.navigate(AppRoute.COVER, {"source_path": "/tmp/book.epub"})
     assert window.current_route is AppRoute.HOME
+
+
+def test_cover_sidebars_are_scrollable_instead_of_forcing_window_height(qtbot) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    assert window.cover_page.left_scroll.widgetResizable()
+    assert window.cover_page.right_scroll.widgetResizable()

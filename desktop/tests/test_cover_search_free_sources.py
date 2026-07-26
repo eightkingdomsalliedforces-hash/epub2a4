@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
+
 from epub_a4_word.cover.models import CoverMetadata, CoverProject, ImageMode, TrimSize
 from epub_a4_word.cover.project_io import dumps_project
 from epub_a4_word_desktop.cover.search_controller import SearchController
@@ -119,3 +121,57 @@ def test_ignoring_pending_alias_removes_only_that_row(qtbot, tmp_path) -> None:
 
     assert alias_key(first) in panel.ignored_alias_keys
     assert [row.alias for row in panel.alias_rows] == [second]
+
+
+def test_selecting_candidate_has_visible_feedback_and_visible_apply_action(
+    qtbot, tmp_path, monkeypatch
+) -> None:
+    from epub_a4_word.cover.search.models import (
+        CandidateCategory,
+        SearchCandidate,
+        SearchKind,
+        SearchResponse,
+    )
+    from epub_a4_word_desktop.cover.search_panel import CandidateCard
+
+    monkeypatch.setattr(CandidateCard, "_load_preview", lambda self: None)
+    controller = SearchController()
+    panel = CoverSearchPanel(controller, auto_search=False)
+    qtbot.addWidget(panel)
+    panel.bind_project(_project_json(tmp_path))
+    candidate = SearchCandidate(
+        provider="open_library",
+        candidate_id="OL1W",
+        query_kind=SearchKind.FRONT,
+        proposed_category=CandidateCategory.FRONT,
+        title="魔法禁書目錄",
+        author="鎌池和馬",
+        isbn="",
+        preview_url="https://covers.openlibrary.org/b/id/1-M.jpg",
+        image_url="https://covers.openlibrary.org/b/id/1-L.jpg",
+        source_page="https://openlibrary.org/works/OL1W",
+        media_type="image/jpeg",
+    )
+
+    panel._results_ready("public", SearchResponse((candidate,)))
+    card = panel.cards[0]
+    panel.show()
+    qtbot.waitUntil(panel.isVisible)
+    qtbot.mouseClick(card.choose_button, Qt.MouseButton.LeftButton)
+
+    assert panel.selected["front"] == candidate
+    assert "已選" in card.choose_button.text()
+    assert panel.apply_segmented_button.isEnabled()
+    assert panel.selection_box.isVisibleTo(panel)
+    assert "套用" in panel.apply_segmented_button.text()
+
+
+def test_search_panel_explains_back_cover_sources(qtbot, tmp_path) -> None:
+    controller = SearchController()
+    panel = CoverSearchPanel(controller, auto_search=False)
+    qtbot.addWidget(panel)
+    panel.bind_project(_project_json(tmp_path))
+
+    assert "公開書庫通常只提供正面" in panel.back_cover_help.text()
+    assert "EPUB" in panel.back_cover_help.text()
+    assert "本機" in panel.back_cover_help.text()

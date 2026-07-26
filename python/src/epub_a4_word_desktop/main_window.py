@@ -3,10 +3,11 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from PySide6.QtWidgets import QMainWindow, QStackedWidget
+from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
 
 from .pages import CoverPage, ConverterPage, HomePage
 from .settings.paths import RuntimePaths
+from .window_geometry import fit_initial_window
 
 
 class AppRoute(StrEnum):
@@ -20,7 +21,18 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.runtime_paths = runtime_paths
         self.setWindowTitle("EPUB／Word 排版與封面工具")
-        self.resize(1280, 820)
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            self.resize(1280, 820)
+        else:
+            available = screen.availableGeometry()
+            geometry = fit_initial_window(
+                available_x=available.x(),
+                available_y=available.y(),
+                available_width=available.width(),
+                available_height=available.height(),
+            )
+            self.setGeometry(geometry.x, geometry.y, geometry.width, geometry.height)
         self.stack = QStackedWidget(self)
         self.stack.setObjectName("main-page-stack")
         self.setCentralWidget(self.stack)
