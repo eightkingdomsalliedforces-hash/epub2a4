@@ -26,6 +26,15 @@ required = [
     "app/src/main/AndroidManifest.xml",
     "app/src/main/python/android_bridge.py",
     "python/src/epub_a4_word/__init__.py",
+    "python/src/epub_a4_word/epub_structure.py",
+    "python/src/epub_a4_word/cover/search/query_plan.py",
+    "python/src/epub_a4_word/cover/search/wikidata.py",
+    "python/src/epub_a4_word/cover/search/gutendex.py",
+    "python/src/epub_a4_word/cover/search/alias_cache.py",
+    "python/src/epub_a4_word/cover/search/pipeline.py",
+    "python/src/epub_a4_word_desktop/cover/search_controller.py",
+    "python/src/epub_a4_word_desktop/cover/search_panel.py",
+    "python/src/epub_a4_word_desktop/pages/converter_page.py",
     "app/src/main/java/tw/daniel/epubword/MainActivity.kt",
     "app/src/main/java/tw/daniel/epubword/ui/ConverterScreen.kt",
     "app/src/main/java/tw/daniel/epubword/ui/ConversionViewModel.kt",
@@ -157,4 +166,5 @@ print("- API 24–36")
 print("- arm64-v8a only")
 print("- no network or broad storage permissions")
 print("- shared, desktop, and Android bridge Python sources parse successfully")
+print("- EPUB cover-role and free multilingual search modules are present")
 print("- EPUB and DOCX fixtures are valid ZIP containers")

@@ -240,10 +240,11 @@ def test_writer_creates_one_a5_page_per_content_page(tmp_path: Path) -> None:
     section = document.sections[0]
     assert abs(section.page_width.cm - 14.8) < 0.02
     assert abs(section.page_height.cm - 21.0) < 0.02
-    assert len(document.tables) == 2
-    assert all(len(table.rows) == 1 for table in document.tables)
-    assert all(len(row.cells) == 1 for table in document.tables for row in table.rows)
-    assert [table.cell(0, 0).text.strip() for table in document.tables] == ["A5 第一頁", "A5 第二頁"]
+    assert len(document.tables) == 1
+    table = document.tables[0]
+    assert len(table.rows) == 2
+    assert all(len(row.cells) == 1 for row in table.rows)
+    assert [row.cells[0].text.strip() for row in table.rows] == ["A5 第一頁", "A5 第二頁"]
 
 
 def test_writer_creates_one_4x6_page_per_content_page(tmp_path: Path) -> None:
@@ -263,10 +264,11 @@ def test_writer_creates_one_4x6_page_per_content_page(tmp_path: Path) -> None:
     section = document.sections[0]
     assert abs(section.page_width.cm - 10.16) < 0.02
     assert abs(section.page_height.cm - 15.24) < 0.02
-    assert len(document.tables) == 2
-    assert all(len(table.rows) == 1 for table in document.tables)
-    assert all(len(row.cells) == 1 for table in document.tables for row in table.rows)
-    assert [table.cell(0, 0).text.strip() for table in document.tables] == ["4×6 第一頁", "4×6 第二頁"]
+    assert len(document.tables) == 1
+    table = document.tables[0]
+    assert len(table.rows) == 2
+    assert all(len(row.cells) == 1 for row in table.rows)
+    assert [row.cells[0].text.strip() for row in table.rows] == ["4×6 第一頁", "4×6 第二頁"]
 
 
 def test_writer_renders_single_a5_without_blank_pages(tmp_path: Path) -> None:

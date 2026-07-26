@@ -33,6 +33,7 @@ _SETTING_FIELDS = {
     "paragraph_spacing_pt",
     "page_numbers",
     "cut_guides",
+    "content_only",
 }
 
 
@@ -132,10 +133,19 @@ def convert_file(
 ) -> dict[str, Any]:
     source, output, source_type = _validate_paths(input_path, output_path)
     options = _decode_options(options_json)
+    content_only_value = options.pop("content_only", True)
+    if not isinstance(content_only_value, bool):
+        raise ValueError("content_only 必須是布林值。")
     settings = _settings_for(source_type, options)
     progress = _ProgressAdapter(progress_callback)
     progress.check()
-    result = convert_input(source, output, settings=settings, progress=progress)
+    result = convert_input(
+        source,
+        output,
+        settings=settings,
+        progress=progress,
+        content_only=content_only_value,
+    )
     progress.check()
     return _result_dict(result)
 

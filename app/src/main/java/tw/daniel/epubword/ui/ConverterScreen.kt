@@ -56,6 +56,7 @@ fun ConverterScreen(
     onHeadingFontSize: (Double) -> Unit,
     onPageNumbers: (Boolean) -> Unit,
     onCutGuides: (Boolean) -> Unit,
+    onContentOnly: (Boolean) -> Unit,
     onConvert: () -> Unit,
     onCancel: () -> Unit,
     onSave: () -> Unit,
@@ -164,6 +165,18 @@ fun ConverterScreen(
                     )
                 }
 
+                if (state.inputKind != InputKind.DOCX) {
+                    SettingCheck(
+                        label = "只輸出內文，不含封面與封底",
+                        checked = state.options.contentOnly,
+                        enabled = !state.isBusy,
+                        onCheckedChange = onContentOnly,
+                    )
+                    Text(
+                        "只排除已明確辨識或由你確認的 EPUB 封面頁，不會刪除正文插圖。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 SettingCheck(
                     label = "顯示頁碼",
                     checked = state.options.pageNumbers,

@@ -1,21 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from pathlib import Path
 import re
+import tempfile
 from typing import Mapping
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal, Slot
 
 from epub_a4_word.cover.search import (
-    GeneralCoverSearch,
-    GoogleBooksProvider,
-    GoogleCustomSearchProvider,
+    AliasCache,
+    BookCoverSearchPipeline,
     ImageDownloadError,
     JsonHttpClient,
-    OpenLibraryProvider,
+    ProviderSelection,
     ProviderCredential,
-    PublicBookSearch,
+    ResolvedAlias,
     SearchCandidate,
     SearchCredentialError,
     SearchKind,
@@ -23,12 +22,11 @@ from epub_a4_word.cover.search import (
     SearchTimeoutError,
     download_candidate,
 )
-from epub_a4_word.cover.search.models import CoverSearchRequest
 
 from ..settings.credentials import LayeredCredentialStore
 
 ERROR_MESSAGES = {
-    SearchCredentialError: "Google 圖片搜尋憑證無效，請重新設定。",
+    SearchCredentialError: "Google Books API Key 無效，請重新設定。",
     SearchTimeoutError: "搜尋逾時，請檢查網路後重試。",
     ImageDownloadError: "選取的圖片無法下載或格式不受支援。",
 }
@@ -41,29 +39,36 @@ def _message_for(exc: Exception) -> str:
 
 
 class SharedSearchFacade:
-    def __init__(self, http_client: JsonHttpClient | None = None) -> None:
+    def __init__(
+        self,
+        http_client: JsonHttpClient | None = None,
+        *,
+        alias_cache_path: Path | str | None = None,
+        pipeline: BookCoverSearchPipeline | None = None,
+    ) -> None:
         self.http = http_client or JsonHttpClient()
-        self.open_library = OpenLibraryProvider(self.http)
-        self.general = GeneralCoverSearch(GoogleCustomSearchProvider(self.http))
+        if pipeline is None:
+            cache_path = Path(alias_cache_path) if alias_cache_path is not None else (
+                Path(tempfile.gettempdir()) / f"epub2a4-aliases-{id(self)}.json"
+            )
+            pipeline = BookCoverSearchPipeline(
+                self.http,
+                alias_cache=AliasCache(cache_path),
+            )
+        self.pipeline = pipeline
 
     def search_public(
         self,
         metadata: Mapping[str, object],
         credential: ProviderCredential | None = None,
+        selection: ProviderSelection | None = None,
+        manual_alias: str = "",
     ):
-        api_key = credential.api_key if credential is not None else ""
-        public = PublicBookSearch(
-            (GoogleBooksProvider(self.http, api_key=api_key), self.open_library)
-        )
-        return public.search(
-            CoverSearchRequest(
-                kind=SearchKind.FRONT,
-                isbn=str(metadata.get("isbn", "")),
-                title=str(metadata.get("title", "")),
-                author=str(metadata.get("author", "")),
-                locale=str(metadata.get("language", "") or "zh-TW"),
-                max_results=20,
-            )
+        return self.pipeline.search(
+            metadata,
+            selection=selection or ProviderSelection(),
+            google_api_key=credential.api_key if credential is not None else "",
+            manual_alias=manual_alias,
         )
 
     def search_general(
@@ -71,14 +76,25 @@ class SharedSearchFacade:
         metadata: Mapping[str, object],
         credential: ProviderCredential,
     ):
-        return self.general.search_all(
-            title=str(metadata.get("title", "")),
-            author=str(metadata.get("author", "")),
-            isbn=str(metadata.get("isbn", "")),
-            locale=str(metadata.get("language", "") or "zh-TW"),
-            credential=credential,
-            max_results=10,
+        # Compatibility entry point for one release. The active workflow no
+        # longer calls Google Custom Search or requires a Search Engine ID.
+        return self.search_public(
+            metadata,
+            credential,
+            ProviderSelection(),
         )
+
+    def remember_alias(
+        self,
+        metadata: Mapping[str, object],
+        alias: ResolvedAlias,
+        *,
+        isbn: str = "",
+    ) -> None:
+        self.pipeline.remember_alias(metadata, alias, isbn=isbn)
+
+    def clear_alias_cache(self) -> None:
+        self.pipeline.clear_alias_cache()
 
     def download(self, candidate: SearchCandidate, destination: Path):
         return download_candidate(candidate, destination, self.http)
@@ -146,10 +162,21 @@ class SearchController(QObject):
         if self.credential_store:
             self.credential_store.clear()
 
-    def search_public(self, metadata: Mapping[str, object]) -> None:
+    def search_public(
+        self,
+        metadata: Mapping[str, object],
+        selection: ProviderSelection | None = None,
+        manual_alias: str = "",
+    ) -> None:
         credential = self.stored_credential()
         self._start_search(
-            "public", lambda: self.service.search_public(metadata, credential)
+            "public",
+            lambda: self.service.search_public(
+                metadata,
+                credential,
+                selection or ProviderSelection(),
+                manual_alias,
+            ),
         )
 
     def search_general(
@@ -157,11 +184,32 @@ class SearchController(QObject):
         metadata: Mapping[str, object],
         credential: ProviderCredential | None = None,
     ) -> None:
-        value = credential or self.stored_credential()
-        if value is None or not value.complete:
-            self.credential_required.emit()
-            return
+        value = credential or self.stored_credential() or ProviderCredential("")
         self._start_search("general", lambda: self.service.search_general(metadata, value))
+
+    def remember_selected_alias(
+        self,
+        metadata: Mapping[str, object],
+        candidate: SearchCandidate,
+        manual_alias: str = "",
+    ) -> None:
+        value = manual_alias.strip() or candidate.title.strip()
+        if not value:
+            return
+        self.service.remember_alias(
+            metadata,
+            ResolvedAlias(
+                value=value,
+                language=candidate.language or None,
+                source="user" if manual_alias.strip() else candidate.provider,
+                confidence="high",
+                reasons=("使用者已選用對應封面",),
+            ),
+            isbn=candidate.isbn,
+        )
+
+    def clear_alias_cache(self) -> None:
+        self.service.clear_alias_cache()
 
     def _start_search(self, mode: str, callable_) -> None:
         self._search_generations[mode] = self._search_generations.get(mode, 0) + 1

@@ -22,7 +22,11 @@ class GoogleCustomSearchProvider:
         request: CoverSearchRequest,
         credential: ProviderCredential | None,
     ) -> SearchResponse:
-        if credential is None or not credential.complete:
+        if (
+            credential is None
+            or not credential.api_key.strip()
+            or not credential.search_engine_id.strip()
+        ):
             raise SearchCredentialError("請先輸入 API Key 與 Search Engine ID。")
         params = {
             "key": credential.api_key,

@@ -41,6 +41,9 @@ def test_windows_workflow_builds_smokes_and_archives_portable_app() -> None:
     assert "EPUB2A4-Windows-Portable-x64.zip" in text
     assert "Get-FileHash" in text
     assert "actions/upload-artifact" in text
+    assert "test_single_page_blank_page_regression.py" in text
+    assert "test_search_pipeline.py" in text
+    assert "test_service.py" in text
 
 
 def test_entry_supports_packaged_smoke_without_changing_legacy_order() -> None:

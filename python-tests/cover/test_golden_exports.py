@@ -160,7 +160,7 @@ def test_schema_and_status_documentation_are_present() -> None:
     assert "schema_version" in schema
     assert "working_dir" in schema
     assert "back | spine | front" in schema
-    assert "Windows 封面搜尋" in readme
-    assert "Windows portable EXE" in readme
+    assert "免費封面搜尋" in readme
+    assert "Windows 可攜版" in readme
     assert "Windows portable EXE" in status
-    assert "Android UI" in status
+    assert "Android 實體裝置" in status

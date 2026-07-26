@@ -8,6 +8,7 @@ from zipfile import BadZipFile, ZipFile
 
 from bs4 import BeautifulSoup, NavigableString, Tag
 
+from .epub_structure import inspect_epub_structure
 from .models import ImageBlock, PageBreakBlock, ParsedBook, TextBlock, TextRun
 from .pagination import LayoutSettings, paginate
 
@@ -206,30 +207,32 @@ def _xhtml_blocks(soup: BeautifulSoup, document_path: str, available: set[str], 
     yield from walk(body)
 
 
-def parse_epub(path: Path | str) -> ParsedBook:
+def parse_epub(
+    path: Path | str,
+    *,
+    content_only: bool = True,
+    confirmed_back_cover_page: str | None = None,
+) -> ParsedBook:
     source = Path(path)
     if not source.exists():
         raise EpubError(f"找不到 EPUB：{source}")
 
     try:
+        structure = inspect_epub_structure(source)
         archive = ZipFile(source)
     except BadZipFile as exc:
         raise EpubError("檔案不是有效的 EPUB/ZIP。") from exc
+    except ValueError as exc:
+        raise EpubError(str(exc)) from exc
 
     with archive:
+        if not structure.spine_ids:
+            raise EpubError("EPUB 沒有可讀取的書脊順序。")
         names = set(archive.namelist())
         try:
-            container = BeautifulSoup(archive.read("META-INF/container.xml"), "xml")
+            package = BeautifulSoup(archive.read(structure.opf_path), "xml")
         except KeyError as exc:
-            raise EpubError("EPUB 缺少 META-INF/container.xml。") from exc
-        rootfile = container.find("rootfile")
-        if rootfile is None or not rootfile.get("full-path"):
-            raise EpubError("EPUB container.xml 沒有 OPF 路徑。")
-        opf_path = str(rootfile.get("full-path"))
-        try:
-            package = BeautifulSoup(archive.read(opf_path), "xml")
-        except KeyError as exc:
-            raise EpubError(f"EPUB 缺少套件檔：{opf_path}") from exc
+            raise EpubError(f"EPUB 缺少套件檔：{structure.opf_path}") from exc
 
         book = ParsedBook(source_path=source)
         metadata = package.find("metadata")
@@ -238,37 +241,44 @@ def parse_epub(path: Path | str) -> ParsedBook:
             book.author = _first_text(metadata.find(lambda tag: tag.name and tag.name.split(":")[-1] == "creator"))
             book.language = _first_text(metadata.find(lambda tag: tag.name and tag.name.split(":")[-1] == "language"))
 
-        manifest: dict[str, tuple[str, str]] = {}
-        for item in package.find_all("item"):
-            item_id = item.get("id")
-            href = item.get("href")
-            if not item_id or not href:
-                continue
-            resolved = _normalized_archive_path(opf_path, href)
-            manifest[item_id] = (resolved, item.get("media-type", ""))
-            if resolved in names and (item.get("media-type", "").startswith("image/") or resolved.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"))):
-                book.resources[resolved] = archive.read(resolved)
-                book.media_types[resolved] = item.get("media-type", "")
+        for item in structure.manifest.values():
+            if item.href in names and (
+                item.media_type.startswith("image/")
+                or item.href.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"))
+            ):
+                book.resources[item.href] = archive.read(item.href)
+                book.media_types[item.href] = item.media_type
 
-        spine = package.find("spine")
-        spine_ids = [ref.get("idref") for ref in spine.find_all("itemref")] if spine else []
-        if not spine_ids:
-            raise EpubError("EPUB 沒有可讀取的書脊順序。")
+        excluded_pages: set[str] = set()
+        if content_only:
+            detection = structure.detection
+            if detection.front_page:
+                excluded_pages.add(detection.front_page)
+            if detection.back_confidence.value == "high" and detection.back_page:
+                excluded_pages.add(detection.back_page)
+            if confirmed_back_cover_page:
+                excluded_pages.add(confirmed_back_cover_page)
 
-        for index, item_id in enumerate(spine_ids):
-            if not item_id or item_id not in manifest:
+        emitted_document = False
+        for item_id in structure.spine_ids:
+            item = structure.manifest.get(item_id)
+            if item is None:
                 book.warnings.append(f"書脊項目不存在於 manifest：{item_id}")
                 continue
-            document_path, media_type = manifest[item_id]
+            document_path, media_type = item.href, item.media_type
+            if document_path in excluded_pages:
+                continue
             if document_path not in names:
                 book.warnings.append(f"找不到章節檔案：{document_path}")
                 continue
-            if index > 0:
+            if emitted_document:
                 book.blocks.append(PageBreakBlock())
             raw = archive.read(document_path)
             parser = "xml" if "xml" in media_type else "lxml"
             soup = BeautifulSoup(raw, parser)
-            book.blocks.extend(_xhtml_blocks(soup, document_path, names, book.warnings))
+            document_blocks = list(_xhtml_blocks(soup, document_path, names, book.warnings))
+            book.blocks.extend(document_blocks)
+            emitted_document = True
 
         # Some EPUBs omit image resources from the manifest. Retain referenced image bytes anyway.
         for block in book.blocks:
@@ -284,10 +294,18 @@ def parse_epub(path: Path | str) -> ParsedBook:
 
 
 def estimate_epub_page_count(
-    source_path: Path | str, settings: LayoutSettings
+    source_path: Path | str,
+    settings: LayoutSettings,
+    *,
+    content_only: bool = True,
+    confirmed_back_cover_page: str | None = None,
 ) -> int:
     """Estimate logical pages when cover editing starts directly from an EPUB."""
 
-    book = parse_epub(source_path)
+    book = parse_epub(
+        source_path,
+        content_only=content_only,
+        confirmed_back_cover_page=confirmed_back_cover_page,
+    )
     pages = paginate(book.blocks, settings, image_sizes={})
     return max(1, len(pages))

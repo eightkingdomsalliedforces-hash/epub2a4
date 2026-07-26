@@ -32,6 +32,7 @@ class ConversionRequest:
     page_numbers: bool = True
     cut_guides: bool = True
     output_mark_mode: str = "normal"
+    content_only: bool = True
 
     def validate(self) -> None:
         source = Path(self.input_path)

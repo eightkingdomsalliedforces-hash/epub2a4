@@ -32,7 +32,7 @@ def test_inspect_source_returns_json_safe_metadata(fixtures_dir: Path) -> None:
     result = inspect_source(str(source))
     assert result["source_type"] == "epub"
     assert result["metadata"]["title"] == "測試 EPUB"
-    assert result["metadata"]["embedded_images"][0]["role"] == "cover"
+    assert result["metadata"]["embedded_images"][0]["role"] == "front_cover"
     json.dumps(result, ensure_ascii=False)
 
 
@@ -44,6 +44,8 @@ def test_new_project_uses_working_assets_and_never_writes_beside_source(
     project = loads_project(new_project(str(source), _settings(tmp_path)))
 
     assert Path(project.working_dir) == (tmp_path / "work").resolve()
+    from epub_a4_word.cover.models import ImageMode
+    assert project.image_mode is ImageMode.FRONT_ONLY
     image = project.elements_by_id["source-cover-image"]
     image_path = Path(str(image.content["path"]))
     assert image_path.is_file()
@@ -120,3 +122,74 @@ def test_new_project_rejects_missing_working_dir(fixtures_dir: Path) -> None:
         assert "working_dir" in str(exc)
     else:
         raise AssertionError("missing working_dir must be rejected")
+
+
+def test_new_project_uses_separate_embedded_front_and_back_images(
+    front_back_epub_factory, tmp_path: Path
+) -> None:
+    from epub_a4_word.cover.models import ElementKind, ImageMode, Region
+
+    project = loads_project(
+        new_project(str(front_back_epub_factory()), _settings(tmp_path))
+    )
+
+    assert project.image_mode is ImageMode.SEPARATE_COVERS
+    front = project.elements_by_id["source-cover-image"]
+    back = project.elements_by_id["source-back-cover-image"]
+    assert front.region is Region.FRONT
+    assert back.region is Region.BACK
+    assert Path(str(front.content["path"])).is_file()
+    assert Path(str(back.content["path"])).is_file()
+    assert front.content["path"] != back.content["path"]
+    assert not any(
+        element.kind in {ElementKind.TEXT, ElementKind.BARCODE_PLACEHOLDER}
+        for element in project.elements
+    )
+    assert not any(element.region is Region.SPINE for element in project.elements)
+
+
+def test_medium_back_cover_candidate_is_not_used_automatically(
+    front_back_epub_factory, tmp_path: Path
+) -> None:
+    from epub_a4_word.cover.models import ImageMode
+
+    project = loads_project(
+        new_project(
+            str(front_back_epub_factory(generic_back=True)),
+            _settings(tmp_path),
+        )
+    )
+
+    assert project.image_mode is ImageMode.FRONT_ONLY
+    assert set(project.elements_by_id) == {"source-cover-image"}
+
+
+def test_confirmed_medium_back_cover_candidate_is_used(
+    front_back_epub_factory, tmp_path: Path
+) -> None:
+    from epub_a4_word.cover.models import ImageMode, Region
+
+    project = loads_project(
+        new_project(
+            str(front_back_epub_factory(generic_back=True)),
+            _settings(tmp_path, confirmed_back_cover_asset_id="back-image"),
+        )
+    )
+
+    assert project.image_mode is ImageMode.SEPARATE_COVERS
+    assert project.elements_by_id["source-back-cover-image"].region is Region.BACK
+
+
+def test_source_cover_template_preserves_separate_embedded_covers(
+    front_back_epub_factory, tmp_path: Path
+) -> None:
+    from epub_a4_word.cover.models import ImageMode
+
+    project_json = new_project(str(front_back_epub_factory()), _settings(tmp_path))
+    project = loads_project(apply_template(project_json, "minimal"))
+
+    assert project.image_mode is ImageMode.SEPARATE_COVERS
+    assert set(project.elements_by_id) == {
+        "source-cover-image",
+        "source-back-cover-image",
+    }
