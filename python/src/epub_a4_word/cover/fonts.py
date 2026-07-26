@@ -11,6 +11,10 @@ from PIL import ImageFont
 
 _FONT_SUFFIXES = frozenset({".ttf", ".otf", ".ttc"})
 _FILE_ALIASES: dict[str, tuple[str, ...]] = {
+    "dfpyuanw5gb": ("dfpyuanw5gb",),
+    "dfpyuanw5": ("dfpyuanw5gb", "dfpyuanw5"),
+    "dfpyuanw3gb": ("dfpyuanw3gb",),
+    "dfpyuanw3": ("dfpyuanw3gb", "dfpyuanw3"),
     "yuantitc": ("yuanti",),
     "pingfangtc": ("pingfang",),
     "microsoftjhengheiui": ("msjh", "msjhl"),
@@ -110,21 +114,9 @@ def _matching_font_path(families: tuple[str, ...]) -> Path | None:
         if not normalized:
             continue
         hints = (normalized,) + _FILE_ALIASES.get(normalized, ())
-        ranked: list[tuple[int, int, str, Path]] = []
-        for path, stem in file_keys:
-            for hint in hints:
-                if stem == hint:
-                    rank = 0
-                elif stem.startswith(hint) or hint.startswith(stem):
-                    rank = 1
-                elif hint in stem:
-                    rank = 2
-                else:
-                    continue
-                ranked.append((rank, abs(len(stem) - len(hint)), str(path).casefold(), path))
-                break
-        if ranked:
-            return min(ranked)[-1]
+        exact = [path for path, stem in file_keys if stem in hints]
+        if exact:
+            return min(exact, key=lambda path: str(path).casefold())
     return None
 
 
