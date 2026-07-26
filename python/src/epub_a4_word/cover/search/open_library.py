@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import threading
 import time
 
@@ -10,6 +11,17 @@ OPEN_LIBRARY_USER_AGENT = (
     "EPUB2A4-CoverTool/0.7 "
     "(+https://github.com/eightkingdomsalliedforces-hash/epub2a4)"
 )
+
+
+def _source_path(value: object) -> str:
+    key = str(value or "").strip()
+    if key.startswith("/"):
+        return key
+    if re.fullmatch(r"OL\d+W", key):
+        return f"/works/{key}"
+    if re.fullmatch(r"OL\d+M", key):
+        return f"/books/{key}"
+    return ""
 
 
 class OpenLibraryProvider:
@@ -53,8 +65,8 @@ class OpenLibraryProvider:
             if not isinstance(item, dict) or not item.get("cover_i"):
                 continue
             cover_id = int(item["cover_i"])
-            key = str(item.get("key") or "")
-            if not key.startswith("/"):
+            key = _source_path(item.get("key"))
+            if not key:
                 continue
             authors = item.get("author_name") if isinstance(item.get("author_name"), list) else []
             isbns = item.get("isbn") if isinstance(item.get("isbn"), list) else []
