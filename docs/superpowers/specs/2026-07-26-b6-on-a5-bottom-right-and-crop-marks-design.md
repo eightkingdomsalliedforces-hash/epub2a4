@@ -40,19 +40,25 @@
 - 上方裁切邊：`y=28 mm`
 - 左側裁切邊：`x=20 mm`
 
-裁切線或裁切標記必須只畫在被丟棄的上方／左側留白區，不得壓進 B6 內容。
+裁切導線固定為左上廢料區內的 L 形兩段：
+
+- 水平導線：從 `(0, 28)` 到 `(20, 28)`，只位於 B6 左側廢料區。
+- 垂直導線：從 `(20, 0)` 到 `(20, 28)`，只位於 B6 上方廢料區。
+
+兩段導線在 `(20, 28)` 相交，指出 B6 成品左上角。導線不得延伸進 `x>20 且 y>=28` 的 B6 成品區。
 
 ## 統一裁切線模型
 
-在正文排版核心新增與渲染器無關的裁切線規劃結果，例如：
+在正文排版核心新增與渲染器無關的裁切線規劃結果：
 
 ```python
 @dataclass(frozen=True)
-class CropEdge:
-    side: Literal["top", "right", "bottom", "left"]
-    position_mm: float
-    start_mm: float
-    end_mm: float
+class CropGuide:
+    x1_mm: float
+    y1_mm: float
+    x2_mm: float
+    y2_mm: float
+    role: Literal["crop", "fold"] = "crop"
 
 @dataclass(frozen=True)
 class PagePlacement:
@@ -62,7 +68,7 @@ class PagePlacement:
     content_y_mm: float
     content_width_mm: float
     content_height_mm: float
-    crop_edges: tuple[CropEdge, ...]
+    guides: tuple[CropGuide, ...]
 ```
 
 `imposition.py` 或等價核心模組負責產生 `PagePlacement`；`docx_writer.py` 只依照結果建立內容位置與線條，不自行重新計算。
@@ -72,7 +78,7 @@ class PagePlacement:
 ### `b6_on_a5`
 
 - 內容固定置於右下角。
-- 只產生 `top` 與 `left` 兩個 `CropEdge`。
+- 裁切線開啟時，只產生上述水平與垂直兩段 L 形導線。
 - 右邊與下邊因與紙張邊緣重合，不產生裁切線。
 
 ### `single_a5`
@@ -99,25 +105,25 @@ class PagePlacement:
 
 ## 裁切線視覺規則
 
-- 線條使用細黑線，預設約 `0.25–0.5 pt`。
+- 線條使用細黑線，固定為 `0.35 pt`。
 - 裁切線不得穿過正文、插圖或頁碼區域。
-- B6-on-A5 可採整段留白區切割線，或在切割邊兩端使用短裁切標記；實作時以能在 Word 與 PDF 中穩定輸出、不被表格裁切的方式為準。
+- B6-on-A5 固定使用左上廢料區內的 L 形兩段導線，不使用穿越整張紙的完整直線。
 - 正式輸出與預覽必須使用相同座標結果。
-- 使用者關閉「裁切線」時，內容位置仍保持右下角，只是不渲染線條。
+- 使用者關閉「裁切線」時，內容位置仍保持右下角，只是不渲染導線。
 
 ## 相容性與設定
 
 - 保留現有輸出模式名稱 `b6_on_a5`。
 - 不新增需要使用者理解的右下角開關。
-- 現有「正常／裁切線」設定若存在，繼續控制是否顯示裁切線；幾何位置不受該設定影響。
+- 現有「正常／裁切線」設定繼續控制是否顯示裁切線；幾何位置不受該設定影響。
 - 舊設定檔無需遷移。
 
 ## 測試要求
 
 1. 核心測試驗證 B6-on-A5 的目的矩形精確為 `(20, 28, 128, 182)`。
-2. 核心測試驗證裁切邊集合精確為 `{"top", "left"}`。
-3. 核心測試驗證不存在 `right`、`bottom` 裁切邊。
-4. DOCX 測試解析頁面與繪圖／邊框 XML，確認內容位於右下角且上、左裁切線存在。
+2. 核心測試驗證導線精確為 `(0,28)→(20,28)` 與 `(20,0)→(20,28)`。
+3. 核心測試驗證不存在右側或下側裁切導線。
+4. DOCX 測試解析頁面與繪圖／邊框 XML，確認內容位於右下角且兩段 L 形導線存在。
 5. 測試裁切線關閉時仍保持右下角位置。
 6. 為 `single_a5`、`single_4x6`、`four_up`、`signature16` 建立模式矩陣，確認每種模式的必要裁切線／折線都被渲染。
 7. Windows、macOS、Linux 共用 Python 測試全部通過。
@@ -126,7 +132,7 @@ class PagePlacement:
 ## 實作順序
 
 1. 先完成已核准的出版資訊自動堆疊與譯者欄位。
-2. 再實作正文輸出的統一 `PagePlacement`／`CropEdge` 規劃。
+2. 再實作正文輸出的統一 `PagePlacement`／`CropGuide` 規劃。
 3. 修改 `b6_on_a5` 為右下角放置。
 4. 讓 DOCX／預覽渲染所有模式的正確裁切線。
 5. 執行共享、桌面、Windows portable 與 Android 建置驗證。
