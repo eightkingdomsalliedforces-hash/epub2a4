@@ -50,15 +50,22 @@ jobs:
           xz --decompress --stdout /tmp/implementation.patch.xz > /tmp/implementation.patch
           echo "907c1cbed1e31cc691c35173fc033ed32d6dc2c5c60390ff544b088ea973a986  /tmp/implementation.patch" | sha256sum --check -
 
-      - name: Apply implementation and clean staging files
+      - name: Check patch applies
+        run: git apply --check /tmp/implementation.patch
+
+      - name: Apply patch
+        run: git apply --index /tmp/implementation.patch
+
+      - name: Commit implementation and remove staging files
         shell: bash
         run: |
           set -euo pipefail
-          git apply --index /tmp/implementation.patch
           rm -rf .agent-bootstrap
           rm -f .github/workflows/bootstrap-agent-patch.yml
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "feat: add free multilingual cover lookup and body-only conversion"
-          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+
+      - name: Push implementation branch
+        run: git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
