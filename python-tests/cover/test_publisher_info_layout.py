@@ -114,3 +114,16 @@ def test_font_matching_supports_declared_alias_without_substring_guessing(
 
     assert fonts._matching_font_path(("DFP Yuan W5",)) == intended
     assert fonts._matching_font_path(("DFPYuanW4",)) is None
+
+
+def test_font_matching_ignores_only_known_style_suffixes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    intended = tmp_path / "NotoSansCJK-Regular.ttc"
+    unrelated = tmp_path / "MyNotoSansCJKBackup.ttc"
+    intended.touch()
+    unrelated.touch()
+    monkeypatch.setattr(fonts, "_installed_font_files", lambda: (unrelated, intended))
+
+    assert fonts._matching_font_path(("Noto Sans CJK TC",)) == intended
