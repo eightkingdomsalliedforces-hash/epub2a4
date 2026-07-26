@@ -46,7 +46,6 @@ class ResolvedAlias:
 
 
 
-
 def alias_key(alias: ResolvedAlias) -> str:
     return "|".join(
         (
@@ -147,9 +146,10 @@ class SearchCandidate:
     def __post_init__(self) -> None:
         object.__setattr__(self, "query_kind", SearchKind(self.query_kind))
         object.__setattr__(self, "proposed_category", CandidateCategory(self.proposed_category))
-        normalized_isbns = valid_isbns((*self.isbns, self.isbn))
-        object.__setattr__(self, "isbns", normalized_isbns)
-        object.__setattr__(self, "isbn", preferred_isbn(normalized_isbns))
+        source_isbns = valid_isbns(self.isbns)
+        fallback_isbns = source_isbns or valid_isbns((self.isbn,))
+        object.__setattr__(self, "isbns", source_isbns or fallback_isbns)
+        object.__setattr__(self, "isbn", preferred_isbn(fallback_isbns))
         for label, value in (
             ("preview_url", self.preview_url),
             ("image_url", self.image_url),
