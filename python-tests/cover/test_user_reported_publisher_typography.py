@@ -81,8 +81,8 @@ def test_publisher_template_separates_round_heading_and_details() -> None:
     assert heading.x_mm > barcode.x_mm
     assert details.x_mm == pytest.approx(heading.x_mm)
     assert details.y_mm > heading.y_mm
-    assert heading.right_mm <= safe.right_mm
-    assert details.right_mm <= safe.right_mm
+    assert heading.x_mm + heading.width_mm <= safe.right_mm
+    assert details.x_mm + details.width_mm <= safe.right_mm
 
 
 def test_barcode_layout_places_reference_digits_and_addon() -> None:
