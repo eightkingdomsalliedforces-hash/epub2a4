@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
+import time
 from urllib.parse import urlsplit
 
 from PySide6.QtCore import QUrl, Signal, Qt
@@ -70,7 +71,10 @@ class CandidateCard(QFrame):
         self.preview.setStyleSheet("background: palette(midlight); border: 1px solid palette(mid);")
 
         self.category = QComboBox(self)
-        for value, label in _CATEGORY_LABELS.items():
+        for value, label in (
+            (CandidateCategory.FRONT, "正面封面"),
+            (CandidateCategory.BACK, "手動當作封底（來源未保證）"),
+        ):
             self.category.addItem(label, value.value)
         index = self.category.findData(candidate.proposed_category.value)
         self.category.setCurrentIndex(max(0, index))
@@ -94,9 +98,9 @@ class CandidateCard(QFrame):
         rights.setStyleSheet("font-size: 10px;")
 
         source_button = QPushButton("查看來源", self)
-        choose_button = QPushButton("選擇此圖", self)
+        self.choose_button = QPushButton("加入選取", self)
         source_button.clicked.connect(self._open_source)
-        choose_button.clicked.connect(self._choose)
+        self.choose_button.clicked.connect(self._choose)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.preview, 0, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -108,7 +112,7 @@ class CandidateCard(QFrame):
         layout.addStretch(1)
         row = QHBoxLayout()
         row.addWidget(source_button)
-        row.addWidget(choose_button)
+        row.addWidget(self.choose_button)
         layout.addLayout(row)
         self._load_preview()
 
@@ -149,6 +153,14 @@ class CandidateCard(QFrame):
     def _choose(self) -> None:
         self.selected.emit(self.candidate, str(self.category.currentData()))
 
+    def set_selected_category(self, category: CandidateCategory | None) -> None:
+        if category is None:
+            self.choose_button.setText("加入選取")
+            self.setStyleSheet("")
+            return
+        self.choose_button.setText(f"已選為{_CATEGORY_LABELS[category]} ✓")
+        self.setStyleSheet("QFrame { border: 2px solid palette(highlight); }")
+
 
 class CoverSearchPanel(QWidget):
     apply_requested = Signal(str, object)
@@ -177,18 +189,30 @@ class CoverSearchPanel(QWidget):
         self.alias_rows: list[AliasDecisionRow] = []
         self.cards: list[CandidateCard] = []
         self._columns = 0
+        self._search_started_at = 0.0
         self.network = QNetworkAccessManager(self)
 
         self.metadata_label = QLabel("建立封面專案後會自動搜尋。", self)
         self.metadata_label.setWordWrap(True)
         self.status_label = QLabel("", self)
         self.status_label.setWordWrap(True)
+        self.status_label.setMaximumHeight(64)
         self.resolution_label = QLabel("", self)
         self.resolution_label.setWordWrap(True)
+        self.resolution_label.setMaximumHeight(64)
         self.alias_box = QGroupBox("需要確認的書名別名", self)
         self.alias_box.setVisible(False)
-        self.alias_rows_layout = QVBoxLayout(self.alias_box)
-        self.alias_rows_layout.addWidget(QLabel("確認後才會使用該名稱重新搜尋。", self.alias_box))
+        alias_box_layout = QVBoxLayout(self.alias_box)
+        alias_box_layout.addWidget(QLabel("確認後才會使用該名稱重新搜尋。", self.alias_box))
+        self.alias_rows_host = QWidget(self.alias_box)
+        self.alias_rows_layout = QVBoxLayout(self.alias_rows_host)
+        self.alias_rows_layout.setContentsMargins(0, 0, 0, 0)
+        self.alias_scroll = QScrollArea(self.alias_box)
+        self.alias_scroll.setWidgetResizable(True)
+        self.alias_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.alias_scroll.setMaximumHeight(150)
+        self.alias_scroll.setWidget(self.alias_rows_host)
+        alias_box_layout.addWidget(self.alias_scroll)
 
         self.google_books_checkbox = QCheckBox("Google Books", self)
         self.open_library_checkbox = QCheckBox("Open Library", self)
@@ -205,6 +229,8 @@ class CoverSearchPanel(QWidget):
         )
         self.search_button = QPushButton("搜尋封面", self)
         self.search_button.setEnabled(False)
+        self.search_more_button = QPushButton("搜尋更多", self)
+        self.search_more_button.setEnabled(False)
         self.search_public_button = self.search_button
         self.configure_credentials_button = QPushButton("Google Books API 設定", self)
         self.clear_alias_cache_button = QPushButton("清除別名快取", self)
@@ -214,6 +240,7 @@ class CoverSearchPanel(QWidget):
         actions.addWidget(self.open_library_checkbox)
         actions.addWidget(self.gutendex_checkbox)
         actions.addWidget(self.search_button)
+        actions.addWidget(self.search_more_button)
         actions.addWidget(self.configure_credentials_button)
         actions.addWidget(self.clear_alias_cache_button)
         actions.addStretch(1)
@@ -226,14 +253,21 @@ class CoverSearchPanel(QWidget):
         self.scroll.setWidgetResizable(True)
         self.scroll.setWidget(self.grid_host)
 
-        selection_box = QGroupBox("已選素材", self)
-        self.selection_label = QLabel("尚未選擇圖片。", selection_box)
+        self.back_cover_help = QLabel(
+            "公開書庫通常只提供正面。封底會優先使用 EPUB 內建封底；沒有時請在左側「素材」選擇封底並加入本機圖片。仍可明確保留空白，匯出前會再次確認。",
+            self,
+        )
+        self.back_cover_help.setWordWrap(True)
+        self.back_cover_help.setStyleSheet("font-size: 11px;")
+
+        self.selection_box = QGroupBox("已選素材與套用", self)
+        self.selection_label = QLabel("尚未選擇圖片。", self.selection_box)
         self.selection_label.setWordWrap(True)
-        self.apply_segmented_button = QPushButton("分區編輯", selection_box)
-        self.apply_composite_button = QPushButton("合成完整書衣", selection_box)
+        self.apply_segmented_button = QPushButton("套用所選圖片到封面", self.selection_box)
+        self.apply_composite_button = QPushButton("將所選圖片合成完整書衣", self.selection_box)
         self.apply_segmented_button.setEnabled(False)
         self.apply_composite_button.setEnabled(False)
-        selection_layout = QVBoxLayout(selection_box)
+        selection_layout = QVBoxLayout(self.selection_box)
         selection_layout.addWidget(self.selection_label)
         selection_actions = QHBoxLayout()
         selection_actions.addWidget(self.apply_segmented_button)
@@ -248,10 +282,12 @@ class CoverSearchPanel(QWidget):
         layout.addWidget(self.status_label)
         layout.addWidget(self.resolution_label)
         layout.addWidget(self.alias_box)
+        layout.addWidget(self.back_cover_help)
+        layout.addWidget(self.selection_box)
         layout.addWidget(self.scroll, 1)
-        layout.addWidget(selection_box)
 
         self.search_button.clicked.connect(self._search)
+        self.search_more_button.clicked.connect(lambda _checked=False: self._search(exhaustive=True))
         self.configure_credentials_button.clicked.connect(self._configure_credentials)
         self.clear_alias_cache_button.clicked.connect(self._clear_alias_cache)
         for checkbox in (
@@ -288,6 +324,28 @@ class CoverSearchPanel(QWidget):
         self.metadata_label.setText(
             f"書名：{project.metadata.title or '未取得'}　作者：{project.metadata.author or '未取得'}　ISBN：{project.metadata.isbn or '未取得'}"
         )
+        has_back_image = any(
+            element.kind.value == "image"
+            and element.region.value == "back"
+            and element.opacity > 0
+            for element in project.elements
+        )
+        has_back_candidate = any(
+            str(asset.get("role", "")) == "back_cover_candidate"
+            for asset in project.metadata.embedded_images
+        )
+        if has_back_image:
+            self.back_cover_help.setText(
+                "目前封底：已使用 EPUB 內建封底或已加入的封底圖片。公開書庫結果仍只當作正面候選。"
+            )
+        elif has_back_candidate:
+            self.back_cover_help.setText(
+                "EPUB 找到一張可能的封底，但可信度不足，沒有自動套用。請在左側「素材」選擇標示為「可能封底（需確認）」的圖片，區域選「封底」後加入。"
+            )
+        else:
+            self.back_cover_help.setText(
+                "公開書庫通常只提供正面。封底會優先使用 EPUB 內建封底；沒有時請在左側「素材」選擇封底並加入本機圖片。仍可明確保留空白，匯出前會再次確認。"
+            )
         if fingerprint == self.project_fingerprint:
             return
         self.project_fingerprint = fingerprint
@@ -318,10 +376,11 @@ class CoverSearchPanel(QWidget):
         selection = self._provider_selection()
         ready = bool(self.metadata) and selection.any_enabled
         self.search_button.setEnabled(ready)
+        self.search_more_button.setEnabled(ready and bool(self.candidates))
         if self.metadata and not selection.any_enabled:
             self.status_label.setText("至少啟用一個封面搜尋來源。")
 
-    def _search(self) -> None:
+    def _search(self, _checked: object = None, *, exhaustive: bool = False) -> None:
         if not self.metadata:
             return
         selection = self._provider_selection()
@@ -337,7 +396,12 @@ class CoverSearchPanel(QWidget):
             self.manual_alias_edit.text().strip(),
             tuple(self.accepted_aliases.values()),
             frozenset(self.ignored_alias_keys),
+            exhaustive,
         )
+        self._search_started_at = time.monotonic()
+        self.search_button.setEnabled(False)
+        self.search_more_button.setEnabled(False)
+        self.search_button.setText("搜尋中…")
         enabled = []
         if selection.google_books:
             enabled.append("Google Books")
@@ -405,13 +469,19 @@ class CoverSearchPanel(QWidget):
         for candidate in response.candidates:
             self.candidates[(candidate.query_kind.value, candidate.image_url)] = candidate
         self._rebuild_cards()
+        elapsed = max(0.0, time.monotonic() - self._search_started_at) if self._search_started_at else 0.0
+        self.search_button.setText("搜尋封面")
+        self._update_search_enabled()
+        self.search_more_button.setEnabled(
+            bool(self.metadata) and self._provider_selection().any_enabled
+        )
         warning = "；".join(response.warnings)
         if warning:
-            self.status_label.setText(f"{mode} 搜尋完成，但部分來源失敗：{warning}")
+            self.status_label.setText(f"搜尋完成（{elapsed:.1f} 秒），但部分來源失敗：{warning}")
         elif response.candidates:
-            self.status_label.setText(f"已取得 {len(self.candidates)} 張候選圖片。")
+            self.status_label.setText(f"已取得 {len(self.candidates)} 張候選圖片（{elapsed:.1f} 秒）。")
         else:
-            self.status_label.setText("找不到候選封面；本機與內嵌圖片仍可正常使用。")
+            self.status_label.setText(f"找不到候選封面（{elapsed:.1f} 秒）；可按「搜尋更多」擴大查詢。")
         aliases = getattr(response, "resolved_aliases", ())
         pending = getattr(response, "pending_aliases", ())
         self._rebuild_alias_rows(pending)
@@ -429,8 +499,8 @@ class CoverSearchPanel(QWidget):
         self.resolution_label.setText("；".join(details))
 
     def _clear_alias_rows(self) -> None:
-        while self.alias_rows_layout.count() > 1:
-            item = self.alias_rows_layout.takeAt(1)
+        while self.alias_rows_layout.count():
+            item = self.alias_rows_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
@@ -468,6 +538,11 @@ class CoverSearchPanel(QWidget):
         self._rebuild_alias_rows(tuple(self.pending_aliases.values()))
 
     def _search_failed(self, mode: str, message: str) -> None:
+        self.search_button.setText("搜尋封面")
+        self._update_search_enabled()
+        self.search_more_button.setEnabled(
+            bool(self.metadata) and self._provider_selection().any_enabled
+        )
         self.status_label.setText(f"{mode} 搜尋失敗：{message}；已取得的候選不會被清除。")
 
     def _candidate_selected(self, candidate: SearchCandidate, category: str) -> None:
@@ -479,6 +554,9 @@ class CoverSearchPanel(QWidget):
                 "請先把分類改成正面、背面、書脊或完整書衣，再選擇。",
             )
             return
+        for key, current in tuple(self.selected.items()):
+            if current is candidate and key != selected_category.value:
+                self.selected.pop(key, None)
         self.selected[selected_category.value] = candidate
         self.controller.remember_selected_alias(
             self.metadata,
@@ -491,6 +569,24 @@ class CoverSearchPanel(QWidget):
             isbn=candidate.isbn,
         )
         self._update_selection_summary()
+        for card in self.cards:
+            card_category = next(
+                (
+                    CandidateCategory(key)
+                    for key, value in self.selected.items()
+                    if value is card.candidate
+                ),
+                None,
+            )
+            card.set_selected_category(card_category)
+        if selected_category is CandidateCategory.BACK:
+            self.status_label.setText(
+                "已手動把這張公開書庫圖片指定為封底；來源通常只保證正面，請先確認圖像內容，再按「套用所選圖片到封面」。"
+            )
+        else:
+            self.status_label.setText(
+                f"已選為{_CATEGORY_LABELS[selected_category]}；按上方「套用所選圖片到封面」完成加入。"
+            )
 
     def _update_selection_summary(self) -> None:
         if not self.selected:

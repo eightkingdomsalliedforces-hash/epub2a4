@@ -185,11 +185,18 @@ class AssetsPanel(QGroupBox):
         self.project_json = project_json
         current_id = self.embedded_combo.currentData()
         self.embedded_combo.clear()
+        role_labels = {
+            "front_cover": "正面封面",
+            "back_cover": "封底",
+            "back_cover_candidate": "可能封底（需確認）",
+            "cover": "正面封面",
+            "image": "一般圖片",
+        }
         for asset in project.metadata.embedded_images:
             asset_id = str(asset.get("id", "")).strip()
             if not asset_id:
                 continue
-            role = "封面" if asset.get("role") == "cover" else "圖片"
+            role = role_labels.get(str(asset.get("role", "")), "一般圖片")
             dimensions = ""
             if asset.get("width_px") and asset.get("height_px"):
                 dimensions = f" · {asset['width_px']}×{asset['height_px']}"

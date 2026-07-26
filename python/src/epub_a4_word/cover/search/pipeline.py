@@ -72,6 +72,7 @@ class BookCoverSearchPipeline:
         manual_alias: str = "",
         accepted_aliases: tuple[ResolvedAlias, ...] = (),
         ignored_alias_keys: frozenset[str] = frozenset(),
+        exhaustive: bool = True,
     ) -> SearchResponse:
         if not selection.any_enabled:
             raise ValueError("至少啟用一個封面搜尋來源。")
@@ -117,6 +118,7 @@ class BookCoverSearchPipeline:
                 identity,
                 executed["google_books"],
                 warnings,
+                exhaustive=exhaustive,
             )
             candidates.extend(google_results)
             bridge_aliases, bridge_isbns = self._google_bridge(identity, google_results)
@@ -139,6 +141,7 @@ class BookCoverSearchPipeline:
                     identity,
                     executed["google_books"],
                     warnings,
+                    exhaustive=exhaustive,
                 )
             )
         if selection.open_library:
@@ -150,9 +153,10 @@ class BookCoverSearchPipeline:
                     identity,
                     executed["open_library"],
                     warnings,
+                    exhaustive=exhaustive,
                 )
             )
-        if selection.gutendex:
+        if selection.gutendex and (exhaustive or not candidates):
             title_items = tuple(item for item in final_plan.items if item.kind == "title")
             candidates.extend(
                 self._run_provider(
@@ -162,6 +166,7 @@ class BookCoverSearchPipeline:
                     identity,
                     executed["gutendex"],
                     warnings,
+                    exhaustive=exhaustive,
                 )
             )
 
@@ -217,12 +222,13 @@ class BookCoverSearchPipeline:
 
     @staticmethod
     def _request(item: QueryItem, identity: BookIdentity) -> CoverSearchRequest:
+        attach_author = item.source in {"epub", "normalized"}
         return CoverSearchRequest(
             kind=SearchKind.FRONT,
             query=item.value,
             isbn=item.value if item.kind == "isbn" else "",
             title=item.value if item.kind == "title" else "",
-            author=item.author,
+            author=item.author if attach_author else "",
             locale=item.language or identity.language or "zh-TW",
             max_results=20,
         )
@@ -240,6 +246,8 @@ class BookCoverSearchPipeline:
         identity: BookIdentity,
         executed: set[tuple[str, str, str]],
         warnings: list[str],
+        *,
+        exhaustive: bool,
     ) -> list[SearchCandidate]:
         found: list[SearchCandidate] = []
         label = _PROVIDER_LABELS[provider_name]
@@ -259,6 +267,8 @@ class BookCoverSearchPipeline:
                 warning if warning.startswith(f"{label}：") else f"{label}：{warning}"
                 for warning in response.warnings
             )
+            if response.candidates and not exhaustive:
+                break
             if item.kind != "title" or not request.author or response.candidates:
                 continue
             fallback_request = replace(request, author="")
@@ -272,6 +282,8 @@ class BookCoverSearchPipeline:
                 warning if warning.startswith(f"{label}：") else f"{label}：{warning}"
                 for warning in fallback_response.warnings
             )
+            if fallback_response.candidates and not exhaustive:
+                break
         return found
 
     @staticmethod

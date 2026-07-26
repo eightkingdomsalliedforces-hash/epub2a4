@@ -190,7 +190,7 @@ def test_manual_alias_is_first_title_query_and_duplicate_queries_run_once(tmp_pa
     title_requests = [request for request in open_library.requests if request.title]
     assert title_requests[0].title == "original title"
     assert sum(
-        request.title.casefold() == "original title" and request.author == "Author"
+        request.title.casefold() == "original title" and request.author == ""
         for request in title_requests
     ) == 1
 
@@ -390,7 +390,74 @@ def test_cross_language_title_retries_without_author_when_exact_author_search_is
         for request in open_library.requests
         if request.title == "A Certain Magical Index"
     ]
-    assert [request.author for request in matching_requests] == ["镰池和马", ""]
+    assert [request.author for request in matching_requests] == [""]
     assert [candidate.candidate_id for candidate in response.candidates] == [
         "OL32593075M"
     ]
+
+
+def test_fast_search_stops_provider_after_first_successful_query(
+    tmp_path: Path,
+) -> None:
+    first = SearchCandidate(
+        provider="open_library",
+        candidate_id="OL1W",
+        query_kind=SearchKind.FRONT,
+        proposed_category=CandidateCategory.FRONT,
+        title="魔法禁書目錄",
+        author="鎌池和馬",
+        isbn="",
+        preview_url="https://covers.openlibrary.org/b/id/1-M.jpg",
+        image_url="https://covers.openlibrary.org/b/id/1-L.jpg",
+        source_page="https://openlibrary.org/works/OL1W",
+        media_type="image/jpeg",
+    )
+    open_library = FakeProvider(
+        "open_library",
+        lambda request: SearchResponse((first,)) if request.title else SearchResponse(),
+    )
+    gutendex = FakeProvider("gutendex")
+    pipeline, _ = _pipeline(
+        tmp_path,
+        open_library=open_library,
+        gutendex=gutendex,
+    )
+
+    response = pipeline.search(
+        {"title": "魔法禁書目錄 01", "author": "鎌池和馬", "language": "zh-TW"},
+        selection=ProviderSelection(
+            google_books=False,
+            open_library=True,
+            gutendex=True,
+        ),
+        exhaustive=False,
+    )
+
+    assert [candidate.candidate_id for candidate in response.candidates] == ["OL1W"]
+    assert len(open_library.requests) == 1
+    assert gutendex.requests == []
+
+
+def test_expanded_search_keeps_querying_enabled_sources(
+    tmp_path: Path,
+) -> None:
+    open_library = FakeProvider("open_library")
+    gutendex = FakeProvider("gutendex")
+    pipeline, _ = _pipeline(
+        tmp_path,
+        open_library=open_library,
+        gutendex=gutendex,
+    )
+
+    pipeline.search(
+        {"title": "Pride and Prejudice", "author": "Jane Austen", "language": "en"},
+        selection=ProviderSelection(
+            google_books=False,
+            open_library=True,
+            gutendex=True,
+        ),
+        exhaustive=True,
+    )
+
+    assert len(open_library.requests) >= 1
+    assert len(gutendex.requests) >= 1

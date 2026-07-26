@@ -10,11 +10,13 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFileDialog,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTabWidget,
     QVBoxLayout,
@@ -219,10 +221,22 @@ class CoverPage(QWidget):
         right_layout.addWidget(self.inspector, 1)
         right_layout.addWidget(self.export_panel)
 
+        self.left_scroll = QScrollArea(self)
+        self.left_scroll.setWidgetResizable(True)
+        self.left_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.left_scroll.setWidget(left)
+
+        self.right_scroll = QScrollArea(self)
+        self.right_scroll.setWidgetResizable(True)
+        self.right_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.right_scroll.setWidget(right)
+
         self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
-        self.splitter.addWidget(left)
+        self.splitter.addWidget(self.left_scroll)
         self.splitter.addWidget(self.center_tabs)
-        self.splitter.addWidget(right)
+        self.splitter.addWidget(self.right_scroll)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setStretchFactor(2, 0)
