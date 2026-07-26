@@ -27,6 +27,8 @@ python3.13 scripts/verify_project.py
 - 4×6 是 101.6 × 152.4 mm。
 - B6-on-A5 的外部紙張是 A5。
 - 產生 N 個內容頁時，PDF 也必須恰好為 N 頁。
+- 分頁器與 DOCX 的正文／標題固定行高與段後距一致。
+- A5、4×6、B6-on-A5、A4 四合一與 16 頁裝訂的最後一行不超出內容框。
 
 ## PySide6 桌面版
 
@@ -156,7 +158,10 @@ Android GitHub Actions：`.github/workflows/android.yml`
 5. Windows PyInstaller onedir、封裝後 EXE smoke、ZIP 重新解壓驗證及 SHA-256 通過。
 6. 以只有正面、明確正面＋封底、書末普通插圖三種 EPUB 驗證封面辨識。
 7. 以中文譯名、英文譯名及同系列不同卷驗證跨語言查詢不錯配。
-8. 以三頁 A5、4×6、B6-on-A5 文件驗證無空白頁及正確紙張尺寸。
-9. 最後在 Windows Microsoft Word 實機檢查頁數、裁切位置及列印結果。
+8. 以接近頁底的 A5、4×6、B6-on-A5、A4 四合一與 16 頁裝訂混排文件驗證固定行高、無越界與無額外空白頁。
+9. 驗證中可信度別名未確認前不進入查詢，確認／忽略後只影響對應別名。
+10. 驗證封面匯出同時產生原始尺寸 PDF、A4 一頁／兩頁 PDF 與相同分頁的 DOCX，且沒有獨立 `spine` 頁。
+11. 驗證封底空白時必須明確確認，並以 100% 比例列印 A4 拼接版。
+12. 最後在 Windows Microsoft Word 實機檢查頁數、裁切位置及列印結果。
 
 舊 DOCX、舊封面專案及舊 Windows portable 不會自動取得修正，必須重新轉換、重建專案或重新下載新版封裝。

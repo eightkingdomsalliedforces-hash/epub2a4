@@ -68,11 +68,11 @@ def test_golden_pdf_and_docx_structural_acceptance(golden_project, tmp_path: Pat
     docx_text_box_count = int(document.xpath("count(.//w:txbxContent)", namespaces=NS))
 
     assert layout.spine_width_mm == pytest.approx(8.0)
-    assert print_plan.mode == "split"
-    assert [page.name for page in print_plan.pages] == ["back", "spine", "front"]
-    assert pdf_result.page_count == 3
-    assert docx_result.page_count == 3
-    assert docx_anchor_count >= 3
+    assert print_plan.mode == "two_page"
+    assert [page.name for page in print_plan.pages] == ["back_side", "front_side"]
+    assert pdf_result.page_count == 2
+    assert docx_result.page_count == 2
+    assert docx_anchor_count >= 2
     assert docx_text_box_count >= 5
 
 
@@ -81,7 +81,7 @@ def test_geometry_snapshot_is_deterministic_and_contains_mm_values(golden_projec
     second = project_geometry_snapshot(golden_project)
     assert first == second
     assert first["layout"]["spine_width_mm"] == pytest.approx(8.0)
-    assert first["print_plan"]["mode"] == "split"
+    assert first["print_plan"]["mode"] == "two_page"
     assert len(collect_mm_values(first)) >= 20
 
 
@@ -90,11 +90,11 @@ def test_export_inspectors_report_pdf_and_docx_structure(golden_project, tmp_pat
     docx = export_docx(golden_project, tmp_path / "inspect.docx").path
     pdf_info = inspect_pdf(pdf)
     docx_info = inspect_docx(docx)
-    assert pdf_info["page_count"] == 3
-    assert len(pdf_info["media_boxes"]) == 3
+    assert pdf_info["page_count"] == 2
+    assert len(pdf_info["media_boxes"]) == 2
     assert pdf_info["file_size_bytes"] > 0
-    assert docx_info["section_count"] == 3
-    assert docx_info["anchored_picture_count"] >= 3
+    assert docx_info["section_count"] == 2
+    assert docx_info["anchored_picture_count"] >= 2
     assert docx_info["text_box_count"] >= 5
     assert docx_info["file_size_bytes"] > 0
 
@@ -131,8 +131,8 @@ def test_inspection_and_geometry_cli_tools(golden_project, tmp_path: Path) -> No
     )
     assert inspect_run.returncode == 0, inspect_run.stderr
     payload = json.loads(inspect_run.stdout)
-    assert payload["pdf"]["page_count"] == 3
-    assert payload["docx"]["section_count"] == 3
+    assert payload["pdf"]["page_count"] == 2
+    assert payload["docx"]["section_count"] == 2
     assert snapshot_path.is_file()
 
     compare_run = subprocess.run(

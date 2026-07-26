@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 import pytest
 
@@ -272,3 +273,55 @@ def test_android_bridge_passes_body_only_choice_to_epub_conversion(monkeypatch, 
     )
 
     assert captured["content_only"] is False
+
+
+def test_android_bridge_long_mixed_epub_uses_safe_a5_pagination(tmp_path: Path):
+    import android_bridge
+
+    source = tmp_path / "long-mixed.epub"
+    output = tmp_path / "long-mixed-a5.docx"
+    container_xml = """<?xml version='1.0'?>
+    <container xmlns='urn:oasis:names:tc:opendocument:xmlns:container' version='1.0'>
+      <rootfiles><rootfile full-path='OEBPS/content.opf' media-type='application/oebps-package+xml'/></rootfiles>
+    </container>"""
+    opf = """<?xml version='1.0' encoding='utf-8'?>
+    <package xmlns='http://www.idpf.org/2007/opf' version='3.0'>
+      <metadata xmlns:dc='http://purl.org/dc/elements/1.1/'>
+        <dc:title>Android 安全分頁測試</dc:title>
+        <dc:creator>測試作者</dc:creator>
+        <dc:language>zh-TW</dc:language>
+      </metadata>
+      <manifest>
+        <item id='chapter' href='Text/chapter.xhtml' media-type='application/xhtml+xml'/>
+      </manifest>
+      <spine><itemref idref='chapter'/></spine>
+    </package>"""
+    paragraph = "魔法禁書目錄 A Certain Magical Index 中文 English 日本語 mixed text。" * 180
+    chapter = (
+        "<html xmlns='http://www.w3.org/1999/xhtml'><body>"
+        "<h1>安全分頁</h1><p>" + paragraph + "</p>"
+        "</body></html>"
+    )
+    with ZipFile(source, "w") as package:
+        package.writestr("mimetype", "application/epub+zip", compress_type=ZIP_STORED)
+        package.writestr("META-INF/container.xml", container_xml, compress_type=ZIP_DEFLATED)
+        package.writestr("OEBPS/content.opf", opf, compress_type=ZIP_DEFLATED)
+        package.writestr("OEBPS/Text/chapter.xhtml", chapter, compress_type=ZIP_DEFLATED)
+
+    result = android_bridge.convert_file(
+        str(source),
+        str(output),
+        json.dumps(
+            {
+                "imposition_mode": "single_a5",
+                "margin_mode": "maximized",
+                "content_only": True,
+            }
+        ),
+    )
+
+    assert output.stat().st_size > 1000
+    assert result["source_format"] == "epub"
+    assert result["imposition_mode"] == "single_a5"
+    assert result["mini_page_count"] > 1
+    assert result["warnings"] == []

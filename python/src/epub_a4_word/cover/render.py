@@ -509,26 +509,69 @@ def render_preview(
     return RenderResult(output, image.width, image.height, warnings)
 
 
+def _draw_segmented_line(
+    draw: ImageDraw.ImageDraw,
+    start: tuple[int, int],
+    end: tuple[int, int],
+    *,
+    style: str,
+    width: int,
+    dpi: int,
+) -> None:
+    if style == "solid":
+        draw.line((*start, *end), fill="black", width=width)
+        return
+    dx = end[0] - start[0]
+    dy = end[1] - start[1]
+    length = math.hypot(dx, dy)
+    if length <= 0:
+        return
+    if style == "dotted":
+        on_px = max(1, mm_to_px(0.7, dpi))
+        off_px = max(1, mm_to_px(1.3, dpi))
+    else:
+        on_px = max(1, mm_to_px(3.0, dpi))
+        off_px = max(1, mm_to_px(1.8, dpi))
+    cursor = 0.0
+    while cursor < length:
+        segment_end = min(length, cursor + on_px)
+        ratio_start = cursor / length
+        ratio_end = segment_end / length
+        draw.line(
+            (
+                round(start[0] + dx * ratio_start),
+                round(start[1] + dy * ratio_start),
+                round(start[0] + dx * ratio_end),
+                round(start[1] + dy * ratio_end),
+            ),
+            fill="black",
+            width=width,
+        )
+        cursor += on_px + off_px
+
+
 def _draw_print_mark(draw: ImageDraw.ImageDraw, mark: PrintMark, dpi: int) -> None:
     x1 = mm_to_px(mark.x1_mm, dpi)
     y1 = mm_to_px(mark.y1_mm, dpi)
     if mark.kind == "label":
-        font = resolve_font("sans-serif", None, max(8, round(dpi / 12)))
+        if mark.role == "label":
+            size = max(9, round(dpi / 9))
+        else:
+            size = max(8, round(dpi / 12))
+        font = resolve_font("sans-serif", None, size)
         box = draw.textbbox((0, 0), mark.label, font=font)
         width = box[2] - box[0]
         draw.text((x1 - width // 2, y1), mark.label, fill="black", font=font)
         return
     if mark.x2_mm is None or mark.y2_mm is None:
         return
-    draw.line(
-        (
-            x1,
-            y1,
-            mm_to_px(mark.x2_mm, dpi),
-            mm_to_px(mark.y2_mm, dpi),
-        ),
-        fill="black",
+    _draw_segmented_line(
+        draw,
+        (x1, y1),
+        (mm_to_px(mark.x2_mm, dpi), mm_to_px(mark.y2_mm, dpi)),
+        style=mark.line_style,
         width=max(1, round(dpi / 300)),
+        dpi=dpi,
     )
 
 

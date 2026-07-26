@@ -7,6 +7,7 @@ from epub_a4_word.cover.project_io import loads_project
 from epub_a4_word.cover.service import (
     apply_template,
     export_cover,
+    export_cover_bundle,
     inspect_source,
     new_project,
     render_preview,
@@ -88,7 +89,7 @@ def test_service_creates_preview_and_both_exports(
     assert exports["pdf"]["page_count"] == exports["docx"]["page_count"] == 1
 
 
-def test_service_split_exports_share_the_same_three_page_plan(
+def test_service_split_exports_share_the_same_two_page_plan(
     fixtures_dir: Path, tmp_path: Path
 ) -> None:
     source = fixtures_dir / "cover/metadata.epub"
@@ -102,8 +103,8 @@ def test_service_split_exports_share_the_same_three_page_plan(
         str(tmp_path / "split.docx"),
         200,
     )
-    assert exports["pdf"]["mode"] == exports["docx"]["mode"] == "split"
-    assert exports["pdf"]["page_count"] == exports["docx"]["page_count"] == 3
+    assert exports["pdf"]["mode"] == exports["docx"]["mode"] == "two_page"
+    assert exports["pdf"]["page_count"] == exports["docx"]["page_count"] == 2
 
 
 def test_new_project_rejects_missing_working_dir(fixtures_dir: Path) -> None:
@@ -193,3 +194,31 @@ def test_source_cover_template_preserves_separate_embedded_covers(
         "source-cover-image",
         "source-back-cover-image",
     }
+
+
+def test_service_exports_original_and_a4_bundle(
+    fixtures_dir: Path, tmp_path: Path
+) -> None:
+    source = fixtures_dir / "cover/metadata.epub"
+    project_json = apply_template(
+        new_project(
+            str(source),
+            _settings(tmp_path, trim_width_mm=148.0, trim_height_mm=210.0),
+        ),
+        "minimal",
+    )
+
+    exports = export_cover_bundle(
+        project_json,
+        str(tmp_path / "original.pdf"),
+        str(tmp_path / "print.pdf"),
+        str(tmp_path / "print.docx"),
+        200,
+    )
+
+    assert Path(exports["original_pdf"]["path"]).is_file()
+    assert Path(exports["print_pdf"]["path"]).is_file()
+    assert Path(exports["print_docx"]["path"]).is_file()
+    assert exports["print_plan"]["mode"] == "two_page"
+    assert exports["print_plan"]["page_count"] == 2
+    assert exports["print_plan"]["back_cover_blank"] is True

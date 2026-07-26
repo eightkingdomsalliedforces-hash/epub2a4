@@ -72,3 +72,18 @@ def test_workflow_runs_packaged_executable_not_only_python_sources() -> None:
     assert "verify_windows_portable.py" in text
     assert "WaitForExit(30000)" in text
     assert "cancel-in-progress: true" in text
+
+
+def test_new_safe_export_modules_are_in_collected_package_trees() -> None:
+    required = (
+        ROOT / "python/src/epub_a4_word/text_metrics.py",
+        ROOT / "python/src/epub_a4_word/cover/export_plan.py",
+        ROOT / "python/src/epub_a4_word_desktop/cover/alias_decision_row.py",
+        ROOT / "python/src/epub_a4_word_desktop/cover/export_preview_dialog.py",
+    )
+
+    assert all(path.is_file() for path in required)
+    spec = SPEC.read_text(encoding="utf-8")
+    assert 'collect_all(package_name)' in spec
+    assert '"epub_a4_word"' in spec
+    assert '"epub_a4_word_desktop"' in spec

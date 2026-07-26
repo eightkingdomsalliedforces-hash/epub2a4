@@ -76,7 +76,7 @@ def test_docx_has_editable_text_picture_and_line_objects(
     assert "範例書名" in "".join(document.xpath(".//w:t/text()", namespaces=NS))
 
 
-def test_split_docx_has_three_exact_a4_sections(
+def test_split_docx_has_two_exact_a4_sections(
     sample_project: Callable[..., CoverProject], tmp_path: Path
 ) -> None:
     project = _project_with_image(sample_project, tmp_path, trim=(148.0, 210.0))
@@ -84,7 +84,7 @@ def test_split_docx_has_three_exact_a4_sections(
     document = _document_xml(path)
     sections = document.xpath(".//w:sectPr", namespaces=NS)
 
-    assert len(sections) == 3
+    assert len(sections) == 2
     for section in sections:
         size = section.find("w:pgSz", namespaces=NS)
         margins = section.find("w:pgMar", namespaces=NS)
@@ -106,8 +106,8 @@ def test_split_image_is_anchored_once_per_page_with_crop(
 
     anchors = document.xpath(".//wp:anchor", namespaces=NS)
     crops = document.xpath(".//a:srcRect", namespaces=NS)
-    assert len(anchors) >= 3
-    assert len(crops) >= 3
+    assert len(anchors) >= 2
+    assert len(crops) >= 2
     assert any(
         any(int(crop.get(name, "0")) > 0 for name in ("l", "t", "r", "b"))
         for crop in crops
@@ -158,3 +158,20 @@ def test_docx_has_no_trailing_manual_page_break(
         assert not last_paragraph[0].xpath(
             ".//w:br[@w:type='page']", namespaces=NS
         )
+
+
+def test_split_docx_uses_same_readable_page_marks_without_spine_page(
+    sample_project: Callable[..., CoverProject], tmp_path: Path
+) -> None:
+    project = _project_with_image(sample_project, tmp_path, trim=(148.0, 210.0))
+    path = export_docx(project, tmp_path / "readable-marks.docx").path
+    document = _document_xml(path)
+    text = "\n".join(document.xpath(".//w:t/text()", namespaces=NS))
+
+    assert "第 1 頁／2：封底側" in text
+    assert "第 2 頁／2：正面側" in text
+    assert "100% 實際大小列印，請關閉「符合紙張大小」" in text
+    assert "重疊黏貼區" in text
+    assert "← 5 mm 拼接重疊區 →" not in text
+    assert "書脊" not in text
+    assert len(document.xpath(".//w:sectPr", namespaces=NS)) == 2

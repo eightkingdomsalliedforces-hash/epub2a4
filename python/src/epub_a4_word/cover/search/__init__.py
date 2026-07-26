@@ -27,6 +27,7 @@ from .models import (
     SearchCandidate,
     SearchKind,
     SearchResponse,
+    alias_key,
 )
 from .open_library import OpenLibraryProvider
 from .pipeline import BookCoverSearchPipeline, ProviderSelection
@@ -65,6 +66,7 @@ __all__ = [
     "SearchTimeoutError",
     "SearchTransportError",
     "WikidataAliasResolver",
+    "alias_key",
     "build_general_requests",
     "build_query_plan",
     "classify_candidate",

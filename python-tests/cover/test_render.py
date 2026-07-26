@@ -192,3 +192,28 @@ def test_full_spread_image_mode_uses_bleed_rect_even_for_front_region(
     back_x = mm_to_px(layout.back_rect.x_mm + 5.0, 100)
     y = mm_to_px(layout.back_rect.y_mm + 5.0, 100)
     assert _pixel_rgb(image, back_x, y) == (0, 0, 255)
+
+
+def test_two_page_print_marks_use_readable_labels_and_instructions(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    project = sample_project(trim=(148.0, 210.0))
+    plan = build_print_plan(calculate_layout(project))
+
+    labels = [
+        mark.label
+        for page in plan.pages
+        for mark in page.marks
+        if mark.kind == "label"
+    ]
+    assert "第 1 頁／2：封底側" in labels
+    assert "第 2 頁／2：正面側" in labels
+    assert "100% 實際大小列印，請關閉「符合紙張大小」" in labels
+    assert "重疊黏貼區" in labels
+
+    for page in plan.pages:
+        rendered = render_print_page(project, page, dpi=100)
+        assert rendered.size == (
+            mm_to_px(page.paper_size_mm[0], 100),
+            mm_to_px(page.paper_size_mm[1], 100),
+        )

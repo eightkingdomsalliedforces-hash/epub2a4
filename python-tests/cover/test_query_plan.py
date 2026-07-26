@@ -102,3 +102,24 @@ def test_query_plan_deduplicates_normalized_equivalent_titles() -> None:
 
     title_items = [item for item in plan.items if item.kind == "title"]
     assert [item.value for item in title_items] == ["example 01", "Example"]
+
+
+def test_medium_alias_does_not_enter_plan_until_accepted() -> None:
+    identity = normalize_book_identity(title="魔法禁書目錄", author="鎌池和馬")
+    alias = ResolvedAlias(
+        "A Certain Magical Index", "en", "wikidata", "medium"
+    )
+
+    initial = build_query_plan(identity, aliases=(alias,))
+    accepted = build_query_plan(
+        identity,
+        aliases=(alias,),
+        accepted_aliases=(alias,),
+    )
+
+    assert "A Certain Magical Index" not in [item.value for item in initial.items]
+    accepted_item = next(
+        item for item in accepted.items if item.value == "A Certain Magical Index"
+    )
+    assert accepted_item.confidence == "high"
+    assert accepted_item.reason == "user-confirmed alias"

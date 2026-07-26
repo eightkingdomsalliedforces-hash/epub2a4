@@ -14,6 +14,7 @@ from .models import (
     QueryItem,
     ResolvedAlias,
     SearchCandidate,
+    alias_key,
     SearchKind,
     SearchResponse,
 )
@@ -69,6 +70,8 @@ class BookCoverSearchPipeline:
         selection: ProviderSelection,
         google_api_key: str = "",
         manual_alias: str = "",
+        accepted_aliases: tuple[ResolvedAlias, ...] = (),
+        ignored_alias_keys: frozenset[str] = frozenset(),
     ) -> SearchResponse:
         if not selection.any_enabled:
             raise ValueError("至少啟用一個封面搜尋來源。")
@@ -81,6 +84,8 @@ class BookCoverSearchPipeline:
         cached_aliases = self.alias_cache.load(identity)
         resolution = self.alias_resolver.resolve(identity)
         aliases: list[ResolvedAlias] = [*cached_aliases, *resolution.aliases]
+        accepted_by_key = {alias_key(alias): alias for alias in accepted_aliases}
+        ignored = {str(key).casefold().strip() for key in ignored_alias_keys}
         resolved_isbns: list[str] = list(resolution.isbns)
         warnings: list[str] = list(resolution.warnings)
         candidates: list[SearchCandidate] = []
@@ -102,6 +107,7 @@ class BookCoverSearchPipeline:
             manual_alias=manual_alias,
             aliases=aliases,
             isbns=resolved_isbns,
+            accepted_aliases=tuple(accepted_by_key.values()),
         )
         if google_provider is not None:
             google_results = self._run_provider(
@@ -122,6 +128,7 @@ class BookCoverSearchPipeline:
             manual_alias=manual_alias,
             aliases=aliases,
             isbns=resolved_isbns,
+            accepted_aliases=tuple(accepted_by_key.values()),
         )
         if google_provider is not None:
             candidates.extend(
@@ -167,6 +174,13 @@ class BookCoverSearchPipeline:
             max_results=20,
         )
         unique_aliases = self._dedupe_aliases(aliases)
+        pending_aliases = tuple(
+            alias
+            for alias in unique_aliases
+            if alias.confidence.casefold() == "medium"
+            and alias_key(alias) not in ignored
+            and alias_key(alias) not in accepted_by_key
+        )
         unique_isbns = tuple(
             dict.fromkeys(
                 valid
@@ -178,6 +192,7 @@ class BookCoverSearchPipeline:
             candidates=merge_candidates(candidates, base_request),
             warnings=tuple(dict.fromkeys(warnings)),
             resolved_aliases=unique_aliases,
+            pending_aliases=pending_aliases,
             resolved_isbns=unique_isbns,
             query_items=final_plan.items,
         )

@@ -185,3 +185,107 @@ def test_add_text_button_creates_undoable_front_text(qtbot, tmp_path: Path) -> N
     assert created.region is Region.FRONT
     controller.undo()
     assert set(loads_project(controller.project_json).elements_by_id) == before_ids
+
+
+def test_export_preview_must_be_accepted_before_worker_starts(
+    qtbot, monkeypatch, tmp_path: Path
+) -> None:
+    from types import SimpleNamespace
+
+    from PySide6.QtWidgets import QDialog
+    from epub_a4_word_desktop.pages import cover_page as cover_page_module
+
+    class FakePool:
+        def __init__(self) -> None:
+            self.started: list[object] = []
+
+        def start(self, worker) -> None:
+            self.started.append(worker)
+
+    class StubSignal:
+        def __init__(self) -> None:
+            self.callbacks: list[object] = []
+
+        def connect(self, callback) -> None:
+            self.callbacks.append(callback)
+
+    preview_calls: list[tuple[object, object, int, object]] = []
+
+    class AcceptedPreview:
+        def __init__(self, project_json, paths, dpi, parent) -> None:
+            preview_calls.append((project_json, paths, dpi, parent))
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Accepted
+
+    worker_calls: list[tuple[str, object, int]] = []
+
+    class FakeWorker:
+        def __init__(self, project_json, paths, dpi) -> None:
+            worker_calls.append((project_json, paths, dpi))
+            self.signals = SimpleNamespace(
+                progress=StubSignal(),
+                completed=StubSignal(),
+                failed=StubSignal(),
+            )
+
+    pool = FakePool()
+    controller = CoverController(
+        working_dir=tmp_path,
+        auto_preview=False,
+        pool=pool,
+    )
+    page = CoverPage(controller=controller)
+    qtbot.addWidget(page)
+    controller.replace_project(_project_json(tmp_path), clear_history=True)
+    monkeypatch.setattr(cover_page_module, "ExportPreviewDialog", AcceptedPreview)
+    monkeypatch.setattr(cover_page_module, "ExportWorker", FakeWorker)
+
+    page._start_export(tmp_path / "exports", 300)
+
+    assert len(preview_calls) == 1
+    assert preview_calls[0][2] == 300
+    assert preview_calls[0][3] is page
+    assert len(worker_calls) == 1
+    assert worker_calls[0][1].original_pdf.name.endswith("-完整書衣-原始尺寸.pdf")
+    assert worker_calls[0][1].print_pdf.name.endswith("-A4拼接列印.pdf")
+    assert worker_calls[0][1].print_docx.name.endswith("-A4拼接列印.docx")
+    assert pool.started == [next(iter(page._export_workers))]
+
+
+def test_cancelled_export_preview_does_not_start_worker(
+    qtbot, monkeypatch, tmp_path: Path
+) -> None:
+    from PySide6.QtWidgets import QDialog
+    from epub_a4_word_desktop.pages import cover_page as cover_page_module
+
+    class FakePool:
+        def __init__(self) -> None:
+            self.started: list[object] = []
+
+        def start(self, worker) -> None:
+            self.started.append(worker)
+
+    class RejectedPreview:
+        def __init__(self, project_json, paths, dpi, parent) -> None:
+            pass
+
+        def exec(self) -> int:
+            return QDialog.DialogCode.Rejected
+
+    pool = FakePool()
+    controller = CoverController(
+        working_dir=tmp_path,
+        auto_preview=False,
+        pool=pool,
+    )
+    page = CoverPage(controller=controller)
+    qtbot.addWidget(page)
+    controller.replace_project(_project_json(tmp_path), clear_history=True)
+    monkeypatch.setattr(cover_page_module, "ExportPreviewDialog", RejectedPreview)
+
+    page._start_export(tmp_path / "exports", 300)
+
+    assert pool.started == []
+    assert page._export_workers == set()
+    assert page.status_label.text() == "已取消封面輸出。"

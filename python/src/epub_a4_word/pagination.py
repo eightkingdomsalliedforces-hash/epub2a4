@@ -8,6 +8,7 @@ from typing import Iterable, Literal, Mapping
 
 from .imposition import ImpositionMode
 from .models import ContentBlock, ImageBlock, PageBreakBlock, TextBlock, TextRun
+from .text_metrics import paragraph_metrics, word_safety_points
 
 MarginMode = Literal["safe", "maximized", "borderless"]
 OutputMarkMode = Literal["normal", "crop_marks"]
@@ -166,9 +167,6 @@ def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
             if settings.cell_vertical_margin_cm is None
             else settings.cell_vertical_margin_cm
         )
-        pagination_safety = max(
-            settings.pagination_safety_pt, B6_WORD_RENDERING_SAFETY_PT
-        )
     else:
         cell_outer = (
             preset.cell_outer_margin_cm
@@ -180,7 +178,10 @@ def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
             if settings.cell_vertical_margin_cm is None
             else settings.cell_vertical_margin_cm
         )
-        pagination_safety = settings.pagination_safety_pt
+    pagination_safety = word_safety_points(
+        settings.imposition_mode,
+        settings.pagination_safety_pt,
+    )
     gutter = preset.gutter_margin_cm if settings.gutter_margin_cm is None else settings.gutter_margin_cm
     footer = settings.page_number_footer_pt if settings.page_numbers else 0.0
     horizontal_cell_margins = 2 * cell_outer if grid_cols == 1 else cell_outer + gutter
@@ -212,6 +213,7 @@ def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
         content_height_pt=content_height,
         max_image_width_pt=max_image_width,
         max_image_height_pt=max_image_height,
+        pagination_safety_pt=pagination_safety,
     )
 
 
@@ -231,17 +233,38 @@ def _chars_per_line(block: TextBlock, settings: LayoutSettings) -> float:
     return max(4.0, settings.content_width_pt / (_font_for(block, settings) * 1.07))
 
 
-def measure_text(block: TextBlock, settings: LayoutSettings) -> float:
-    settings = resolve_layout(settings)
+def _metrics_for(block: TextBlock, settings: LayoutSettings):
     font_pt = _font_for(block, settings)
+    spacing = (
+        settings.heading_spacing_pt
+        if block.style == "heading"
+        else settings.paragraph_spacing_pt
+    )
+    return paragraph_metrics(font_pt, settings.line_spacing, spacing)
+
+
+def _estimated_line_count(block: TextBlock, settings: LayoutSettings) -> int:
     per_line = _chars_per_line(block, settings)
     lines = 0
     for logical_line in block.text.split("\n"):
         weight = sum(_char_weight(char) for char in logical_line)
-        if block.style == "body" and logical_line: weight += settings.first_line_indent_chars
+        if block.style == "body" and logical_line:
+            weight += settings.first_line_indent_chars
         lines += max(1, math.ceil(weight / per_line))
-    spacing = settings.heading_spacing_pt if block.style == "heading" else settings.paragraph_spacing_pt
-    return lines * font_pt * settings.line_spacing + spacing
+    return lines
+
+
+def _line_height_for(block: TextBlock, settings: LayoutSettings) -> float:
+    return _metrics_for(block, settings).line_height_pt
+
+
+def measure_text(block: TextBlock, settings: LayoutSettings) -> float:
+    settings = resolve_layout(settings)
+    metrics = _metrics_for(block, settings)
+    return (
+        _estimated_line_count(block, settings) * metrics.line_height_pt
+        + metrics.spacing_after_pt
+    )
 
 
 def measure_image(block: ImageBlock, settings: LayoutSettings, image_sizes: Mapping[str, tuple[int, int]]) -> float:
@@ -270,10 +293,9 @@ def _split_runs_at(runs: tuple[TextRun, ...], char_index: int) -> tuple[tuple[Te
 
 
 def _find_split_index(block: TextBlock, available_points: float, settings: LayoutSettings) -> int:
-    font_pt = _font_for(block, settings)
-    spacing = settings.heading_spacing_pt if block.style == "heading" else settings.paragraph_spacing_pt
-    usable = max(0.0, available_points - spacing)
-    max_lines = max(1, int(usable // (font_pt * settings.line_spacing)))
+    metrics = _metrics_for(block, settings)
+    usable = max(0.0, available_points - metrics.spacing_after_pt)
+    max_lines = max(1, int(usable // metrics.line_height_pt))
     target_weight = max_lines * _chars_per_line(block, settings)
     if block.style == "body": target_weight = max(1.0, target_weight - settings.first_line_indent_chars)
     weight = 0.0; best_break = 0; preferred_break = 0; preferred_chars = set("。！？；：.!?;:\n")
@@ -340,7 +362,7 @@ def paginate(blocks: Iterable[ContentBlock], settings: LayoutSettings, image_siz
         remaining = settings.content_height_pt - current.used_points
         if height <= remaining + 0.01:
             current.blocks.append(block); current.used_points += height; continue
-        if current.blocks and remaining < _font_for(block, settings) * settings.line_spacing * 2:
+        if current.blocks and remaining < _line_height_for(block, settings) * 2:
             flush(); queue.insert(0, block); continue
         first, remainder = split_text_block(block, max(remaining, settings.content_height_pt if not current.blocks else remaining), settings)
         first_height = measure_text(first, settings)

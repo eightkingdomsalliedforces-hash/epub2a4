@@ -300,3 +300,70 @@ def test_writer_renders_single_a5_without_blank_pages(tmp_path: Path) -> None:
     info = subprocess.run([pdfinfo, str(tmp_path / "a5-render.pdf")], check=True, capture_output=True, text=True).stdout
     page_line = next(line for line in info.splitlines() if line.startswith("Pages:"))
     assert int(page_line.split(":", 1)[1].strip()) == 3
+
+
+def test_writer_uses_exact_shared_line_height_for_body_and_heading(
+    tmp_path: Path,
+) -> None:
+    from lxml import etree
+
+    output = tmp_path / "exact-line-height.docx"
+    page = MiniPage(
+        [
+            TextBlock((TextRun("正文 A Certain Magical Index"),), style="body"),
+            TextBlock((TextRun("標題"),), style="heading"),
+        ],
+        used_points=40,
+    )
+
+    write_docx(
+        [page],
+        output,
+        resources={},
+        media_types={},
+        settings=LayoutSettings(page_numbers=False, imposition_mode="single_a5"),
+        imposition_mode="single_a5",
+    )
+
+    namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    with ZipFile(output) as archive:
+        root = etree.fromstring(archive.read("word/document.xml"))
+    paragraphs = root.xpath(".//w:tc/w:p", namespaces=namespace)
+    assert len(paragraphs) == 2
+
+    body_spacing = paragraphs[0].find("w:pPr/w:spacing", namespaces=namespace)
+    heading_spacing = paragraphs[1].find("w:pPr/w:spacing", namespaces=namespace)
+    assert body_spacing is not None
+    assert heading_spacing is not None
+    word_ns = namespace["w"]
+    assert body_spacing.get(f"{{{word_ns}}}lineRule") == "exact"
+    assert int(body_spacing.get(f"{{{word_ns}}}line")) == 230
+    assert int(body_spacing.get(f"{{{word_ns}}}after")) == 50
+    assert heading_spacing.get(f"{{{word_ns}}}lineRule") == "exact"
+    assert int(heading_spacing.get(f"{{{word_ns}}}line")) == 290
+    assert int(heading_spacing.get(f"{{{word_ns}}}after")) == 100
+
+
+def test_pre_paginated_heading_does_not_ask_word_to_keep_next(tmp_path: Path) -> None:
+    output = tmp_path / "heading-no-keep-next.docx"
+    page = MiniPage(
+        [
+            TextBlock((TextRun("第一章"),), style="heading"),
+            TextBlock((TextRun("正文內容"),), style="body"),
+        ],
+        used_points=40,
+    )
+
+    write_docx(
+        [page],
+        output,
+        resources={},
+        media_types={},
+        settings=LayoutSettings(imposition_mode="single_a5"),
+        imposition_mode="single_a5",
+    )
+
+    with ZipFile(output) as package:
+        document_xml = package.read("word/document.xml").decode("utf-8")
+
+    assert "<w:keepNext" not in document_xml

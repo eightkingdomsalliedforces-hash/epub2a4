@@ -35,6 +35,7 @@ from epub_a4_word_desktop.cover.canvas import CoverCanvas
 from epub_a4_word_desktop.cover.composition_dialog import CompositionDialog
 from epub_a4_word_desktop.cover.controller import CoverController
 from epub_a4_word_desktop.cover.crop_dialog import CropDialog
+from epub_a4_word_desktop.cover.export_preview_dialog import ExportPreviewDialog
 from epub_a4_word_desktop.cover.export_worker import ExportWorker, export_paths
 from epub_a4_word_desktop.cover.inspector import ElementInspector
 from epub_a4_word_desktop.cover.layers_panel import LayersPanel
@@ -86,7 +87,7 @@ class ExportPanel(QGroupBox):
         self.dpi_combo.addItem("200 DPI", 200)
         self.dpi_combo.addItem("300 DPI", 300)
         self.dpi_combo.setCurrentIndex(1)
-        self.export_button = QPushButton("輸出 PDF＋DOCX", self)
+        self.export_button = QPushButton("輸出完整書衣＋A4列印檔", self)
         self.export_button.setEnabled(False)
         layout = QVBoxLayout(self)
         layout.addWidget(self.output_label)
@@ -444,8 +445,17 @@ class CoverPage(QWidget):
         if not self.controller.project_json:
             self._show_error("尚未載入封面專案。")
             return
-        pdf, docx = export_paths(self.controller.project_json, output_dir)
-        worker = ExportWorker(self.controller.project_json, pdf, docx, dpi)
+        paths = export_paths(self.controller.project_json, output_dir)
+        dialog = ExportPreviewDialog(
+            self.controller.project_json,
+            paths,
+            dpi,
+            self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.status_label.setText("已取消封面輸出。")
+            return
+        worker = ExportWorker(self.controller.project_json, paths, dpi)
         self._export_workers.add(worker)
         self._set_editor_mutations_enabled(False)
         worker.signals.progress.connect(self.status_label.setText)
@@ -460,11 +470,18 @@ class CoverPage(QWidget):
     def _export_completed(self, worker: ExportWorker, result: dict) -> None:
         self._export_workers.discard(worker)
         self._set_editor_mutations_enabled(True)
-        pdf = result.get("pdf", {}).get("path", "")
-        docx = result.get("docx", {}).get("path", "")
-        self.status_label.setText(f"封面輸出完成：{pdf}｜{docx}")
+        original_pdf = result.get("original_pdf", {}).get("path", "")
+        print_pdf = result.get("print_pdf", {}).get("path", "")
+        print_docx = result.get("print_docx", {}).get("path", "")
+        message = (
+            "封面輸出完成：\n"
+            f"完整尺寸 PDF：{original_pdf}\n"
+            f"A4 拼接 PDF：{print_pdf}\n"
+            f"A4 拼接 DOCX：{print_docx}"
+        )
+        self.status_label.setText(message)
         if self.isVisible():
-            QMessageBox.information(self, "封面輸出完成", f"PDF：{pdf}\nDOCX：{docx}")
+            QMessageBox.information(self, "封面輸出完成", message)
 
     def _export_failed(self, worker: ExportWorker, message: str) -> None:
         self._export_workers.discard(worker)

@@ -106,3 +106,49 @@ def test_single_page_modes_resolve_exact_paper_and_one_by_one_grid() -> None:
     assert a5.cell_height_cm > photo.cell_height_cm
     assert a5.content_width_pt > photo.content_width_pt
     assert a5.content_height_pt > photo.content_height_pt
+
+
+import pytest
+
+from epub_a4_word.pagination import resolve_layout
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["single_a5", "single_4x6", "b6_on_a5", "four_up", "signature16"],
+)
+def test_mixed_text_never_exceeds_resolved_content_height(mode: str) -> None:
+    settings = resolve_layout(LayoutSettings(imposition_mode=mode))
+    block = TextBlock(
+        (TextRun("魔法禁書目錄 A Certain Magical Index 測試段落。" * 180),),
+        style="body",
+    )
+
+    pages = paginate((block,), settings, {})
+
+    assert len(pages) >= 2
+    assert all(page.used_points <= settings.content_height_pt for page in pages)
+
+
+@pytest.mark.parametrize(
+    ("mode", "minimum_safety"),
+    [
+        ("single_a5", 28.0),
+        ("single_4x6", 28.0),
+        ("b6_on_a5", 42.0),
+        ("four_up", 24.0),
+        ("signature16", 24.0),
+    ],
+)
+def test_every_output_mode_reserves_word_bottom_safety(
+    mode: str, minimum_safety: float
+) -> None:
+    without_safety = resolve_layout(
+        LayoutSettings(imposition_mode=mode, pagination_safety_pt=0.0)
+    )
+    requested_more = resolve_layout(
+        LayoutSettings(imposition_mode=mode, pagination_safety_pt=minimum_safety + 3.0)
+    )
+
+    assert without_safety.pagination_safety_pt == minimum_safety
+    assert requested_more.pagination_safety_pt == minimum_safety + 3.0

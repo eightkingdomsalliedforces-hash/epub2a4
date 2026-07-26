@@ -345,6 +345,7 @@ def make_line_shape(
     x2_pt: float,
     y2_pt: float,
     behind_text: bool = True,
+    dash_style: str = "solid",
 ) -> Any:
     run = OxmlElement("w:r")
     pict = OxmlElement("w:pict")
@@ -368,6 +369,10 @@ def make_line_shape(
     )
     line.set("strokecolor", "#000000")
     line.set("strokeweight", "0.5pt")
+    if dash_style == "dashed":
+        line.set("dashstyle", "dash")
+    elif dash_style == "dotted":
+        line.set("dashstyle", "dot")
     pict.append(line)
     return run
 
@@ -381,6 +386,7 @@ def add_line_shape(
     x2_mm: float,
     y2_mm: float,
     behind_text: bool = True,
+    dash_style: str = "solid",
 ) -> None:
     paragraph._p.append(
         make_line_shape(
@@ -390,5 +396,6 @@ def add_line_shape(
             x2_pt=mm_to_points(x2_mm),
             y2_pt=mm_to_points(y2_mm),
             behind_text=behind_text,
+            dash_style=dash_style,
         )
     )
