@@ -6,6 +6,11 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsObject, QStyleOptionGraphicsItem, QWidget
 
+from epub_a4_word.cover.isbn import (
+    canonical_isbn13,
+    encode_ean13_modules,
+    encode_ean_addon_modules,
+)
 from epub_a4_word.cover.models import CoverElement
 
 
@@ -148,7 +153,14 @@ class CoverElementItem(QGraphicsObject):
         rect = self.boundingRect()
         half = self.HANDLE_SIZE_MM / 2.0
         for point in (rect.topLeft(), rect.topRight(), rect.bottomLeft(), rect.bottomRight()):
-            painter.drawRect(QRectF(point.x() - half, point.y() - half, self.HANDLE_SIZE_MM, self.HANDLE_SIZE_MM))
+            painter.drawRect(
+                QRectF(
+                    point.x() - half,
+                    point.y() - half,
+                    self.HANDLE_SIZE_MM,
+                    self.HANDLE_SIZE_MM,
+                )
+            )
         rotation_center = QPointF(rect.center().x(), rect.top() - 5.0)
         painter.drawLine(rect.center().x(), rect.top(), rotation_center.x(), rotation_center.y())
         painter.drawEllipse(rotation_center, half, half)
@@ -183,9 +195,19 @@ class CoverImageItem(CoverElementItem):
             top = min(1.0, max(0.0, float(self._content.get("crop_top", 0.0))))
             right = 1.0 - min(1.0, max(0.0, float(self._content.get("crop_right", 0.0))))
             bottom = 1.0 - min(1.0, max(0.0, float(self._content.get("crop_bottom", 0.0))))
-        return QRectF(left * width, top * height, max(1.0, (right - left) * width), max(1.0, (bottom - top) * height))
+        return QRectF(
+            left * width,
+            top * height,
+            max(1.0, (right - left) * width),
+            max(1.0, (bottom - top) * height),
+        )
 
-    def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionGraphicsItem,
+        widget: QWidget | None = None,
+    ) -> None:
         del option, widget
         target = self.boundingRect()
         if self._pixmap.isNull():
@@ -196,12 +218,22 @@ class CoverImageItem(CoverElementItem):
             source = self._source_rect()
             fit = str(self._content.get("fit", "cover")).casefold()
             contain = min(target.width() / source.width(), target.height() / source.height())
-            ratio = max(target.width() / source.width(), target.height() / source.height()) if fit == "cover" else contain
+            ratio = (
+                max(target.width() / source.width(), target.height() / source.height())
+                if fit == "cover"
+                else contain
+            )
             ratio *= self.content_scale
             width = source.width() * ratio
             height = source.height() * ratio
-            offset_x = min(1.0, max(-1.0, float(self._content.get("offset_x", self._content.get("crop_x", 0.0)))))
-            offset_y = min(1.0, max(-1.0, float(self._content.get("offset_y", self._content.get("crop_y", 0.0)))))
+            offset_x = min(
+                1.0,
+                max(-1.0, float(self._content.get("offset_x", self._content.get("crop_x", 0.0)))),
+            )
+            offset_y = min(
+                1.0,
+                max(-1.0, float(self._content.get("offset_y", self._content.get("crop_y", 0.0)))),
+            )
             destination = QRectF(
                 (target.width() - width) / 2.0 + offset_x * target.width(),
                 (target.height() - height) / 2.0 + offset_y * target.height(),
@@ -215,12 +247,88 @@ class CoverImageItem(CoverElementItem):
         self._paint_selection_handles(painter)
 
 
+class CoverBarcodeItem(CoverElementItem):
+    """Editable EAN-13 barcode rendered directly on the cover scene."""
+
+    def __init__(self, element: CoverElement) -> None:
+        super().__init__(element)
+        self._content = dict(element.content)
+
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionGraphicsItem,
+        widget: QWidget | None = None,
+    ) -> None:
+        del option, widget
+        target = self.boundingRect()
+        isbn = canonical_isbn13(
+            self._content.get("isbn", self._content.get("text", ""))
+        )
+        if isbn:
+            modules = encode_ean13_modules(isbn)
+            addon_modules = encode_ean_addon_modules(self._content.get("addon", ""))
+            quiet_modules = 9
+            separator_modules = 8 if addon_modules else 0
+            total_modules = (
+                quiet_modules * 2
+                + len(modules)
+                + separator_modules
+                + len(addon_modules)
+            )
+            module_width = target.width() / max(1, total_modules)
+            bar_height = target.height() * 0.78
+            x = target.left() + quiet_modules * module_width
+            painter.save()
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("black"))
+            for bit in modules:
+                if bit == "1":
+                    painter.drawRect(QRectF(x, target.top(), module_width, bar_height))
+                x += module_width
+            if addon_modules:
+                x += separator_modules * module_width
+                addon_top = target.top() + bar_height * 0.12
+                for bit in addon_modules:
+                    if bit == "1":
+                        painter.drawRect(
+                            QRectF(
+                                x,
+                                addon_top,
+                                module_width,
+                                target.top() + bar_height - addon_top,
+                            )
+                        )
+                    x += module_width
+            font = QFont("Sans Serif")
+            font.setPointSizeF(max(3.0, min(10.0, target.height() * 0.14)))
+            painter.setFont(font)
+            painter.setPen(QColor("black"))
+            painter.drawText(
+                QRectF(
+                    target.left(),
+                    target.top() + bar_height,
+                    target.width(),
+                    target.height() - bar_height,
+                ),
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                " ".join((isbn[:3], isbn[3:])),
+            )
+            painter.restore()
+        self._paint_selection_handles(painter)
+
+
 class CoverTextItem(CoverElementItem):
     def __init__(self, element: CoverElement) -> None:
         super().__init__(element)
         self._content = dict(element.content)
 
-    def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = None) -> None:
+    def paint(
+        self,
+        painter: QPainter,
+        option: QStyleOptionGraphicsItem,
+        widget: QWidget | None = None,
+    ) -> None:
         del option, widget
         painter.save()
         font = QFont(str(self._content.get("font_family", "Sans Serif")))
