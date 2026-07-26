@@ -27,43 +27,35 @@ jobs:
 
           path = Path("python/src/epub_a4_word_desktop/cover/controller.py")
           text = path.read_text(encoding="utf-8")
-          old = '''        generation = self._preview_generation
-          preview_dir = self.working_dir / "previews"
-          preview_dir.mkdir(parents=True, exist_ok=True)
-          worker = PreviewWorker(
-              self.service,
-              self.project_json,
-              preview_dir / f"preview-{generation}.png",
-              generation,
+          worker_marker = "        worker = PreviewWorker(\n"
+          project_marker = "            self.project_json,\n"
+          if text.count(worker_marker) != 1:
+              raise SystemExit("preview worker marker was not found exactly once")
+          if text.count(project_marker) != 1:
+              raise SystemExit("preview project marker was not found exactly once")
+          raster_setup = (
+              "        project = self._require_project()\n"
+              "        raster_project = replace(\n"
+              "            project,\n"
+              "            elements=tuple(\n"
+              "                element\n"
+              "                for element in project.elements\n"
+              "                if element.kind\n"
+              "                not in {\n"
+              "                    ElementKind.IMAGE,\n"
+              "                    ElementKind.TEXT,\n"
+              "                    ElementKind.BARCODE_PLACEHOLDER,\n"
+              "                }\n"
+              "            ),\n"
+              "        )\n"
           )
-          '''
-          new = '''        generation = self._preview_generation
-          preview_dir = self.working_dir / "previews"
-          preview_dir.mkdir(parents=True, exist_ok=True)
-          project = self._require_project()
-          raster_project = replace(
-              project,
-              elements=tuple(
-                  element
-                  for element in project.elements
-                  if element.kind
-                  not in {
-                      ElementKind.IMAGE,
-                      ElementKind.TEXT,
-                      ElementKind.BARCODE_PLACEHOLDER,
-                  }
-              ),
+          text = text.replace(worker_marker, raster_setup + worker_marker, 1)
+          text = text.replace(
+              project_marker,
+              "            dumps_project(raster_project),\n",
+              1,
           )
-          worker = PreviewWorker(
-              self.service,
-              dumps_project(raster_project),
-              preview_dir / f"preview-{generation}.png",
-              generation,
-          )
-          '''
-          if text.count(old) != 1:
-              raise SystemExit("expected preview construction block was not found exactly once")
-          path.write_text(text.replace(old, new), encoding="utf-8")
+          path.write_text(text, encoding="utf-8")
       - name: Commit fix
         run: |
           git config user.name "github-actions[bot]"
