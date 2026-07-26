@@ -62,6 +62,7 @@ def test_template_catalog_is_deterministic() -> None:
         "front_image_plain_back",
         "full_spread",
         "top_bottom_blocks",
+        "publisher_back_matter",
     ]
 
 

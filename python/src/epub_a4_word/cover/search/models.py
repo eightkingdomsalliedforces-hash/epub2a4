@@ -5,6 +5,8 @@ from enum import StrEnum
 import re
 from urllib.parse import urlsplit
 
+from ..isbn import preferred_isbn, valid_isbns
+
 
 class SearchKind(StrEnum):
     FRONT = "front"
@@ -132,6 +134,7 @@ class SearchCandidate:
     preview_url: str
     image_url: str
     source_page: str
+    isbns: tuple[str, ...] = ()
     language: str = ""
     publisher: str = ""
     width_px: int | None = None
@@ -144,6 +147,9 @@ class SearchCandidate:
     def __post_init__(self) -> None:
         object.__setattr__(self, "query_kind", SearchKind(self.query_kind))
         object.__setattr__(self, "proposed_category", CandidateCategory(self.proposed_category))
+        normalized_isbns = valid_isbns((*self.isbns, self.isbn))
+        object.__setattr__(self, "isbns", normalized_isbns)
+        object.__setattr__(self, "isbn", preferred_isbn(normalized_isbns))
         for label, value in (
             ("preview_url", self.preview_url),
             ("image_url", self.image_url),
@@ -195,6 +201,7 @@ class SearchCandidate:
             "title": self.title,
             "author": self.author,
             "isbn": self.isbn,
+            "isbns": list(self.isbns),
             "preview_url": self.preview_url,
             "image_url": self.image_url,
             "source_page": self.source_page,
@@ -221,6 +228,7 @@ class SearchCandidate:
             title=str(raw.get("title", "")),
             author=str(raw.get("author", "")),
             isbn=str(raw.get("isbn", "")),
+            isbns=tuple(str(item) for item in raw.get("isbns", []) if str(item).strip()),
             preview_url=str(raw.get("preview_url", "")),
             image_url=str(raw.get("image_url", "")),
             source_page=str(raw.get("source_page", "")),

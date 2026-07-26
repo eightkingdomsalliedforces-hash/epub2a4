@@ -107,7 +107,17 @@ def validate_project(project: CoverProject) -> None:
 def _validate_metadata(metadata: CoverMetadata) -> None:
     if not isinstance(metadata, CoverMetadata):
         raise CoverValidationError("metadata 型別無效。")
-    for name in ("title", "author", "description", "isbn", "publisher", "language"):
+    for name in (
+        "title",
+        "author",
+        "description",
+        "isbn",
+        "publisher",
+        "price",
+        "publication_place",
+        "isbn_addon",
+        "language",
+    ):
         if not isinstance(getattr(metadata, name), str):
             raise CoverValidationError(f"metadata.{name} 必須是字串。")
     if not isinstance(metadata.page_count_is_estimate, bool):
@@ -195,6 +205,9 @@ def _metadata_from_dict(raw: Any) -> CoverMetadata:
         "description",
         "isbn",
         "publisher",
+        "price",
+        "publication_place",
+        "isbn_addon",
         "language",
         "page_count_is_estimate",
         "embedded_images",
@@ -207,6 +220,11 @@ def _metadata_from_dict(raw: Any) -> CoverMetadata:
         description=_string(data.get("description", ""), "metadata.description"),
         isbn=_string(data.get("isbn", ""), "metadata.isbn"),
         publisher=_string(data.get("publisher", ""), "metadata.publisher"),
+        price=_string(data.get("price", ""), "metadata.price"),
+        publication_place=_string(
+            data.get("publication_place", ""), "metadata.publication_place"
+        ),
+        isbn_addon=_string(data.get("isbn_addon", ""), "metadata.isbn_addon"),
         language=_string(data.get("language", ""), "metadata.language"),
         page_count_is_estimate=_boolean(
             data.get("page_count_is_estimate", False), "metadata.page_count_is_estimate"

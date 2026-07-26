@@ -2,17 +2,19 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 
-from PySide6.QtCore import QSignalBlocker, Signal
+from PySide6.QtCore import QSignalBlocker, Signal, Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QSlider,
     QSpinBox,
     QStackedWidget,
     QVBoxLayout,
@@ -103,28 +105,61 @@ class ElementInspector(QWidget):
         self.text_page_index = self.type_stack.addWidget(text_page)
 
         self.fit_combo = QComboBox(self)
-        self.fit_combo.addItem("填滿裁切", "cover")
-        self.fit_combo.addItem("完整包含", "contain")
+        self.fit_combo.addItem("填滿區域", "cover")
+        self.fit_combo.addItem("符合區域", "contain")
+        self.fit_combo.addItem("原始比例", "original")
+        self.scale_slider = QSlider(Qt.Orientation.Horizontal, self)
+        self.scale_slider.setRange(10, 500)
+        self.scale_slider.setValue(100)
+        self.scale_slider.setSingleStep(5)
+        self.scale_value_label = QLabel("100%", self)
+        scale_row = QWidget(self)
+        scale_layout = QHBoxLayout(scale_row)
+        scale_layout.setContentsMargins(0, 0, 0, 0)
+        scale_layout.addWidget(self.scale_slider, 1)
+        scale_layout.addWidget(self.scale_value_label)
         self.crop_x_spin = QDoubleSpinBox(self)
         self.crop_y_spin = QDoubleSpinBox(self)
         for spin in (self.crop_x_spin, self.crop_y_spin):
             spin.setRange(-1.0, 1.0)
             spin.setDecimals(3)
+            spin.setSingleStep(0.01)
         self.flip_horizontal = QCheckBox("水平翻轉", self)
         self.flip_vertical = QCheckBox("垂直翻轉", self)
         self.blur_spin = QDoubleSpinBox(self)
         self.blur_spin.setRange(0.0, 100.0)
         self.brightness_spin = QDoubleSpinBox(self)
-        self.brightness_spin.setRange(-100.0, 100.0)
+        self.brightness_spin.setRange(0.0, 3.0)
+        self.brightness_spin.setSingleStep(0.05)
+        self.brightness_spin.setValue(1.0)
         self.overlay_spin = QDoubleSpinBox(self)
         self.overlay_spin.setRange(0.0, 1.0)
         self.overlay_spin.setDecimals(2)
+        self.fit_button = QPushButton("符合區域", self)
+        self.fill_button = QPushButton("填滿區域", self)
+        self.original_button = QPushButton("原始比例", self)
+        fit_row = QWidget(self)
+        fit_layout = QHBoxLayout(fit_row)
+        fit_layout.setContentsMargins(0, 0, 0, 0)
+        fit_layout.addWidget(self.fit_button)
+        fit_layout.addWidget(self.fill_button)
+        fit_layout.addWidget(self.original_button)
+        self.center_button = QPushButton("置中", self)
+        self.reset_crop_button = QPushButton("重設裁切", self)
+        reset_row = QWidget(self)
+        reset_layout = QHBoxLayout(reset_row)
+        reset_layout.setContentsMargins(0, 0, 0, 0)
+        reset_layout.addWidget(self.center_button)
+        reset_layout.addWidget(self.reset_crop_button)
         self.apply_image_button = QPushButton("套用圖片設定", self)
         image_page = QWidget(self)
         image_form = QFormLayout(image_page)
         image_form.addRow("縮放方式", self.fit_combo)
-        image_form.addRow("裁切 X", self.crop_x_spin)
-        image_form.addRow("裁切 Y", self.crop_y_spin)
+        image_form.addRow("縮放比例", scale_row)
+        image_form.addRow("水平位置", self.crop_x_spin)
+        image_form.addRow("垂直位置", self.crop_y_spin)
+        image_form.addRow(fit_row)
+        image_form.addRow(reset_row)
         image_form.addRow("", self.flip_horizontal)
         image_form.addRow("", self.flip_vertical)
         image_form.addRow("模糊", self.blur_spin)
@@ -153,6 +188,15 @@ class ElementInspector(QWidget):
         self.opacity_spin.editingFinished.connect(self._emit_opacity)
         self.apply_text_button.clicked.connect(self._emit_text)
         self.apply_image_button.clicked.connect(self._emit_image)
+        self.scale_slider.valueChanged.connect(
+            lambda value: self.scale_value_label.setText(f"{value}%")
+        )
+        self.scale_slider.sliderReleased.connect(self._emit_image)
+        self.fit_button.clicked.connect(lambda _checked=False: self._emit_fit("contain"))
+        self.fill_button.clicked.connect(lambda _checked=False: self._emit_fit("cover"))
+        self.original_button.clicked.connect(lambda _checked=False: self._emit_fit("original"))
+        self.center_button.clicked.connect(self._emit_center)
+        self.reset_crop_button.clicked.connect(self._emit_reset_crop)
         self.setEnabled(False)
 
     def _controls(self) -> tuple[QWidget, ...]:
@@ -172,6 +216,7 @@ class ElementInspector(QWidget):
             self.line_spacing_spin,
             self.direction_combo,
             self.fit_combo,
+            self.scale_slider,
             self.crop_x_spin,
             self.crop_y_spin,
             self.flip_horizontal,
@@ -213,12 +258,19 @@ class ElementInspector(QWidget):
             elif element.kind is ElementKind.IMAGE:
                 self.type_stack.setCurrentIndex(self.image_page_index)
                 self._set_combo_data(self.fit_combo, element.content.get("fit", "cover"))
-                self.crop_x_spin.setValue(float(element.content.get("crop_x", 0.0)))
-                self.crop_y_spin.setValue(float(element.content.get("crop_y", 0.0)))
+                self.scale_slider.setValue(
+                    round(min(5.0, max(0.1, float(element.content.get("scale", 1.0)))) * 100.0)
+                )
+                self.crop_x_spin.setValue(
+                    float(element.content.get("offset_x", element.content.get("crop_x", 0.0)))
+                )
+                self.crop_y_spin.setValue(
+                    float(element.content.get("offset_y", element.content.get("crop_y", 0.0)))
+                )
                 self.flip_horizontal.setChecked(bool(element.content.get("flip_horizontal", False)))
                 self.flip_vertical.setChecked(bool(element.content.get("flip_vertical", False)))
                 self.blur_spin.setValue(float(element.content.get("blur", 0.0)))
-                self.brightness_spin.setValue(float(element.content.get("brightness", 0.0)))
+                self.brightness_spin.setValue(float(element.content.get("brightness", 1.0)))
                 self.overlay_spin.setValue(float(element.content.get("dark_overlay", 0.0)))
             else:
                 self.type_stack.setCurrentIndex(0)
@@ -267,8 +319,9 @@ class ElementInspector(QWidget):
             {
                 "content": {
                     "fit": self.fit_combo.currentData(),
-                    "crop_x": self.crop_x_spin.value(),
-                    "crop_y": self.crop_y_spin.value(),
+                    "scale": self.scale_slider.value() / 100.0,
+                    "offset_x": self.crop_x_spin.value(),
+                    "offset_y": self.crop_y_spin.value(),
                     "flip_horizontal": self.flip_horizontal.isChecked(),
                     "flip_vertical": self.flip_vertical.isChecked(),
                     "blur": self.blur_spin.value(),
@@ -277,3 +330,40 @@ class ElementInspector(QWidget):
                 }
             },
         )
+
+    def _emit_fit(self, fit: str) -> None:
+        if self.element_id is None or self.element_kind is not ElementKind.IMAGE:
+            return
+        self.patch_requested.emit(
+            self.element_id,
+            {
+                "content": {
+                    "fit": fit,
+                    "scale": 1.0,
+                    "offset_x": 0.0,
+                    "offset_y": 0.0,
+                }
+            },
+        )
+
+    def _emit_center(self) -> None:
+        if self.element_id is not None and self.element_kind is ElementKind.IMAGE:
+            self.patch_requested.emit(
+                self.element_id,
+                {"content": {"offset_x": 0.0, "offset_y": 0.0}},
+            )
+
+    def _emit_reset_crop(self) -> None:
+        if self.element_id is not None and self.element_kind is ElementKind.IMAGE:
+            self.patch_requested.emit(
+                self.element_id,
+                {
+                    "content": {
+                        "crop": {"left": 0.0, "top": 0.0, "right": 1.0, "bottom": 1.0},
+                        "crop_left": 0.0,
+                        "crop_top": 0.0,
+                        "crop_right": 0.0,
+                        "crop_bottom": 0.0,
+                    }
+                },
+            )

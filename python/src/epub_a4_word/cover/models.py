@@ -39,6 +39,9 @@ class CoverMetadata:
     description: str = ""
     isbn: str = ""
     publisher: str = ""
+    price: str = ""
+    publication_place: str = ""
+    isbn_addon: str = ""
     language: str = ""
     page_count_is_estimate: bool = False
     embedded_images: tuple[dict[str, Any], ...] = ()

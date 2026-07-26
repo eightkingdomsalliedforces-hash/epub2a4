@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
+import re
 from uuid import uuid4
 
 from PySide6.QtCore import QRectF, Qt, Signal
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from epub_a4_word.cover.composition import compose_full_spread
 from epub_a4_word.cover.geometry import calculate_layout
+from epub_a4_word.cover.isbn import normalize_isbn, preferred_isbn, valid_isbns
 from epub_a4_word.cover.models import (
     CoverElement,
     ElementKind,
@@ -32,6 +34,7 @@ from epub_a4_word.cover.models import (
     Region,
 )
 from epub_a4_word.cover.project_io import dumps_project, loads_project
+from epub_a4_word.cover.search.models import SearchCandidate
 from epub_a4_word_desktop.cover.assets_panel import AssetsPanel
 from epub_a4_word_desktop.cover.canvas import CoverCanvas
 from epub_a4_word_desktop.cover.composition_dialog import CompositionDialog
@@ -65,6 +68,7 @@ class TemplatePanel(QGroupBox):
             ("上下色塊", "top_bottom_blocks"),
             ("全圖覆蓋", "full_bleed_image"),
             ("經典書籍", "classic_book"),
+            ("出版社式封底", "publisher_back_matter"),
         ):
             self.combo.addItem(label, template_id)
         self.apply_button = QPushButton("套用模板", self)
@@ -264,6 +268,7 @@ class CoverPage(QWidget):
         self.layers_panel.visibility_requested.connect(self._change_visibility)
         self.canvas.element_selected.connect(self._select_element)
         self.canvas.element_transform_requested.connect(self._commit_canvas_transform)
+        self.canvas.element_patch_requested.connect(self.controller.update_element)
         self.inspector.patch_requested.connect(self.controller.update_element)
         self.controller.project_changed.connect(self._project_changed)
         self.controller.preview_ready.connect(self.canvas.set_preview)
@@ -368,12 +373,101 @@ class CoverPage(QWidget):
         except Exception as exc:
             self._show_error(str(exc))
 
+    @staticmethod
+    def _volume_number(title: str) -> int | None:
+        text = str(title or "")
+        for pattern in (
+            r"(?:vol(?:ume)?\.?|book|#)\s*(\d+)",
+            r"第\s*(\d+)\s*[卷冊集]",
+        ):
+            match = re.search(pattern, text, flags=re.IGNORECASE)
+            if match:
+                return int(match.group(1))
+        return None
+
+    def _maybe_apply_search_isbn(self, selected: Mapping[str, object]) -> None:
+        candidates = tuple(
+            value for value in selected.values() if isinstance(value, SearchCandidate)
+        )
+        if not candidates:
+            return
+        candidate_isbns = valid_isbns(
+            value
+            for candidate in candidates
+            for value in (*candidate.isbns, candidate.isbn)
+        )
+        isbn = preferred_isbn(candidate_isbns)
+        if not isbn:
+            return
+        project = loads_project(self.controller.project_json)
+        project_volume = self._volume_number(project.metadata.title)
+        relevant = tuple(
+            candidate
+            for candidate in candidates
+            if isbn == candidate.isbn or isbn in candidate.isbns
+        )
+        for candidate in relevant:
+            candidate_volume = self._volume_number(candidate.title)
+            if (
+                project_volume is not None
+                and candidate_volume is not None
+                and project_volume != candidate_volume
+            ):
+                self.status_label.setText(
+                    f"搜尋結果 ISBN {isbn} 屬於第 {candidate_volume} 卷，與專案第 {project_volume} 卷不符，未套用 ISBN。"
+                )
+                return
+
+        existing = normalize_isbn(project.metadata.isbn)
+        if existing == isbn:
+            return
+        auto_apply = bool(relevant) and all(
+            candidate.classification_confidence >= 0.95
+            and (
+                self._volume_number(candidate.title) == project_volume
+                if project_volume is not None
+                else self._volume_number(candidate.title) is None
+            )
+            for candidate in relevant
+        )
+        should_apply = auto_apply
+        if existing and existing != isbn:
+            should_apply = (
+                QMessageBox.question(
+                    self,
+                    "確認覆蓋 ISBN",
+                    f"專案已有 ISBN {existing}。是否改用搜尋結果的 {isbn}？",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                == QMessageBox.StandardButton.Yes
+            )
+        elif not auto_apply:
+            should_apply = (
+                QMessageBox.question(
+                    self,
+                    "套用搜尋到的 ISBN",
+                    f"搜尋結果找到 ISBN {isbn}。是否寫入封面專案並更新條碼？",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.Yes,
+                )
+                == QMessageBox.StandardButton.Yes
+            )
+        if should_apply:
+            self.controller.apply_isbn(isbn)
+            self.status_label.setText(f"已套用 ISBN {isbn} 並更新封底條碼。")
+
     def _begin_search_application(self, mode: str, selected: dict) -> None:
         if not self.controller.project_json:
             self._show_error("請先建立封面專案。")
             return
         if not selected:
             self._show_error("尚未選擇搜尋圖片。")
+            return
+        try:
+            self._maybe_apply_search_isbn(selected)
+        except Exception as exc:
+            self._show_error(str(exc))
             return
         self.status_label.setText("正在下載並驗證選取的原始圖片…")
         self.search_controller.download_selected(

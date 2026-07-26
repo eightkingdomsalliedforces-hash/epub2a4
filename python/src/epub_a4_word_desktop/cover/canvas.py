@@ -49,6 +49,7 @@ class CoverCanvas(QGraphicsView):
 
     element_selected = Signal(object)
     element_transform_requested = Signal(str, dict)
+    element_patch_requested = Signal(str, dict)
     MIN_ZOOM = 0.10
     MAX_ZOOM = 8.00
     PIXELS_PER_MM = 96.0 / 25.4
@@ -212,6 +213,15 @@ class CoverCanvas(QGraphicsView):
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             multiplier = 1.15 if event.angleDelta().y() > 0 else 1.0 / 1.15
             self.set_zoom(self._zoom_factor * multiplier)
+            event.accept()
+            return
+        selected = [item for item in self.scene().selectedItems() if isinstance(item, CoverImageItem)]
+        if len(selected) == 1 and event.angleDelta().y() != 0:
+            item = selected[0]
+            multiplier = 1.10 if event.angleDelta().y() > 0 else 1.0 / 1.10
+            scale = min(5.0, max(0.1, item.content_scale * multiplier))
+            item.set_content_scale(scale)
+            self.element_patch_requested.emit(item.element_id, {"content": {"scale": scale}})
             event.accept()
             return
         super().wheelEvent(event)

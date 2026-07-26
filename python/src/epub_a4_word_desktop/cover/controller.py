@@ -17,7 +17,8 @@ from PySide6.QtGui import QUndoStack
 
 from epub_a4_word.cover import service as shared_service
 from epub_a4_word.cover.composition import CompositionSelection
-from epub_a4_word.cover.geometry import calculate_layout
+from epub_a4_word.cover.geometry import RectMm, calculate_layout
+from epub_a4_word.cover.isbn import normalize_isbn
 from epub_a4_word.cover.models import (
     CoverElement,
     CoverProject,
@@ -27,6 +28,7 @@ from epub_a4_word.cover.models import (
 )
 from epub_a4_word.cover.project_io import dumps_project, loads_project
 from epub_a4_word.cover.search.models import CandidateCategory
+from epub_a4_word.cover.templates import apply_template as apply_cover_template
 
 from .commands import ReplaceProjectCommand
 from .models import patch_element
@@ -184,6 +186,29 @@ class CoverController(QObject):
         candidate_json = self.service.apply_template(dumps_project(current), template_id)
         self.replace_project(candidate_json, label=f"套用模板：{template_id}")
 
+    def apply_isbn(self, value: object) -> str:
+        isbn = normalize_isbn(value)
+        if not isbn:
+            raise ValueError("ISBN 必須是通過校驗的 ISBN-10 或 ISBN-13。")
+        project = self._require_project()
+        candidate = replace(project, metadata=replace(project.metadata, isbn=isbn))
+        active_template = str(candidate.background.get("active_template", ""))
+        if active_template == "publisher_back_matter":
+            candidate = apply_cover_template(candidate, active_template)
+        else:
+            updated: list[CoverElement] = []
+            for element in candidate.elements:
+                content = dict(element.content)
+                if element.kind is ElementKind.BARCODE_PLACEHOLDER:
+                    content["isbn"] = isbn
+                    content["text"] = isbn
+                elif element.id == "back-isbn-label":
+                    content["text"] = f"ISBN-13 {isbn}" if len(isbn) == 13 else f"ISBN-10 {isbn}"
+                updated.append(replace(element, content=content))
+            candidate = replace(candidate, elements=tuple(updated))
+        self.replace_project(dumps_project(candidate), label="套用 ISBN")
+        return isbn
+
     def update_element(self, element_id: str, patch: Mapping[str, Any]) -> None:
         candidate = patch_element(self._require_project(), element_id, patch)
         candidate_json = dumps_project(candidate)
@@ -215,6 +240,18 @@ class CoverController(QObject):
     @staticmethod
     def _target_rect(project: CoverProject, region: Region):
         layout = calculate_layout(project)
+        if region is Region.BACK and str(project.background.get("active_template", "")) == "publisher_back_matter":
+            slot = project.background.get("publisher_logo_slot")
+            if isinstance(slot, Mapping):
+                try:
+                    return RectMm(
+                        float(slot["x_mm"]),
+                        float(slot["y_mm"]),
+                        float(slot["width_mm"]),
+                        float(slot["height_mm"]),
+                    )
+                except (KeyError, TypeError, ValueError):
+                    pass
         return {
             Region.BACK: layout.back_rect,
             Region.SPINE: layout.spine_rect,
@@ -244,21 +281,28 @@ class CoverController(QObject):
     ) -> CoverElement:
         copied = self._copy_local_image(source)
         target = self._target_rect(project, region)
-        scale = selection.scale if selection else 1.0
-        offset_x = selection.offset_x if selection else 0.0
-        offset_y = selection.offset_y if selection else 0.0
-        width = target.width_mm * scale
-        height = target.height_mm * scale
         transform = ElementTransform(
-            target.x_mm + (target.width_mm - width) / 2.0 + offset_x * target.width_mm,
-            target.y_mm + (target.height_mm - height) / 2.0 + offset_y * target.height_mm,
-            width,
-            height,
+            target.x_mm,
+            target.y_mm,
+            target.width_mm,
+            target.height_mm,
         )
-        content: dict[str, Any] = {"path": str(copied), "fit": "cover"}
+        content: dict[str, Any] = {
+            "path": str(copied),
+            "fit": "cover",
+            "scale": selection.scale if selection else 1.0,
+            "offset_x": selection.offset_x if selection else 0.0,
+            "offset_y": selection.offset_y if selection else 0.0,
+        }
         if selection:
             content.update(
                 {
+                    "crop": {
+                        "left": selection.crop_left,
+                        "top": selection.crop_top,
+                        "right": 1.0 - selection.crop_right,
+                        "bottom": 1.0 - selection.crop_bottom,
+                    },
                     "crop_left": selection.crop_left,
                     "crop_top": selection.crop_top,
                     "crop_right": selection.crop_right,
