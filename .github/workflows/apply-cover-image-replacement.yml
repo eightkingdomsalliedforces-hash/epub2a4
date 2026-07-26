@@ -23,100 +23,78 @@ jobs:
           from pathlib import Path
 
           path = Path("python/src/epub_a4_word_desktop/cover/controller.py")
-          text = path.read_text(encoding="utf-8")
+          lines = path.read_text(encoding="utf-8").splitlines()
 
-          marker = "    def add_downloaded_images(\n"
-          helper = """    @staticmethod
-          def _without_replaced_cover_images(
-              elements: list[CoverElement],
-              replacement_regions: set[Region],
-          ) -> list[CoverElement]:
-              replace_spread = Region.SPREAD in replacement_regions
-              return [
-                  element
-                  for element in elements
-                  if not (
-                      element.kind is ElementKind.IMAGE
-                      and (
-                          replace_spread
-                          or element.region is Region.SPREAD
-                          or element.region in replacement_regions
-                      )
-                  )
-              ]
+          method_index = lines.index("    def add_downloaded_images(")
+          helper = [
+              "    @staticmethod",
+              "    def _without_replaced_cover_images(",
+              "        elements: list[CoverElement],",
+              "        replacement_regions: set[Region],",
+              "    ) -> list[CoverElement]:",
+              "        replace_spread = Region.SPREAD in replacement_regions",
+              "        return [",
+              "            element",
+              "            for element in elements",
+              "            if not (",
+              "                element.kind is ElementKind.IMAGE",
+              "                and (",
+              "                    replace_spread",
+              "                    or element.region is Region.SPREAD",
+              "                    or element.region in replacement_regions",
+              "                )",
+              "            )",
+              "        ]",
+              "",
+          ]
+          lines[method_index:method_index] = helper
+          method_index += len(helper)
 
-          """
-          if text.count(marker) != 1:
-              raise SystemExit("add_downloaded_images marker mismatch")
-          text = text.replace(marker, helper + marker, 1)
+          elements_index = lines.index("        elements = list(project.elements)", method_index)
+          normalized_index = lines.index(
+              "        normalized = {CandidateCategory(key): value for key, value in selections.items()}",
+              elements_index,
+          )
+          replacement = [
+              "        added: list[str] = []",
+              "        order = (",
+              "            CandidateCategory.BACK,",
+              "            CandidateCategory.SPINE,",
+              "            CandidateCategory.FRONT,",
+              "        )",
+              "        normalized = {CandidateCategory(key): value for key, value in selections.items()}",
+              "        replacement_regions = {",
+              "            self._region_for_category(category)",
+              "            for category in normalized",
+              "            if category in order",
+              "        }",
+              "        elements = self._without_replaced_cover_images(",
+              "            list(project.elements), replacement_regions",
+              "        )",
+              "        highest_z = max((element.z_index for element in elements), default=0)",
+          ]
+          lines[elements_index : normalized_index + 1] = replacement
 
-          old = """        project = self._require_project()
-          elements = list(project.elements)
-          highest_z = max((element.z_index for element in elements), default=0)
-          added: list[str] = []
-          order = (
-              CandidateCategory.BACK,
-              CandidateCategory.SPINE,
-              CandidateCategory.FRONT,
+          spread_index = lines.index("    def add_composed_spread(self, source_path: Path | str) -> str:")
+          highest_index = lines.index(
+              "        highest_z = max((element.z_index for element in project.elements), default=0)",
+              spread_index,
           )
-          normalized = {CandidateCategory(key): value for key, value in selections.items()}
-          """
-          new = """        project = self._require_project()
-          added: list[str] = []
-          order = (
-              CandidateCategory.BACK,
-              CandidateCategory.SPINE,
-              CandidateCategory.FRONT,
+          lines[highest_index : highest_index + 1] = [
+              "        retained = self._without_replaced_cover_images(",
+              "            list(project.elements), {Region.SPREAD}",
+              "        )",
+              "        highest_z = max((element.z_index for element in retained), default=0)",
+          ]
+          dumps_index = lines.index(
+              "            dumps_project(replace(project, elements=project.elements + (element,))),",
+              spread_index,
           )
-          normalized = {CandidateCategory(key): value for key, value in selections.items()}
-          replacement_regions = {
-              self._region_for_category(category)
-              for category in normalized
-              if category in order
-          }
-          elements = self._without_replaced_cover_images(
-              list(project.elements), replacement_regions
+          lines[dumps_index] = (
+              "            dumps_project(replace(project, elements=tuple(retained) + (element,))),"
           )
-          highest_z = max((element.z_index for element in elements), default=0)
-          """
-          if text.count(old) != 1:
-              raise SystemExit("downloaded image block mismatch")
-          text = text.replace(old, new, 1)
 
-          old = """        project = self._require_project()
-          highest_z = max((element.z_index for element in project.elements), default=0)
-          element = self._image_element(
-              project,
-              Path(source_path).expanduser().resolve(),
-              Region.SPREAD,
-              z_index=highest_z + 1,
-              element_id=f\"composed-spread-{uuid4().hex}\",
-          )
-          self.replace_project(
-              dumps_project(replace(project, elements=project.elements + (element,))),
-              label=\"套用合成完整書衣\",
-          )
-          """
-          new = """        project = self._require_project()
-          retained = self._without_replaced_cover_images(
-              list(project.elements), {Region.SPREAD}
-          )
-          highest_z = max((element.z_index for element in retained), default=0)
-          element = self._image_element(
-              project,
-              Path(source_path).expanduser().resolve(),
-              Region.SPREAD,
-              z_index=highest_z + 1,
-              element_id=f\"composed-spread-{uuid4().hex}\",
-          )
-          self.replace_project(
-              dumps_project(replace(project, elements=tuple(retained) + (element,))),
-              label=\"套用合成完整書衣\",
-          )
-          """
-          if text.count(old) != 1:
-              raise SystemExit("composed spread block mismatch")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8")
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"
