@@ -5,14 +5,16 @@ on:
     branches:
       - agent/impl-output-overflow-alias-cover-export
     paths:
-      - ".upload/output-fix.patch.xz.b64"
+      - ".upload/output-fix.part-*"
+      - ".upload/parts.manifest"
       - ".upload/ready.sha256"
       - ".github/workflows/apply-output-overflow-fix.yml"
   pull_request:
     branches:
       - main
     paths:
-      - ".upload/output-fix.patch.xz.b64"
+      - ".upload/output-fix.part-*"
+      - ".upload/parts.manifest"
       - ".upload/ready.sha256"
       - ".github/workflows/apply-output-overflow-fix.yml"
 
@@ -27,17 +29,26 @@ jobs:
         with:
           ref: ${{ github.head_ref || github.ref_name }}
           fetch-depth: 0
+          show-progress: false
       - name: Apply verified implementation patch
         shell: bash
         run: |
           set -euo pipefail
-          if [[ ! -f .upload/output-fix.patch.xz.b64 || ! -f .upload/ready.sha256 ]]; then
-            echo "Patch is not complete yet; nothing to apply."
+          if [[ ! -f .upload/parts.manifest || ! -f .upload/ready.sha256 ]]; then
+            echo "Patch parts are not complete yet; nothing to apply."
             exit 0
           fi
+          pushd .upload >/dev/null
+          sha256sum --check parts.manifest
+          while read -r _sha filename; do
+            cat "$filename"
+          done < parts.manifest > /tmp/output-fix.patch.xz.b64
+          popd >/dev/null
+          base64 --decode /tmp/output-fix.patch.xz.b64 > /tmp/output-fix.patch.xz
           expected="$(tr -d '[:space:]' < .upload/ready.sha256)"
-          base64 --decode .upload/output-fix.patch.xz.b64 > /tmp/output-fix.patch.xz
           actual="$(sha256sum /tmp/output-fix.patch.xz | awk '{print $1}')"
+          echo "expected xz sha256: $expected"
+          echo "actual xz sha256:   $actual"
           [[ "$actual" == "$expected" ]]
           xz --decompress --stdout /tmp/output-fix.patch.xz > /tmp/output-fix.patch
           git apply --check /tmp/output-fix.patch
