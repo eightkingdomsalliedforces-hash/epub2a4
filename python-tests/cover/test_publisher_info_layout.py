@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from epub_a4_word.cover import fonts
 from epub_a4_word.cover.models import CoverMetadata
 from epub_a4_word.cover.publisher_info_layout import (
     TextMeasure,
@@ -97,3 +100,17 @@ def test_dfp_yuan_gb_names_are_first_candidates() -> None:
         "DFP Yuan W3",
         "DFYuan-W3",
     )
+
+
+def test_font_matching_supports_declared_alias_without_substring_guessing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    intended = tmp_path / "DFPYuanW5-GB.ttf"
+    unrelated = tmp_path / "MyDFPYuanW5Backup.ttf"
+    intended.touch()
+    unrelated.touch()
+    monkeypatch.setattr(fonts, "_installed_font_files", lambda: (unrelated, intended))
+
+    assert fonts._matching_font_path(("DFP Yuan W5",)) == intended
+    assert fonts._matching_font_path(("DFPYuanW4",)) is None
