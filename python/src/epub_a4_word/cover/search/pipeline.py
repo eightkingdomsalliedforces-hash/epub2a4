@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -248,8 +248,9 @@ class BookCoverSearchPipeline:
             if key in executed:
                 continue
             executed.add(key)
+            request = self._request(item, identity)
             try:
-                response = provider.search(self._request(item, identity))
+                response = provider.search(request)
             except Exception as exc:
                 warnings.append(f"{label}：{exc}")
                 continue
@@ -257,6 +258,19 @@ class BookCoverSearchPipeline:
             warnings.extend(
                 warning if warning.startswith(f"{label}：") else f"{label}：{warning}"
                 for warning in response.warnings
+            )
+            if item.kind != "title" or not request.author or response.candidates:
+                continue
+            fallback_request = replace(request, author="")
+            try:
+                fallback_response = provider.search(fallback_request)
+            except Exception as exc:
+                warnings.append(f"{label}：作者寬鬆搜尋失敗：{exc}")
+                continue
+            found.extend(fallback_response.candidates)
+            warnings.extend(
+                warning if warning.startswith(f"{label}：") else f"{label}：{warning}"
+                for warning in fallback_response.warnings
             )
         return found
 
