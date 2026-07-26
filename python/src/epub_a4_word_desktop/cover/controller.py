@@ -367,13 +367,30 @@ class CoverController(QObject):
         self.replace_project(dumps_project(candidate), label="加入本機圖片")
         return element.id
 
+    @staticmethod
+    def _without_replaced_cover_images(
+        elements: list[CoverElement],
+        replacement_regions: set[Region],
+    ) -> list[CoverElement]:
+        replace_spread = Region.SPREAD in replacement_regions
+        return [
+            element
+            for element in elements
+            if not (
+                element.kind is ElementKind.IMAGE
+                and (
+                    replace_spread
+                    or element.region is Region.SPREAD
+                    or element.region in replacement_regions
+                )
+            )
+        ]
+
     def add_downloaded_images(
         self,
         selections: Mapping[CandidateCategory | str, CompositionSelection],
     ) -> tuple[str, ...]:
         project = self._require_project()
-        elements = list(project.elements)
-        highest_z = max((element.z_index for element in elements), default=0)
         added: list[str] = []
         order = (
             CandidateCategory.BACK,
@@ -381,6 +398,15 @@ class CoverController(QObject):
             CandidateCategory.FRONT,
         )
         normalized = {CandidateCategory(key): value for key, value in selections.items()}
+        replacement_regions = {
+            self._region_for_category(category)
+            for category in normalized
+            if category in order
+        }
+        elements = self._without_replaced_cover_images(
+            list(project.elements), replacement_regions
+        )
+        highest_z = max((element.z_index for element in elements), default=0)
         for category in order:
             selection = normalized.get(category)
             if selection is None:
@@ -405,7 +431,10 @@ class CoverController(QObject):
 
     def add_composed_spread(self, source_path: Path | str) -> str:
         project = self._require_project()
-        highest_z = max((element.z_index for element in project.elements), default=0)
+        retained = self._without_replaced_cover_images(
+            list(project.elements), {Region.SPREAD}
+        )
+        highest_z = max((element.z_index for element in retained), default=0)
         element = self._image_element(
             project,
             Path(source_path).expanduser().resolve(),
@@ -414,7 +443,7 @@ class CoverController(QObject):
             element_id=f"composed-spread-{uuid4().hex}",
         )
         self.replace_project(
-            dumps_project(replace(project, elements=project.elements + (element,))),
+            dumps_project(replace(project, elements=tuple(retained) + (element,))),
             label="套用合成完整書衣",
         )
         return element.id
