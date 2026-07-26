@@ -1,0 +1,77 @@
+name: Apply cover item rendering fixes
+
+on:
+  push:
+    branches:
+      - fix/reference-back-cover-isbn-clarity
+    paths:
+      - .github/workflows/apply-cover-item-rendering.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/reference-back-cover-isbn-clarity
+      - name: Patch graphics items
+        shell: python
+        run: |
+          import base64
+          from pathlib import Path
+
+          helper_b64 = "ZGVmIF9xdF9mb250X2Zvcl9zY2VuZSgKICAgIHJvbGU6IHN0ciwKICAgIHNjZW5lX3NpemU6IGZsb2F0LAogICAgcmVxdWVzdGVkOiBvYmplY3QgPSBOb25lLAogICAgd2VpZ2h0OiBpbnQgPSA0MDAsCikgLT4gUUZvbnQ6CiAgICBjYW5kaWRhdGVzID0gZm9udF9jYW5kaWRhdGVzKHJvbGUsIHJlcXVlc3RlZCkKICAgIHRyeToKICAgICAgICBpbnN0YWxsZWQgPSB7CiAgICAgICAgICAgIGZhbWlseS5jYXNlZm9sZCgpOiBmYW1pbHkgZm9yIGZhbWlseSBpbiBRRm9udERhdGFiYXNlLmZhbWlsaWVzKCkKICAgICAgICB9CiAgICBleGNlcHQgUnVudGltZUVycm9yOgogICAgICAgIGluc3RhbGxlZCA9IHt9CiAgICBzZWxlY3RlZCA9IG5leHQoCiAgICAgICAgKAogICAgICAgICAgICBpbnN0YWxsZWRbbmFtZS5jYXNlZm9sZCgpXQogICAgICAgICAgICBmb3IgbmFtZSBpbiBjYW5kaWRhdGVzCiAgICAgICAgICAgIGlmIG5hbWUuY2FzZWZvbGQoKSBpbiBpbnN0YWxsZWQKICAgICAgICApLAogICAgICAgIGNhbmRpZGF0ZXNbMF0sCiAgICApCiAgICBmb250ID0gUUZvbnQoc2VsZWN0ZWQpCiAgICBpZiBoYXNhdHRyKGZvbnQsICJzZXRGYW1pbGllcyIpOgogICAgICAgIGZvbnQuc2V0RmFtaWxpZXMobGlzdChjYW5kaWRhdGVzKSkKICAgIGZvbnQuc2V0UGl4ZWxTaXplKG1heCgxLCByb3VuZChmbG9hdChzY2VuZV9zaXplKSkpKQogICAgdHJ5OgogICAgICAgIGZvbnQuc2V0V2VpZ2h0KFFGb250LldlaWdodChpbnQod2VpZ2h0KSkpCiAgICBleGNlcHQgKFR5cGVFcnJvciwgVmFsdWVFcnJvcik6CiAgICAgICAgZm9udC5zZXRXZWlnaHQoUUZvbnQuV2VpZ2h0Lk5vcm1hbCkKICAgIHJldHVybiBmb250CgoK"
+          bounds_b64 = "ICAgIGRlZiBjb250ZW50UmVjdChzZWxmKSAtPiBRUmVjdEY6CiAgICAgICAgcmV0dXJuIFFSZWN0RigwLjAsIDAuMCwgc2VsZi5fd2lkdGhfbW0sIHNlbGYuX2hlaWdodF9tbSkKCiAgICBkZWYgYm91bmRpbmdSZWN0KHNlbGYpIC0+IFFSZWN0RjoKICAgICAgICBoYWxmID0gc2VsZi5IQU5ETEVfU0laRV9NTSAvIDIuMAogICAgICAgIHJldHVybiBzZWxmLmNvbnRlbnRSZWN0KCkuYWRqdXN0ZWQoCiAgICAgICAgICAgIC1oYWxmLAogICAgICAgICAgICAtKDUuMCArIGhhbGYpLAogICAgICAgICAgICBoYWxmLAogICAgICAgICAgICBoYWxmLAogICAgICAgICkK"
+          tail_b64 = "Y2xhc3MgQ292ZXJCYXJjb2RlSXRlbShDb3ZlckVsZW1lbnRJdGVtKToKICAgICIiIkVkaXRhYmxlIEVBTi0xMyBiYXJjb2RlIHJlbmRlcmVkIGRpcmVjdGx5IG9uIHRoZSBjb3ZlciBzY2VuZS4iIiIKCiAgICBkZWYgX19pbml0X18oc2VsZiwgZWxlbWVudDogQ292ZXJFbGVtZW50KSAtPiBOb25lOgogICAgICAgIHN1cGVyKCkuX19pbml0X18oZWxlbWVudCkKICAgICAgICBzZWxmLl9jb250ZW50ID0gZGljdChlbGVtZW50LmNvbnRlbnQpCgogICAgQHN0YXRpY21ldGhvZAogICAgZGVmIF9hbmNob3JfcmVjdCh0YXJnZXQ6IFFSZWN0RiwgYW5jaG9yOiBCYXJjb2RlVGV4dEFuY2hvcikgLT4gUVJlY3RGOgogICAgICAgIHJldHVybiBRUmVjdEYoCiAgICAgICAgICAgIHRhcmdldC5sZWZ0KCkgKyBhbmNob3IubGVmdCAqIHRhcmdldC53aWR0aCgpLAogICAgICAgICAgICB0YXJnZXQudG9wKCkgKyBhbmNob3IudG9wICogdGFyZ2V0LmhlaWdodCgpLAogICAgICAgICAgICBtYXgoMC4xLCAoYW5jaG9yLnJpZ2h0IC0gYW5jaG9yLmxlZnQpICogdGFyZ2V0LndpZHRoKCkpLAogICAgICAgICAgICBtYXgoMC4xLCAoYW5jaG9yLmJvdHRvbSAtIGFuY2hvci50b3ApICogdGFyZ2V0LmhlaWdodCgpKSwKICAgICAgICApCgogICAgQHN0YXRpY21ldGhvZAogICAgZGVmIF9hbmNob3JfYWxpZ25tZW50KGFuY2hvcjogQmFyY29kZVRleHRBbmNob3IpIC0+IFF0LkFsaWdubWVudEZsYWc6CiAgICAgICAgaG9yaXpvbnRhbCA9IHsKICAgICAgICAgICAgImxlZnQiOiBRdC5BbGlnbm1lbnRGbGFnLkFsaWduTGVmdCwKICAgICAgICAgICAgInJpZ2h0IjogUXQuQWxpZ25tZW50RmxhZy5BbGlnblJpZ2h0LAogICAgICAgIH0uZ2V0KGFuY2hvci5hbGlnbiwgUXQuQWxpZ25tZW50RmxhZy5BbGlnbkhDZW50ZXIpCiAgICAgICAgcmV0dXJuIGhvcml6b250YWwgfCBRdC5BbGlnbm1lbnRGbGFnLkFsaWduVkNlbnRlcgoKICAgIGRlZiBwYWludCgKICAgICAgICBzZWxmLAogICAgICAgIHBhaW50ZXI6IFFQYWludGVyLAogICAgICAgIG9wdGlvbjogUVN0eWxlT3B0aW9uR3JhcGhpY3NJdGVtLAogICAgICAgIHdpZGdldDogUVdpZGdldCB8IE5vbmUgPSBOb25lLAogICAgKSAtPiBOb25lOgogICAgICAgIGRlbCBvcHRpb24sIHdpZGdldAogICAgICAgIHRhcmdldCA9IHNlbGYuY29udGVudFJlY3QoKQogICAgICAgIGlzYm4gPSBjYW5vbmljYWxfaXNibjEzKAogICAgICAgICAgICBzZWxmLl9jb250ZW50LmdldCgiaXNibiIsIHNlbGYuX2NvbnRlbnQuZ2V0KCJ0ZXh0IiwgIiIpKQogICAgICAgICkKICAgICAgICBpZiBpc2JuOgogICAgICAgICAgICBsYXlvdXQgPSBidWlsZF9iYXJjb2RlX2xheW91dChpc2JuLCBzZWxmLl9jb250ZW50LmdldCgiYWRkb24iLCAiIikpCiAgICAgICAgICAgIHBhaW50ZXIuc2F2ZSgpCiAgICAgICAgICAgIHBhaW50ZXIuc2V0UGVuKFF0LlBlblN0eWxlLk5vUGVuKQogICAgICAgICAgICBwYWludGVyLnNldEJydXNoKFFDb2xvcigiYmxhY2siKSkKICAgICAgICAgICAgZm9yIGJhciBpbiBsYXlvdXQuYmFyczoKICAgICAgICAgICAgICAgIHBhaW50ZXIuZHJhd1JlY3QoCiAgICAgICAgICAgICAgICAgICAgUVJlY3RGKAogICAgICAgICAgICAgICAgICAgICAgICB0YXJnZXQubGVmdCgpICsgYmFyLnggKiB0YXJnZXQud2lkdGgoKSwKICAgICAgICAgICAgICAgICAgICAgICAgdGFyZ2V0LnRvcCgpICsgYmFyLnRvcCAqIHRhcmdldC5oZWlnaHQoKSwKICAgICAgICAgICAgICAgICAgICAgICAgbWF4KDAuMDgsIGJhci53aWR0aCAqIHRhcmdldC53aWR0aCgpKSwKICAgICAgICAgICAgICAgICAgICAgICAgbWF4KDAuMDgsIChiYXIuYm90dG9tIC0gYmFyLnRvcCkgKiB0YXJnZXQuaGVpZ2h0KCkpLAogICAgICAgICAgICAgICAgICAgICkKICAgICAgICAgICAgICAgICkKICAgICAgICAgICAgcGFpbnRlci5zZXRQZW4oUUNvbG9yKCJibGFjayIpKQogICAgICAgICAgICBwYWludGVyLnNldEZvbnQoCiAgICAgICAgICAgICAgICBfcXRfZm9udF9mb3Jfc2NlbmUoCiAgICAgICAgICAgICAgICAgICAgIm9jciIsCiAgICAgICAgICAgICAgICAgICAgbWF4KDEuMCwgdGFyZ2V0LmhlaWdodCgpICogMC4xMyksCiAgICAgICAgICAgICAgICAgICAgc2VsZi5fY29udGVudC5nZXQoCiAgICAgICAgICAgICAgICAgICAgICAgICJmb250X2ZhbWlsaWVzIiwgc2VsZi5fY29udGVudC5nZXQoImZvbnRfZmFtaWx5IikKICAgICAgICAgICAgICAgICAgICApLAogICAgICAgICAgICAgICAgKQogICAgICAgICAgICApCiAgICAgICAgICAgIGFuY2hvcnMgPSBbCiAgICAgICAgICAgICAgICBsYXlvdXQuZmlyc3RfZGlnaXQsCiAgICAgICAgICAgICAgICBsYXlvdXQubGVmdF9kaWdpdHMsCiAgICAgICAgICAgICAgICBsYXlvdXQucmlnaHRfZGlnaXRzLAogICAgICAgICAgICBdCiAgICAgICAgICAgIGlmIGxheW91dC5hZGRvbl9kaWdpdHMgaXMgbm90IE5vbmU6CiAgICAgICAgICAgICAgICBhbmNob3JzLmFwcGVuZChsYXlvdXQuYWRkb25fZGlnaXRzKQogICAgICAgICAgICBmb3IgYW5jaG9yIGluIGFuY2hvcnM6CiAgICAgICAgICAgICAgICBwYWludGVyLmRyYXdUZXh0KAogICAgICAgICAgICAgICAgICAgIHNlbGYuX2FuY2hvcl9yZWN0KHRhcmdldCwgYW5jaG9yKSwKICAgICAgICAgICAgICAgICAgICBzZWxmLl9hbmNob3JfYWxpZ25tZW50KGFuY2hvciksCiAgICAgICAgICAgICAgICAgICAgYW5jaG9yLnRleHQsCiAgICAgICAgICAgICAgICApCiAgICAgICAgICAgIHBhaW50ZXIucmVzdG9yZSgpCiAgICAgICAgc2VsZi5fcGFpbnRfc2VsZWN0aW9uX2hhbmRsZXMocGFpbnRlcikKCgpjbGFzcyBDb3ZlclRleHRJdGVtKENvdmVyRWxlbWVudEl0ZW0pOgogICAgZGVmIF9faW5pdF9fKHNlbGYsIGVsZW1lbnQ6IENvdmVyRWxlbWVudCkgLT4gTm9uZToKICAgICAgICBzdXBlcigpLl9faW5pdF9fKGVsZW1lbnQpCiAgICAgICAgc2VsZi5fY29udGVudCA9IGRpY3QoZWxlbWVudC5jb250ZW50KQoKICAgIGRlZiBfZm9udChzZWxmKSAtPiBRRm9udDoKICAgICAgICB0cnk6CiAgICAgICAgICAgIHNjZW5lX3NpemUgPSBwb2ludHNfdG9fbW0oCiAgICAgICAgICAgICAgICBzZWxmLl9jb250ZW50LmdldCgiZm9udF9zaXplX3B0IiwgMTIuMCkKICAgICAgICAgICAgKQogICAgICAgIGV4Y2VwdCBWYWx1ZUVycm9yOgogICAgICAgICAgICBzY2VuZV9zaXplID0gcG9pbnRzX3RvX21tKDEyLjApCiAgICAgICAgcmV0dXJuIF9xdF9mb250X2Zvcl9zY2VuZSgKICAgICAgICAgICAgc3RyKHNlbGYuX2NvbnRlbnQuZ2V0KCJmb250X3JvbGUiLCAiZGVmYXVsdCIpKSwKICAgICAgICAgICAgc2NlbmVfc2l6ZSwKICAgICAgICAgICAgc2VsZi5fY29udGVudC5nZXQoCiAgICAgICAgICAgICAgICAiZm9udF9mYW1pbGllcyIsIHNlbGYuX2NvbnRlbnQuZ2V0KCJmb250X2ZhbWlseSIpCiAgICAgICAgICAgICksCiAgICAgICAgICAgIGludChzZWxmLl9jb250ZW50LmdldCgiZm9udF93ZWlnaHQiLCA0MDApKSwKICAgICAgICApCgogICAgZGVmIHBhaW50KAogICAgICAgIHNlbGYsCiAgICAgICAgcGFpbnRlcjogUVBhaW50ZXIsCiAgICAgICAgb3B0aW9uOiBRU3R5bGVPcHRpb25HcmFwaGljc0l0ZW0sCiAgICAgICAgd2lkZ2V0OiBRV2lkZ2V0IHwgTm9uZSA9IE5vbmUsCiAgICApIC0+IE5vbmU6CiAgICAgICAgZGVsIG9wdGlvbiwgd2lkZ2V0CiAgICAgICAgcGFpbnRlci5zYXZlKCkKICAgICAgICBwYWludGVyLnNldEZvbnQoc2VsZi5fZm9udCgpKQogICAgICAgIHBhaW50ZXIuc2V0UGVuKAogICAgICAgICAgICBRQ29sb3Ioc3RyKHNlbGYuX2NvbnRlbnQuZ2V0KCJjb2xvciIsICIjMTExODI3IikpKQogICAgICAgICkKICAgICAgICBob3Jpem9udGFsID0gewogICAgICAgICAgICAibGVmdCI6IFF0LkFsaWdubWVudEZsYWcuQWxpZ25MZWZ0LAogICAgICAgICAgICAiY2VudGVyIjogUXQuQWxpZ25tZW50RmxhZy5BbGlnbkhDZW50ZXIsCiAgICAgICAgICAgICJyaWdodCI6IFF0LkFsaWdubWVudEZsYWcuQWxpZ25SaWdodCwKICAgICAgICB9LmdldCgKICAgICAgICAgICAgc3RyKHNlbGYuX2NvbnRlbnQuZ2V0KCJhbGlnbiIsICJsZWZ0IikpLAogICAgICAgICAgICBRdC5BbGlnbm1lbnRGbGFnLkFsaWduTGVmdCwKICAgICAgICApCiAgICAgICAgdmVydGljYWwgPSB7CiAgICAgICAgICAgICJ0b3AiOiBRdC5BbGlnbm1lbnRGbGFnLkFsaWduVG9wLAogICAgICAgICAgICAiYm90dG9tIjogUXQuQWxpZ25tZW50RmxhZy5BbGlnbkJvdHRvbSwKICAgICAgICB9LmdldCgKICAgICAgICAgICAgc3RyKHNlbGYuX2NvbnRlbnQuZ2V0KCJ2ZXJ0aWNhbF9hbGlnbiIsICJjZW50ZXIiKSksCiAgICAgICAgICAgIFF0LkFsaWdubWVudEZsYWcuQWxpZ25WQ2VudGVyLAogICAgICAgICkKICAgICAgICBwYWludGVyLmRyYXdUZXh0KAogICAgICAgICAgICBzZWxmLmNvbnRlbnRSZWN0KCksCiAgICAgICAgICAgIGhvcml6b250YWwgfCB2ZXJ0aWNhbCB8IFF0LlRleHRGbGFnLlRleHRXb3JkV3JhcCwKICAgICAgICAgICAgc3RyKHNlbGYuX2NvbnRlbnQuZ2V0KCJ0ZXh0IiwgIiIpKSwKICAgICAgICApCiAgICAgICAgcGFpbnRlci5yZXN0b3JlKCkKICAgICAgICBzZWxmLl9wYWludF9zZWxlY3Rpb25faGFuZGxlcyhwYWludGVyKQo="
+
+          path = Path("python/src/epub_a4_word_desktop/cover/items.py")
+          lines = path.read_text(encoding="utf-8").splitlines()
+          gui_import = lines.index(
+              "from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap"
+          )
+          lines[gui_import] = (
+              "from PySide6.QtGui import QColor, QFont, QFontDatabase, QPainter, QPen, QPixmap"
+          )
+
+          isbn_start = lines.index("from epub_a4_word.cover.isbn import (")
+          isbn_end = lines.index(")", isbn_start)
+          lines[isbn_start : isbn_end + 1] = [
+              "from epub_a4_word.cover.barcode_layout import BarcodeTextAnchor, build_barcode_layout",
+              "from epub_a4_word.cover.isbn import canonical_isbn13",
+              "from epub_a4_word.cover.models import CoverElement",
+              "from epub_a4_word.cover.typography import font_candidates, points_to_mm",
+          ]
+          duplicate_model = lines.index(
+              "from epub_a4_word.cover.models import CoverElement", isbn_start + 4
+          )
+          del lines[duplicate_model]
+
+          class_index = lines.index("class CoverElementItem(QGraphicsObject):")
+          helper = base64.b64decode(helper_b64).decode("utf-8").splitlines()
+          lines[class_index:class_index] = helper
+
+          bounds_index = lines.index("    def boundingRect(self) -> QRectF:")
+          bounds = base64.b64decode(bounds_b64).decode("utf-8").splitlines()
+          lines[bounds_index : bounds_index + 2] = bounds
+
+          lines = [
+              line.replace("rect = self.boundingRect()", "rect = self.contentRect()")
+              .replace("target = self.boundingRect()", "target = self.contentRect()")
+              .replace("self.boundingRect(),", "self.contentRect(),")
+              for line in lines
+          ]
+
+          barcode_index = lines.index("class CoverBarcodeItem(CoverElementItem):")
+          tail = base64.b64decode(tail_b64).decode("utf-8").splitlines()
+          lines[barcode_index:] = tail
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add python/src/epub_a4_word_desktop/cover/items.py
+          git commit -m "fix: repaint controls and scale cover fonts correctly"
+          git push origin HEAD:fix/reference-back-cover-isbn-clarity
