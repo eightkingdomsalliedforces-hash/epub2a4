@@ -20,12 +20,12 @@
 
 ## PR #9 精確 HEAD 驗證
 
-提交 `df96192ef7096740f8f8b9f00f678cff1d8525d6` 已完成：
+提交 `6189d37dc7f32ccdfb49c4878d669e19d8e997a9` 已完成：
 
 - `Desktop PySide6 tests`：Ubuntu／Windows／macOS 全部成功。
 - `Android debug APK`：Kotlin、共用 Python、Debug APK 與 16 KB alignment 全部成功。
 - `Windows portable EXE`：焦點測試、來源 smoke、PyInstaller、目錄驗證、封裝後 EXE smoke、ZIP 與 SHA-256 全部成功。
-- Windows Portable ZIP SHA-256：`8373de8c51422fda7c712ea7f77433ae29a003467617424abfbfff4c8b5c0f91`。
+- Windows Portable ZIP SHA-256：`e9084935127b47878e7fa0c776453f5d74321746c38b2da19c8ce390753ab599`。
 
 ## Windows 實機驗收
 
