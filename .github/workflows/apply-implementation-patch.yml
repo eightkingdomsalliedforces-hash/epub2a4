@@ -1,0 +1,66 @@
+name: Apply implementation patch
+
+on:
+  push:
+    branches:
+      - agent/impl-free-cover-content-only-single-page-fixes
+    paths:
+      - ".upload/**"
+      - ".github/workflows/apply-implementation-patch.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-implementation-patch-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out implementation branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Skip after patch has already been applied
+        id: staged
+        shell: bash
+        run: |
+          if [[ -f .upload/part00 ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reassemble and verify patch
+        if: steps.staged.outputs.present == 'true'
+        shell: bash
+        run: |
+          cat \
+            .upload/part00 \
+            .upload/part01 \
+            .upload/part02 \
+            .upload/part0304 \
+            .upload/part0506 \
+            .upload/part07 \
+            .upload/part08 \
+            .upload/part09 \
+            > /tmp/implementation.patch.xz.b64
+          echo "fe10cee0952b50e2c972fdb25bcd18f595895be96936554927b502d20e9683cc  /tmp/implementation.patch.xz.b64" | sha256sum -c -
+          base64 --decode /tmp/implementation.patch.xz.b64 | xz --decompress > /tmp/implementation.patch
+          git apply --check /tmp/implementation.patch
+
+      - name: Apply and push implementation
+        if: steps.staged.outputs.present == 'true'
+        shell: bash
+        run: |
+          git apply /tmp/implementation.patch
+          rm -rf .upload
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: add free multilingual cover lookup and body-only conversion"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
