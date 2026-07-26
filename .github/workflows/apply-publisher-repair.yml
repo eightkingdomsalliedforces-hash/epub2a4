@@ -1,0 +1,96 @@
+name: Apply publisher implementation with strict verification
+
+on:
+  push:
+    branches:
+      - agent/publisher-back-isbn-image-transform
+    paths:
+      - ".github/implementation/publisher-repair-*.gz.b64"
+      - ".github/workflows/apply-publisher-repair.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: python/src:app/src/main/python
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/publisher-back-isbn-image-transform
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Qt runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libegl1
+
+      - name: Apply, verify, and publish implementation
+        shell: bash
+        run: |
+          set +e
+          (
+            set -euo pipefail
+            base64 --decode .github/implementation/publisher-repair-core-00.gz.b64 | gzip --decompress > scripts/apply_publisher_core.py
+            cat .github/implementation/publisher-repair-desktop-*.gz.b64 | base64 --decode | gzip --decompress > scripts/apply_publisher_desktop.py
+            python scripts/apply_publisher_core.py
+            python scripts/apply_publisher_desktop.py
+
+            grep -q 'price: str = ""' python/src/epub_a4_word/cover/models.py
+            grep -q 'publisher_back_matter' python/src/epub_a4_word/cover/templates.py
+            grep -q 'def transform_image_to_box' python/src/epub_a4_word/cover/render.py
+            grep -q 'def apply_isbn' python/src/epub_a4_word_desktop/cover/controller.py
+            grep -q 'scale_slider' python/src/epub_a4_word_desktop/cover/inspector.py
+            grep -q 'publisher_back_matter' python/src/epub_a4_word_desktop/pages/cover_page.py
+
+            python -m pip install --upgrade pip setuptools wheel
+            python -m pip install -e ".[test]"
+            python -m pip install "PySide6==6.11.1" "pytest-qt>=4.4,<5" "keyring==25.7.0" "platformdirs==4.10.1"
+
+            python -m pytest -q \
+              python-tests/cover/test_isbn.py \
+              python-tests/cover/test_publisher_back_template.py \
+              python-tests/cover/test_image_transform.py \
+              python-tests/cover/test_templates.py \
+              python-tests/cover/test_render.py \
+              desktop/tests/test_publisher_workflow.py \
+              desktop/tests/test_cover_page.py \
+              desktop/tests/test_cover_canvas.py \
+              desktop/tests/test_cover_search_free_sources.py
+            python -m compileall -q python/src desktop/tests python-tests
+            git diff --check
+          ) > publisher-repair-result.log 2>&1
+          status=$?
+          cat publisher-repair-result.log
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ "$status" -ne 0 ]; then
+            cp publisher-repair-result.log .github/implementation/publisher-repair-result.log
+            git add .github/implementation/publisher-repair-result.log
+            git commit -m "chore: record strict publisher implementation failure" || true
+            git push origin HEAD:agent/publisher-back-isbn-image-transform
+            exit "$status"
+          fi
+
+          rm -f scripts/apply_publisher_core.py scripts/apply_publisher_desktop.py publisher-repair-result.log
+          rm -f .github/implementation/publisher-repair-*.gz.b64
+          rm -f .github/implementation/publisher-repair-result.log
+          rm -f .github/workflows/apply-publisher-repair.yml
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: implement publisher cover and image editing workflow"
+          git push origin HEAD:agent/publisher-back-isbn-image-transform
