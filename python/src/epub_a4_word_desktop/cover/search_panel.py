@@ -89,6 +89,13 @@ class CandidateCard(QFrame):
             else "解析度未知"
         )
         resolution_label = QLabel(resolution, self)
+        isbn_lines = [
+            f"ISBN-{len(value)} {value}"
+            for value in candidate.isbns
+        ]
+        self.isbn_label = QLabel("\n".join(isbn_lines), self)
+        self.isbn_label.setWordWrap(True)
+        self.isbn_label.setVisible(bool(isbn_lines))
         rights = QLabel(
             candidate.rights.strip()
             or "授權狀態未確認；使用者需自行確認使用權",
@@ -108,6 +115,7 @@ class CandidateCard(QFrame):
         layout.addWidget(self.title_label)
         layout.addWidget(provider)
         layout.addWidget(resolution_label)
+        layout.addWidget(self.isbn_label)
         layout.addWidget(rights)
         layout.addStretch(1)
         row = QHBoxLayout()

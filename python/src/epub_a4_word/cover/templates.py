@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 from .geometry import CoverLayout, RectMm, calculate_layout
+from .isbn import normalize_ean_addon, normalize_isbn
 from .models import (
     CoverElement,
     CoverProject,
@@ -37,6 +38,11 @@ _TEMPLATE_CATALOG: tuple[TemplateSummary, ...] = (
         "上下色塊",
         "以可編輯色塊分隔標題與出版資訊。",
     ),
+    TemplateSummary(
+        "publisher_back_matter",
+        "出版社式封底",
+        "上方 ISBN／條碼與出版資訊，中央保留可選標誌留白。",
+    ),
 )
 
 STANDARD_TEMPLATE_IDS = frozenset(
@@ -48,6 +54,9 @@ STANDARD_TEMPLATE_IDS = frozenset(
         "back-description",
         "back-publisher",
         "back-isbn",
+        "back-isbn-label",
+        "back-isbn-code",
+        "back-publisher-info",
     }
 )
 
@@ -297,12 +306,108 @@ def _top_bottom_blocks(project: CoverProject, layout: CoverLayout) -> tuple[Cove
     )
 
 
+def _publisher_logo_rect(layout: CoverLayout) -> RectMm:
+    safe = layout.back_safe_rect
+    width = safe.width_mm * 0.58
+    height = safe.height_mm * 0.34
+    return RectMm(
+        safe.x_mm + (safe.width_mm - width) / 2.0,
+        safe.y_mm + safe.height_mm * 0.38,
+        width,
+        height,
+    )
+
+
+def _publisher_back_matter(
+    project: CoverProject,
+    layout: CoverLayout,
+) -> tuple[CoverElement, ...]:
+    safe = layout.back_safe_rect
+    elements: list[CoverElement] = []
+    isbn = normalize_isbn(project.metadata.isbn)
+    if len(isbn) == 13:
+        label_rect = RectMm(
+            safe.x_mm,
+            safe.y_mm,
+            safe.width_mm * 0.55,
+            max(5.0, safe.height_mm * 0.035),
+        )
+        barcode_rect = RectMm(
+            safe.x_mm,
+            label_rect.bottom_mm + 1.5,
+            safe.width_mm * 0.55,
+            max(24.0, safe.height_mm * 0.16),
+        )
+        elements.append(
+            text_element(
+                "back-isbn-label",
+                Region.BACK,
+                label_rect,
+                f"ISBN-13 {isbn}",
+                8.0,
+                align="left",
+                z_index=20,
+            )
+        )
+        elements.append(
+            CoverElement(
+                id="back-isbn-code",
+                kind=ElementKind.BARCODE_PLACEHOLDER,
+                region=Region.BACK,
+                transform=ElementTransform(
+                    barcode_rect.x_mm,
+                    barcode_rect.y_mm,
+                    barcode_rect.width_mm,
+                    barcode_rect.height_mm,
+                ),
+                z_index=20,
+                content={
+                    "isbn": isbn,
+                    "addon": normalize_ean_addon(project.metadata.isbn_addon),
+                    "text": isbn,
+                    "color": "#111111",
+                    "align": "left",
+                },
+            )
+        )
+
+    publisher_lines = tuple(
+        value.strip()
+        for value in (
+            project.metadata.publisher,
+            project.metadata.price,
+            project.metadata.publication_place,
+        )
+        if value.strip()
+    )
+    if publisher_lines:
+        info_rect = RectMm(
+            safe.x_mm + safe.width_mm * 0.61,
+            safe.y_mm,
+            safe.width_mm * 0.39,
+            max(30.0, safe.height_mm * 0.20),
+        )
+        elements.append(
+            text_element(
+                "back-publisher-info",
+                Region.BACK,
+                info_rect,
+                "\n".join(publisher_lines),
+                8.0,
+                align="right",
+                z_index=20,
+            )
+        )
+    return tuple(elements)
+
+
 _BUILDERS = {
     "source_cover_only": _source_cover_only,
     "minimal_text": _minimal_text,
     "front_image_plain_back": _front_image_plain_back,
     "full_spread": _full_spread,
     "top_bottom_blocks": _top_bottom_blocks,
+    "publisher_back_matter": _publisher_back_matter,
 }
 
 _TEMPLATE_ALIASES = {
@@ -331,6 +436,10 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
         standard_elements = tuple(
             element for element in standard_elements if element.region is Region.BACK
         )
+    elif canonical_template_id == "publisher_back_matter":
+        standard_elements = tuple(
+            element for element in standard_elements if element.region is not Region.BACK
+        )
     elif canonical_template_id in {"source_cover_only", "full_spread"}:
         standard_elements = ()
 
@@ -349,6 +458,18 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
         background["warnings"] = warnings
     else:
         background.pop("warnings", None)
+    background["active_template"] = canonical_template_id
+    if canonical_template_id == "publisher_back_matter":
+        logo = _publisher_logo_rect(layout)
+        background.setdefault("color", "#ffffff")
+        background["publisher_logo_slot"] = {
+            "x_mm": logo.x_mm,
+            "y_mm": logo.y_mm,
+            "width_mm": logo.width_mm,
+            "height_mm": logo.height_mm,
+        }
+    else:
+        background.pop("publisher_logo_slot", None)
 
     if canonical_template_id == "full_spread":
         image_mode = ImageMode.FULL_SPREAD

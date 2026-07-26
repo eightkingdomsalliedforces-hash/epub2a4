@@ -16,6 +16,7 @@ from PIL import (
 )
 
 from .fonts import resolve_font
+from .isbn import encode_ean13_modules, encode_ean_addon_modules, normalize_isbn
 from .geometry import CoverLayout, RectMm, calculate_layout
 from .models import CoverElement, CoverProject, ElementKind, ImageMode, Region
 from .print_plan import PrintMark, PrintPage
@@ -96,25 +97,53 @@ def _parse_color(value: Any, default: str, *, alpha: int = 255) -> tuple[int, in
     return (rgb[0], rgb[1], rgb[2], alpha)
 
 
+def transform_image_to_box(
+    source: Image.Image,
+    size: tuple[int, int],
+    *,
+    fit: str = "cover",
+    scale: float = 1.0,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    crop: Any = None,
+) -> Image.Image:
+    width, height = max(1, int(size[0])), max(1, int(size[1]))
+    cropped = _normalized_crop(source.convert("RGBA"), crop)
+    source_width, source_height = cropped.size
+    if source_width < 1 or source_height < 1:
+        return Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    mode = str(fit).casefold()
+    if mode not in {"contain", "cover", "original"}:
+        mode = "cover"
+    contain_ratio = min(width / source_width, height / source_height)
+    base_ratio = (
+        max(width / source_width, height / source_height)
+        if mode == "cover"
+        else contain_ratio
+    )
+    try:
+        content_scale = min(5.0, max(0.1, float(scale)))
+    except (TypeError, ValueError):
+        content_scale = 1.0
+    try:
+        normalized_x = min(1.0, max(-1.0, float(offset_x)))
+        normalized_y = min(1.0, max(-1.0, float(offset_y)))
+    except (TypeError, ValueError):
+        normalized_x = normalized_y = 0.0
+    ratio = max(1e-9, base_ratio * content_scale)
+    resized = cropped.resize(
+        (max(1, round(source_width * ratio)), max(1, round(source_height * ratio))),
+        Image.Resampling.LANCZOS,
+    )
+    x = round((width - resized.width) / 2.0 + normalized_x * width)
+    y = round((height - resized.height) / 2.0 + normalized_y * height)
+    canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    canvas.paste(resized, (x, y), resized)
+    return canvas
+
+
 def _fit_image(source: Image.Image, width: int, height: int, fit: str) -> Image.Image:
-    if fit == "contain":
-        result = ImageOps.contain(
-            source,
-            (width, height),
-            Image.Resampling.LANCZOS,
-        )
-        canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        canvas.alpha_composite(
-            result.convert("RGBA"),
-            ((width - result.width) // 2, (height - result.height) // 2),
-        )
-        return canvas
-    return ImageOps.fit(
-        source,
-        (width, height),
-        method=Image.Resampling.LANCZOS,
-        centering=(0.5, 0.5),
-    ).convert("RGBA")
+    return transform_image_to_box(source, (width, height), fit=fit)
 
 
 def _normalized_crop(source: Image.Image, crop: Any) -> Image.Image:
@@ -187,7 +216,17 @@ def _prepare_image(element: CoverElement, size: tuple[int, int]) -> Image.Image:
         raise CoverRenderError(f"元素 {element.id} 的圖片不存在：{path_value}")
     with Image.open(path_value) as opened:
         source = opened.convert("RGBA")
-    source = _normalized_crop(source, element.content.get("crop"))
+    crop = element.content.get("crop")
+    if crop is None and any(
+        key in element.content
+        for key in ("crop_left", "crop_top", "crop_right", "crop_bottom")
+    ):
+        crop = {
+            "left": float(element.content.get("crop_left", 0.0)),
+            "top": float(element.content.get("crop_top", 0.0)),
+            "right": 1.0 - float(element.content.get("crop_right", 0.0)),
+            "bottom": 1.0 - float(element.content.get("crop_bottom", 0.0)),
+        }
     if bool(element.content.get("flip_horizontal", False)):
         source = ImageOps.mirror(source)
     if bool(element.content.get("flip_vertical", False)):
@@ -207,7 +246,15 @@ def _prepare_image(element: CoverElement, size: tuple[int, int]) -> Image.Image:
     if blur > 0.0:
         source = source.filter(ImageFilter.GaussianBlur(radius=blur))
 
-    local = _fit_image(source, size[0], size[1], str(element.content.get("fit", "cover")))
+    local = transform_image_to_box(
+        source,
+        size,
+        fit=str(element.content.get("fit", "cover")),
+        scale=element.content.get("scale", 1.0),
+        offset_x=element.content.get("offset_x", element.content.get("crop_x", 0.0)),
+        offset_y=element.content.get("offset_y", element.content.get("crop_y", 0.0)),
+        crop=crop,
+    )
     rotation = float(element.transform.rotation_deg) + float(
         element.content.get("rotation_deg", 0.0)
     )
@@ -385,24 +432,39 @@ def _prepare_shape(element: CoverElement, size: tuple[int, int], dpi: int) -> Im
 
 
 def _prepare_barcode(element: CoverElement, size: tuple[int, int], dpi: int) -> Image.Image:
-    canvas = Image.new("RGBA", size, (255, 255, 255, round(255 * element.opacity)))
+    isbn = normalize_isbn(element.content.get("isbn", element.content.get("text", "")))
+    canvas = Image.new("RGBA", size, (0, 0, 0, 0))
+    if len(isbn) != 13:
+        return canvas
+    modules = encode_ean13_modules(isbn)
+    addon_modules = encode_ean_addon_modules(element.content.get("addon", ""))
+    quiet = 9
+    separator = 8 if addon_modules else 0
+    total_modules = quiet * 2 + len(modules) + separator + len(addon_modules)
+    module_width = max(1, size[0] // max(1, total_modules))
+    used_width = total_modules * module_width
+    origin_x = max(0, (size[0] - used_width) // 2)
+    text_height = max(10, round(size[1] * 0.22))
+    bar_height = max(1, size[1] - text_height)
     draw = ImageDraw.Draw(canvas)
-    border = max(1, mm_to_px(0.2, dpi))
-    draw.rectangle((0, 0, size[0] - 1, size[1] - 1), outline="black", width=border)
-    bar_area_height = max(1, round(size[1] * 0.62))
-    x = max(2, round(size[0] * 0.08))
-    limit = max(x + 1, round(size[0] * 0.92))
-    widths = (1, 2, 1, 3, 1, 1, 2, 2, 1, 3)
-    index = 0
-    while x < limit:
-        width = max(1, widths[index % len(widths)] * max(1, size[0] // 120))
-        draw.rectangle((x, 2, min(limit, x + width), bar_area_height), fill="black")
-        x += width * 2
-        index += 1
-    text = str(element.content.get("text", "ISBN"))
-    font = resolve_font("sans-serif", None, max(8, round(size[1] * 0.18)))
-    draw.text((max(2, round(size[0] * 0.05)), bar_area_height + 2), text, fill="black", font=font)
-    return canvas
+    x = origin_x + quiet * module_width
+    for bit in modules:
+        if bit == "1":
+            draw.rectangle((x, 0, x + module_width - 1, bar_height - 1), fill="black")
+        x += module_width
+    if addon_modules:
+        x += separator * module_width
+        addon_top = max(1, round(bar_height * 0.12))
+        for bit in addon_modules:
+            if bit == "1":
+                draw.rectangle(
+                    (x, addon_top, x + module_width - 1, bar_height - 1), fill="black"
+                )
+            x += module_width
+    font = resolve_font("sans-serif", None, max(8, round(text_height * 0.70)))
+    label = " ".join((isbn[:3], isbn[3:]))
+    draw.text((origin_x + quiet * module_width, bar_height + 1), label, fill="black", font=font)
+    return _apply_alpha(canvas, float(element.opacity))
 
 
 def _clip_layer(

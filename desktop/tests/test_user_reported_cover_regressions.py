@@ -16,7 +16,13 @@ def test_desktop_template_options_remain_available(qtbot) -> None:
     qtbot.addWidget(setup)
     qtbot.addWidget(toolbar)
 
-    expected = ["minimal", "top_bottom_blocks", "full_bleed_image", "classic_book"]
+    expected = [
+        "minimal",
+        "top_bottom_blocks",
+        "full_bleed_image",
+        "classic_book",
+        "publisher_back_matter",
+    ]
     assert _combo_values(setup.template_combo) == expected
     assert _combo_values(toolbar.combo) == expected
 

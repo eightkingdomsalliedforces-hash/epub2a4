@@ -138,6 +138,7 @@ class CoverSetupPanel(QWidget):
         self.template_combo.addItem("上下色塊", "top_bottom_blocks")
         self.template_combo.addItem("全圖覆蓋", "full_bleed_image")
         self.template_combo.addItem("經典書籍", "classic_book")
+        self.template_combo.addItem("出版社式封底", "publisher_back_matter")
         self.create_button = QPushButton("建立／更新封面專案", self)
         self.create_button.setEnabled(False)
 

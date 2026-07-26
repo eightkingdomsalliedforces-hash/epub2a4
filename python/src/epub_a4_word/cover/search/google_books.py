@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import urlsplit, urlunsplit
 
+from ..isbn import preferred_isbn, valid_isbns
 from .errors import SearchCredentialError
 from .models import CandidateCategory, CoverSearchRequest, SearchCandidate, SearchKind, SearchResponse
 
@@ -56,12 +57,13 @@ class GoogleBooksProvider:
                 continue
             authors = info.get("authors") if isinstance(info.get("authors"), list) else []
             industry = info.get("industryIdentifiers") if isinstance(info.get("industryIdentifiers"), list) else []
-            isbn = ""
-            for identifier in industry:
-                if isinstance(identifier, dict) and identifier.get("identifier"):
-                    isbn = str(identifier["identifier"])
-                    if str(identifier.get("type", "")).upper() == "ISBN_13":
-                        break
+            isbns = valid_isbns(
+                identifier.get("identifier", "")
+                for identifier in industry
+                if isinstance(identifier, dict)
+                and str(identifier.get("type", "")).upper() in {"ISBN_10", "ISBN_13"}
+            )
+            isbn = preferred_isbn(isbns)
             candidates.append(
                 SearchCandidate(
                     provider="google_books",
@@ -71,6 +73,7 @@ class GoogleBooksProvider:
                     title=str(info.get("title", "")),
                     author=", ".join(str(value) for value in authors),
                     isbn=isbn,
+                    isbns=isbns,
                     preview_url=preview_url,
                     image_url=image_url,
                     source_page=source,
