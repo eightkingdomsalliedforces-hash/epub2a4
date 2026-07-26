@@ -18,15 +18,15 @@
 - Windows／macOS／Ubuntu PySide6 測試架構。
 - Windows PyInstaller onedir、Qt `qwindows.dll`、封裝後 EXE smoke、ZIP 與 SHA-256 驗證架構。
 
-## PR #9 精確 HEAD 驗證
+## PR 驗證
 
-本次 PR 已由 GitHub Actions 對最終提交執行：
+本次功能分支由 GitHub Actions 執行：
 
-- `Desktop PySide6 tests`：Ubuntu／Windows／macOS 全部成功。
-- `Android debug APK`：Kotlin、共用 Python、Debug APK 與 16 KB alignment 全部成功。
-- `Windows portable EXE`：焦點測試、來源 smoke、PyInstaller、目錄驗證、封裝後 EXE smoke、ZIP 與 SHA-256 全部成功。
+- `Desktop PySide6 tests`：Ubuntu／Windows／macOS。
+- `Android debug APK`：Kotlin、共用 Python、Debug APK 與 16 KB alignment。
+- `Windows portable EXE`：焦點測試、來源 smoke、PyInstaller、目錄驗證、封裝後 EXE smoke、ZIP 與 SHA-256。
 
-Portable 的最終校驗值以同一 HEAD 的 GitHub Actions artifact 及其 `.sha256` 檔為準；每次重新封裝可能因建置中繼資料而產生不同 ZIP 雜湊。
+Portable 的校驗值以對應 GitHub Actions artifact 及其 `.sha256` 檔為準；每次重新封裝可能因建置中繼資料而產生不同 ZIP 雜湊。
 
 ## Windows 實機驗收
 
