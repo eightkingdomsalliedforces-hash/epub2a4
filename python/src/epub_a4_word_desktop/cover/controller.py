@@ -234,11 +234,150 @@ class CoverController(QObject):
         self.replace_project(dumps_project(candidate), label="套用 ISBN")
         return isbn
 
+    @staticmethod
+    def _group_id(element: CoverElement) -> str:
+        value = element.content.get("group_id", "")
+        return str(value).strip() if isinstance(value, str) else ""
+
+    @classmethod
+    def _group_members_from_project(
+        cls,
+        project: CoverProject,
+        element_id: str,
+    ) -> tuple[CoverElement, ...]:
+        try:
+            target = project.elements_by_id[element_id]
+        except KeyError as exc:
+            raise KeyError(f"找不到封面元素：{element_id}") from exc
+        group_id = cls._group_id(target)
+        if not group_id:
+            return (target,)
+        return tuple(
+            element
+            for element in project.elements
+            if cls._group_id(element) == group_id
+        )
+
+    def group_members(self, element_id: str) -> tuple[CoverElement, ...]:
+        return self._group_members_from_project(self._require_project(), element_id)
+
+    @staticmethod
+    def _scaled_group_content(
+        content: Mapping[str, Any],
+        *,
+        font_scale: float,
+        vertical_scale: float,
+    ) -> dict[str, Any]:
+        updated = dict(content)
+        font_size = updated.get("font_size_pt")
+        if isinstance(font_size, (int, float)) and not isinstance(font_size, bool):
+            updated["font_size_pt"] = float(font_size) * font_scale
+        line_spacing_mm = updated.get("line_spacing_mm")
+        if isinstance(line_spacing_mm, (int, float)) and not isinstance(
+            line_spacing_mm, bool
+        ):
+            updated["line_spacing_mm"] = float(line_spacing_mm) * vertical_scale
+        return updated
+
+    @classmethod
+    def _patch_group_transform(
+        cls,
+        project: CoverProject,
+        element_id: str,
+        transform_patch: object,
+    ) -> CoverProject:
+        members = cls._group_members_from_project(project, element_id)
+        target = project.elements_by_id[element_id]
+        patched = patch_element(
+            project,
+            element_id,
+            {"transform": transform_patch},
+        ).elements_by_id[element_id]
+        old_transform = target.transform
+        new_transform = patched.transform
+        scale_x = new_transform.width_mm / old_transform.width_mm
+        scale_y = new_transform.height_mm / old_transform.height_mm
+        font_scale = min(scale_x, scale_y)
+        rotation_delta = new_transform.rotation_deg - old_transform.rotation_deg
+        member_ids = {member.id for member in members}
+        replacements: dict[str, CoverElement] = {}
+        for member in members:
+            if member.id == element_id:
+                member_transform = new_transform
+            else:
+                member_transform = ElementTransform(
+                    x_mm=new_transform.x_mm
+                    + (member.transform.x_mm - old_transform.x_mm) * scale_x,
+                    y_mm=new_transform.y_mm
+                    + (member.transform.y_mm - old_transform.y_mm) * scale_y,
+                    width_mm=member.transform.width_mm * scale_x,
+                    height_mm=member.transform.height_mm * scale_y,
+                    rotation_deg=member.transform.rotation_deg + rotation_delta,
+                )
+            replacements[member.id] = replace(
+                member,
+                transform=member_transform,
+                content=cls._scaled_group_content(
+                    member.content,
+                    font_scale=font_scale,
+                    vertical_scale=scale_y,
+                ),
+            )
+        return replace(
+            project,
+            elements=tuple(
+                replacements.get(element.id, element)
+                if element.id in member_ids
+                else element
+                for element in project.elements
+            ),
+        )
+
     def update_element(self, element_id: str, patch: Mapping[str, Any]) -> None:
-        candidate = patch_element(self._require_project(), element_id, patch)
+        project = self._require_project()
+        members = self._group_members_from_project(project, element_id)
+        is_group = len(members) > 1
+        patch_keys = set(patch)
+        if is_group and patch_keys == {"transform"}:
+            candidate = self._patch_group_transform(
+                project,
+                element_id,
+                patch["transform"],
+            )
+            label = "更新出版資訊群組"
+        elif is_group and patch_keys == {"opacity"}:
+            opacity = float(patch["opacity"])
+            member_ids = {member.id for member in members}
+            candidate = replace(
+                project,
+                elements=tuple(
+                    replace(element, opacity=opacity)
+                    if element.id in member_ids
+                    else element
+                    for element in project.elements
+                ),
+            )
+            label = "切換出版資訊群組顯示"
+        elif is_group and patch_keys == {"z_index"}:
+            target = project.elements_by_id[element_id]
+            delta = int(patch["z_index"]) - target.z_index
+            member_ids = {member.id for member in members}
+            candidate = replace(
+                project,
+                elements=tuple(
+                    replace(element, z_index=element.z_index + delta)
+                    if element.id in member_ids
+                    else element
+                    for element in project.elements
+                ),
+            )
+            label = "調整出版資訊群組圖層"
+        else:
+            candidate = patch_element(project, element_id, patch)
+            label = "更新封面元素"
         candidate_json = dumps_project(candidate)
         loads_project(candidate_json)
-        self.replace_project(candidate_json, label="更新封面元素")
+        self.replace_project(candidate_json, label=label)
 
     @staticmethod
     def _safe_asset_name(name: str) -> str:
@@ -450,13 +589,16 @@ class CoverController(QObject):
 
     def remove_element(self, element_id: str) -> None:
         project = self._require_project()
-        if element_id not in project.elements_by_id:
-            raise KeyError(f"找不到封面元素：{element_id}")
+        members = self._group_members_from_project(project, element_id)
+        member_ids = {member.id for member in members}
         candidate = replace(
             project,
-            elements=tuple(item for item in project.elements if item.id != element_id),
+            elements=tuple(
+                item for item in project.elements if item.id not in member_ids
+            ),
         )
-        self.replace_project(dumps_project(candidate), label="刪除封面元素")
+        label = "刪除出版資訊群組" if len(members) > 1 else "刪除封面元素"
+        self.replace_project(dumps_project(candidate), label=label)
 
     def undo(self) -> None:
         self.undo_stack.undo()
