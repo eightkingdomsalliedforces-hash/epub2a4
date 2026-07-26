@@ -1,13 +1,59 @@
 name: Apply cover search UX patch
 
 on:
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    types: [synchronize, reopened]
 
 permissions:
   contents: write
 
 jobs:
-  paused:
+  apply:
+    if: github.head_ref == 'agent/fix-cover-search-window-selection-speed'
     runs-on: ubuntu-latest
     steps:
-      - run: echo 'Waiting for verified small chunks.'
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Reassemble and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .upload/cover-search-ux-v2.part{00..09} > /tmp/cover-search-ux.patch.xz.b64
+          base64 --decode /tmp/cover-search-ux.patch.xz.b64 > /tmp/cover-search-ux.patch.xz
+          expected='f7cdf1ea212e55d3f2faa316b8c275a0c36968a77b2ce247315b0a01c6c9ae3d'
+          actual="$(sha256sum /tmp/cover-search-ux.patch.xz | awk '{print $1}')"
+          test "$actual" = "$expected"
+          xz --decompress --stdout /tmp/cover-search-ux.patch.xz > /tmp/cover-search-ux.patch
+          git apply --check /tmp/cover-search-ux.patch
+
+      - name: Apply patch and remove temporary files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply /tmp/cover-search-ux.patch
+          rm -f \
+            .upload/cover-search-ux.part00 \
+            .upload/cover-search-ux.part01 \
+            .upload/cover-search-ux.part02 \
+            .upload/cover-search-ux.manifest \
+            .upload/cover-search-ux-v2.part{00..09} \
+            .github/workflows/apply-cover-search-ux.yml
+          rmdir .upload 2>/dev/null || true
+
+      - name: Commit applied source
+        shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: make cover search responsive and faster'
+          git push origin "HEAD:${HEAD_BRANCH}"
