@@ -17,10 +17,12 @@ from epub_a4_word.cover.models import (
     TrimSize,
 )
 from epub_a4_word.cover.project_io import dumps_project, loads_project
-from epub_a4_word.cover.templates import apply_template
 from epub_a4_word.cover.search.models import CandidateCategory, SearchCandidate, SearchKind
+from epub_a4_word.cover.templates import apply_template
+from epub_a4_word_desktop.cover.canvas import CoverCanvas
 from epub_a4_word_desktop.cover.controller import CoverController
 from epub_a4_word_desktop.cover.inspector import ElementInspector
+from epub_a4_word_desktop.cover.items import CoverBarcodeItem
 from epub_a4_word_desktop.cover.search_panel import CandidateCard
 
 
@@ -55,6 +57,14 @@ def _image_element(tmp_path: Path) -> CoverElement:
     )
 
 
+def _publisher_project(tmp_path: Path, isbn: str = "9780306406157") -> CoverProject:
+    project = _project(tmp_path)
+    return apply_template(
+        replace(project, metadata=replace(project.metadata, isbn=isbn)),
+        "publisher_back_matter",
+    )
+
+
 def test_controller_apply_isbn_updates_metadata_and_template_barcode(tmp_path: Path) -> None:
     controller = CoverController(working_dir=tmp_path, auto_preview=False)
     project = apply_template(_project(tmp_path), "publisher_back_matter")
@@ -66,6 +76,53 @@ def test_controller_apply_isbn_updates_metadata_and_template_barcode(tmp_path: P
     assert updated.metadata.isbn == "9780306406157"
     assert updated.elements_by_id["back-isbn-code"].content["isbn"] == "9780306406157"
     assert updated.elements_by_id["back-isbn-label"].content["text"] == "ISBN-13 9780306406157"
+
+
+def test_controller_converts_isbn10_to_ean13_for_barcode(tmp_path: Path) -> None:
+    controller = CoverController(working_dir=tmp_path, auto_preview=False)
+    project = apply_template(_project(tmp_path), "publisher_back_matter")
+    controller.replace_project(dumps_project(project), clear_history=True)
+
+    controller.apply_isbn("0-306-40615-2")
+
+    updated = loads_project(controller.project_json)
+    assert updated.metadata.isbn == "9780306406157"
+    assert updated.elements_by_id["back-isbn-code"].content["isbn"] == "9780306406157"
+
+
+def test_controller_isbn_sync_preserves_moved_barcode_geometry(tmp_path: Path) -> None:
+    project = _publisher_project(tmp_path)
+    barcode = project.elements_by_id["back-isbn-code"]
+    moved_transform = ElementTransform(9.0, 11.0, 63.0, 28.0)
+    project = replace(
+        project,
+        elements=tuple(
+            replace(element, transform=moved_transform)
+            if element.id == barcode.id
+            else element
+            for element in project.elements
+        ),
+    )
+    controller = CoverController(working_dir=tmp_path, auto_preview=False)
+    controller.replace_project(dumps_project(project), clear_history=True)
+
+    controller.apply_isbn("9783161484100")
+
+    updated = loads_project(controller.project_json)
+    assert updated.elements_by_id["back-isbn-code"].transform == moved_transform
+    assert updated.elements_by_id["back-isbn-code"].content["isbn"] == "9783161484100"
+
+
+def test_canvas_creates_interactive_barcode_item(qtbot, tmp_path: Path) -> None:
+    canvas = CoverCanvas()
+    qtbot.addWidget(canvas)
+    project = _publisher_project(tmp_path)
+
+    canvas.set_project(dumps_project(project))
+
+    assert isinstance(canvas.items_by_id["back-isbn-code"], CoverBarcodeItem)
+    canvas.select_element("back-isbn-code")
+    assert canvas.items_by_id["back-isbn-code"].isSelected()
 
 
 def test_inspector_exposes_scale_slider_and_transform_shortcuts(qtbot, tmp_path: Path) -> None:
