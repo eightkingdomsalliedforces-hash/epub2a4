@@ -95,7 +95,7 @@ def test_controller_apply_isbn_updates_metadata_and_template_barcode(tmp_path: P
     updated = loads_project(controller.project_json)
     assert updated.metadata.isbn == "9780306406157"
     assert updated.elements_by_id["back-isbn-code"].content["isbn"] == "9780306406157"
-    assert updated.elements_by_id["back-isbn-label"].content["text"] == "ISBN 9780306406157"
+    assert updated.elements_by_id["back-isbn-label"].content["text"] == "ISBN 978-030-640-615-7"
 
 
 def test_controller_converts_isbn10_to_ean13_for_barcode(tmp_path: Path) -> None:

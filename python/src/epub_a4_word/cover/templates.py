@@ -57,6 +57,8 @@ STANDARD_TEMPLATE_IDS = frozenset(
         "back-isbn-label",
         "back-isbn-code",
         "back-publisher-info",
+        "back-publisher-heading",
+        "back-publisher-details",
     }
 )
 
@@ -77,6 +79,10 @@ def text_element(
     font_weight: int = 400,
     color: str = "#111111",
     z_index: int = 10,
+    font_role: str = "default",
+    font_family: str = "sans-serif",
+    vertical_align: str = "center",
+    line_spacing: float = 1.15,
 ) -> CoverElement:
     return CoverElement(
         id=element_id,
@@ -92,12 +98,14 @@ def text_element(
         z_index=z_index,
         content={
             "text": text,
-            "font_family": "sans-serif",
+            "font_family": font_family,
+            "font_role": font_role,
             "font_size_pt": font_size_pt,
             "font_weight": font_weight,
             "color": color,
             "align": align,
-            "line_spacing": 1.15,
+            "vertical_align": vertical_align,
+            "line_spacing": line_spacing,
             "direction": "horizontal",
         },
     )
@@ -325,26 +333,29 @@ def _publisher_back_matter(
     isbn = normalize_isbn(project.metadata.isbn)
     if len(isbn) == 13:
         label_rect = RectMm(
-            safe.x_mm + safe.width_mm * 0.10,
-            safe.y_mm + safe.height_mm * 0.06,
-            safe.width_mm * 0.36,
-            safe.height_mm * 0.035,
+            safe.x_mm + safe.width_mm * 0.03,
+            safe.y_mm + safe.height_mm * 0.025,
+            safe.width_mm * 0.39,
+            safe.height_mm * 0.028,
         )
         barcode_rect = RectMm(
-            label_rect.x_mm,
-            safe.y_mm + safe.height_mm * 0.105,
-            safe.width_mm * 0.36,
-            safe.height_mm * 0.105,
+            safe.x_mm + safe.width_mm * 0.03,
+            safe.y_mm + safe.height_mm * 0.060,
+            safe.width_mm * 0.44,
+            safe.height_mm * 0.125,
         )
         elements.append(
             text_element(
                 "back-isbn-label",
                 Region.BACK,
                 label_rect,
-                f"ISBN {isbn}",
-                8.0,
+                f"ISBN {isbn[:3]}-{isbn[3:6]}-{isbn[6:9]}-{isbn[9:12]}-{isbn[12]}",
+                7.0,
                 align="left",
                 z_index=20,
+                font_role="ocr",
+                font_family="OCR-B",
+                vertical_align="top",
             )
         )
         elements.append(
@@ -363,41 +374,71 @@ def _publisher_back_matter(
                     "isbn": isbn,
                     "addon": normalize_ean_addon(project.metadata.isbn_addon),
                     "text": isbn,
+                    "font_role": "ocr",
+                    "font_family": "OCR-B",
                     "color": "#111111",
                     "align": "left",
                 },
             )
         )
 
-    publisher_lines = tuple(
+    info_x = safe.x_mm + safe.width_mm * 0.49
+    info_width = safe.width_mm * 0.38
+    publisher = project.metadata.publisher.strip()
+    if publisher:
+        heading_rect = RectMm(
+            info_x,
+            safe.y_mm + safe.height_mm * 0.025,
+            info_width,
+            safe.height_mm * 0.035,
+        )
+        elements.append(
+            text_element(
+                "back-publisher-heading",
+                Region.BACK,
+                heading_rect,
+                publisher,
+                7.5,
+                align="left",
+                font_weight=500,
+                z_index=20,
+                font_role="publisher_heading",
+                font_family="DFYuan-W5",
+                vertical_align="top",
+            )
+        )
+
+    detail_lines = tuple(
         value.strip()
         for value in (
-            project.metadata.publisher,
             project.metadata.price,
             project.metadata.publication_place,
         )
         if value.strip()
     )
-    if publisher_lines:
-        info_rect = RectMm(
-            safe.x_mm + safe.width_mm * 0.48,
-            safe.y_mm + safe.height_mm * 0.06,
-            safe.width_mm * 0.30,
-            safe.height_mm * 0.14,
+    if detail_lines:
+        details_rect = RectMm(
+            info_x,
+            safe.y_mm + safe.height_mm * 0.064,
+            info_width,
+            safe.height_mm * 0.105,
         )
         elements.append(
             text_element(
-                "back-publisher-info",
+                "back-publisher-details",
                 Region.BACK,
-                info_rect,
-                "\n".join(publisher_lines),
-                8.0,
+                details_rect,
+                "\n".join(detail_lines),
+                6.5,
                 align="left",
                 z_index=20,
+                font_role="publisher_details",
+                font_family="DFYuan-W3",
+                vertical_align="top",
+                line_spacing=1.15,
             )
         )
     return tuple(elements)
-
 
 _BUILDERS = {
     "source_cover_only": _source_cover_only,

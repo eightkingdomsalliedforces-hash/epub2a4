@@ -54,9 +54,14 @@ def test_publisher_template_creates_only_non_empty_editable_fields(
     assert barcode.kind is ElementKind.BARCODE_PLACEHOLDER
     assert barcode.content["isbn"] == "9780306406157"
     assert barcode.content["addon"] == "50320"
-    info = result.elements_by_id["back-publisher-info"]
-    assert info.region is Region.BACK
-    assert info.content["text"] == "範例出版社\nNT$320\n台北"
+    heading = result.elements_by_id["back-publisher-heading"]
+    details = result.elements_by_id["back-publisher-details"]
+    assert heading.region is Region.BACK
+    assert heading.content["text"] == "範例出版社"
+    assert heading.content["font_role"] == "publisher_heading"
+    assert details.content["text"] == "NT$320\n台北"
+    assert details.content["font_role"] == "publisher_details"
+    assert "back-publisher-info" not in result.elements_by_id
     assert not any(element.kind is ElementKind.IMAGE for element in result.elements)
 
 
@@ -79,15 +84,19 @@ def test_publisher_template_matches_reference_layout(
 
     label = result.elements_by_id["back-isbn-label"]
     barcode = result.elements_by_id["back-isbn-code"]
-    info = result.elements_by_id["back-publisher-info"]
+    heading = result.elements_by_id["back-publisher-heading"]
+    details = result.elements_by_id["back-publisher-details"]
     assert _relative_transform(label.transform, safe) == pytest.approx(
-        (0.10, 0.06, 0.36, 0.035), abs=0.01
+        (0.03, 0.025, 0.39, 0.028), abs=0.01
     )
     assert _relative_transform(barcode.transform, safe) == pytest.approx(
-        (0.10, 0.105, 0.36, 0.105), abs=0.015
+        (0.03, 0.060, 0.44, 0.125), abs=0.015
     )
-    assert _relative_transform(info.transform, safe) == pytest.approx(
-        (0.48, 0.06, 0.30, 0.14), abs=0.015
+    assert _relative_transform(heading.transform, safe) == pytest.approx(
+        (0.49, 0.025, 0.38, 0.035), abs=0.015
+    )
+    assert _relative_transform(details.transform, safe) == pytest.approx(
+        (0.49, 0.064, 0.38, 0.105), abs=0.015
     )
     slot = result.background["publisher_logo_slot"]
     assert (
@@ -96,8 +105,12 @@ def test_publisher_template_matches_reference_layout(
         slot["width_mm"] / safe.width_mm,
         slot["height_mm"] / safe.height_mm,
     ) == pytest.approx((0.26, 0.34, 0.48, 0.36), abs=0.01)
-    assert label.content["text"] == "ISBN 9780306406157"
-    assert info.content["align"] == "left"
+    assert label.content["text"] == "ISBN 978-030-640-615-7"
+    assert label.content["font_role"] == "ocr"
+    assert heading.content["font_size_pt"] == pytest.approx(7.5)
+    assert details.content["font_size_pt"] == pytest.approx(6.5)
+    assert heading.content["align"] == "left"
+    assert details.content["align"] == "left"
 
 
 def test_publisher_template_hides_missing_fields_without_placeholders(
@@ -110,4 +123,6 @@ def test_publisher_template_hides_missing_fields_without_placeholders(
     assert "back-isbn-label" not in result.elements_by_id
     assert "back-isbn-code" not in result.elements_by_id
     assert "back-publisher-info" not in result.elements_by_id
+    assert "back-publisher-heading" not in result.elements_by_id
+    assert "back-publisher-details" not in result.elements_by_id
     assert all("ISBN" not in str(element.content.get("text", "")) for element in result.elements)
