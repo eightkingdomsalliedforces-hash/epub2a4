@@ -26,36 +26,42 @@ jobs:
           from pathlib import Path
 
           path = Path("python/src/epub_a4_word_desktop/cover/controller.py")
-          text = path.read_text(encoding="utf-8")
-          worker_marker = "        worker = PreviewWorker(\n"
-          project_marker = "            self.project_json,\n"
-          if text.count(worker_marker) != 1:
-              raise SystemExit("preview worker marker was not found exactly once")
-          if text.count(project_marker) != 1:
-              raise SystemExit("preview project marker was not found exactly once")
-          raster_setup = (
-              "        project = self._require_project()\n"
-              "        raster_project = replace(\n"
-              "            project,\n"
-              "            elements=tuple(\n"
-              "                element\n"
-              "                for element in project.elements\n"
-              "                if element.kind\n"
-              "                not in {\n"
-              "                    ElementKind.IMAGE,\n"
-              "                    ElementKind.TEXT,\n"
-              "                    ElementKind.BARCODE_PLACEHOLDER,\n"
-              "                }\n"
-              "            ),\n"
-              "        )\n"
-          )
-          text = text.replace(worker_marker, raster_setup + worker_marker, 1)
-          text = text.replace(
-              project_marker,
-              "            dumps_project(raster_project),\n",
-              1,
-          )
-          path.write_text(text, encoding="utf-8")
+          lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+          worker_indexes = [
+              index
+              for index, line in enumerate(lines)
+              if line.strip() == "worker = PreviewWorker("
+          ]
+          if len(worker_indexes) != 1:
+              raise SystemExit(f"expected one preview worker, found {worker_indexes}")
+          worker_index = worker_indexes[0]
+          project_indexes = [
+              index
+              for index in range(worker_index, min(len(lines), worker_index + 10))
+              if lines[index].strip() == "self.project_json,"
+          ]
+          if len(project_indexes) != 1:
+              raise SystemExit(f"expected one preview project line, found {project_indexes}")
+          raster_setup = [
+              "        project = self._require_project()\n",
+              "        raster_project = replace(\n",
+              "            project,\n",
+              "            elements=tuple(\n",
+              "                element\n",
+              "                for element in project.elements\n",
+              "                if element.kind\n",
+              "                not in {\n",
+              "                    ElementKind.IMAGE,\n",
+              "                    ElementKind.TEXT,\n",
+              "                    ElementKind.BARCODE_PLACEHOLDER,\n",
+              "                }\n",
+              "            ),\n",
+              "        )\n",
+          ]
+          lines[worker_index:worker_index] = raster_setup
+          project_index = project_indexes[0] + len(raster_setup)
+          lines[project_index] = "            dumps_project(raster_project),\n"
+          path.write_text("".join(lines), encoding="utf-8")
       - name: Commit fix
         run: |
           git config user.name "github-actions[bot]"
