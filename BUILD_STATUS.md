@@ -24,6 +24,8 @@
 - `Android debug APK`：Kotlin 單元測試、共用 Python、Debug APK、16 KB alignment。
 - `Windows portable EXE`：焦點回歸、PyInstaller、封裝後 EXE smoke、ZIP 重新解壓驗證。
 
+PR #9 必須以目前分支的精確 HEAD 重新執行上述三條工作流程；舊提交的綠燈不能替代本次驗證。
+
 只有全部 required checks 通過後才能合併與交付新版 Windows ZIP。
 
 ## Windows 實機驗收
