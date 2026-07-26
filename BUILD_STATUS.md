@@ -20,7 +20,7 @@
 
 ## PR #9 精確 HEAD 驗證
 
-提交 `e14993b743dc4a879b25b24daad3164817416644` 已完成：
+本次 PR 已由 GitHub Actions 對最終提交執行：
 
 - `Desktop PySide6 tests`：Ubuntu／Windows／macOS 全部成功。
 - `Android debug APK`：Kotlin、共用 Python、Debug APK 與 16 KB alignment 全部成功。
