@@ -59,6 +59,28 @@ def normalize_isbn(value: object) -> str:
     return ""
 
 
+def isbn13_from_isbn10(value: object) -> str:
+    """Convert a checksum-valid ISBN-10 to its 978-prefixed ISBN-13 form."""
+
+    isbn10 = normalize_isbn(value)
+    if len(isbn10) != 10:
+        return ""
+    body = "978" + isbn10[:9]
+    total = sum(int(digit) * (1 if index % 2 == 0 else 3) for index, digit in enumerate(body))
+    return body + str((10 - total % 10) % 10)
+
+
+def canonical_isbn13(value: object) -> str:
+    """Return a valid ISBN as EAN-13, converting ISBN-10 when necessary."""
+
+    isbn = normalize_isbn(value)
+    if len(isbn) == 13:
+        return isbn
+    if len(isbn) == 10:
+        return isbn13_from_isbn10(isbn)
+    return ""
+
+
 def valid_isbns(values: Iterable[object]) -> tuple[str, ...]:
     result: list[str] = []
     seen: set[str] = set()
@@ -72,7 +94,10 @@ def valid_isbns(values: Iterable[object]) -> tuple[str, ...]:
 
 def preferred_isbn(values: Iterable[object]) -> str:
     normalized = valid_isbns(values)
-    return next((value for value in normalized if len(value) == 13), normalized[0] if normalized else "")
+    direct = next((value for value in normalized if len(value) == 13), "")
+    if direct:
+        return direct
+    return isbn13_from_isbn10(normalized[0]) if normalized else ""
 
 
 def normalize_ean_addon(value: object) -> str:
@@ -81,7 +106,7 @@ def normalize_ean_addon(value: object) -> str:
 
 
 def encode_ean13_modules(value: object) -> str:
-    isbn = normalize_isbn(value)
+    isbn = canonical_isbn13(value)
     if len(isbn) != 13:
         raise ValueError("EAN-13 條碼需要有效的 ISBN-13。")
     first = int(isbn[0])
