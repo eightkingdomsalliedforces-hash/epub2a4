@@ -1,17 +1,20 @@
 name: Apply editor preview layering fix
 
 on:
-  push:
+  pull_request:
     branches:
-      - fix/reference-back-cover-isbn-clarity
+      - main
     paths:
       - .github/workflows/apply-editor-preview-layer-fix.yml
+      - desktop/tests/test_cover_controller.py
+      - python/src/epub_a4_word_desktop/cover/controller.py
 
 permissions:
   contents: write
 
 jobs:
   apply-fix:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
