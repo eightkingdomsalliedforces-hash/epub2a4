@@ -1,0 +1,70 @@
+name: Apply editor preview layering fix
+
+on:
+  push:
+    branches:
+      - fix/reference-back-cover-isbn-clarity
+    paths:
+      - .github/workflows/apply-editor-preview-layer-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/reference-back-cover-isbn-clarity
+      - name: Remove editable elements from raster editor preview
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("python/src/epub_a4_word_desktop/cover/controller.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''        generation = self._preview_generation
+          preview_dir = self.working_dir / "previews"
+          preview_dir.mkdir(parents=True, exist_ok=True)
+          worker = PreviewWorker(
+              self.service,
+              self.project_json,
+              preview_dir / f"preview-{generation}.png",
+              generation,
+          )
+          '''
+          new = '''        generation = self._preview_generation
+          preview_dir = self.working_dir / "previews"
+          preview_dir.mkdir(parents=True, exist_ok=True)
+          project = self._require_project()
+          raster_project = replace(
+              project,
+              elements=tuple(
+                  element
+                  for element in project.elements
+                  if element.kind
+                  not in {
+                      ElementKind.IMAGE,
+                      ElementKind.TEXT,
+                      ElementKind.BARCODE_PLACEHOLDER,
+                  }
+              ),
+          )
+          worker = PreviewWorker(
+              self.service,
+              dumps_project(raster_project),
+              preview_dir / f"preview-{generation}.png",
+              generation,
+          )
+          '''
+          if text.count(old) != 1:
+              raise SystemExit("expected preview construction block was not found exactly once")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add python/src/epub_a4_word_desktop/cover/controller.py
+          git commit -m "fix: prevent duplicate editor preview layers"
+          git push origin HEAD:fix/reference-back-cover-isbn-clarity
