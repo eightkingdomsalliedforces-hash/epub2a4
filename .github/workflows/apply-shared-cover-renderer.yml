@@ -1,0 +1,69 @@
+name: Apply shared cover renderer fixes
+
+on:
+  push:
+    branches:
+      - fix/reference-back-cover-isbn-clarity
+    paths:
+      - .github/workflows/apply-shared-cover-renderer.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/reference-back-cover-isbn-clarity
+      - name: Patch shared renderer
+        shell: python
+        run: |
+          import base64
+          from pathlib import Path
+
+          barcode_b64 = "ZGVmIF9wcmVwYXJlX2JhcmNvZGUoZWxlbWVudDogQ292ZXJFbGVtZW50LCBzaXplOiB0dXBsZVtpbnQsIGludF0sIGRwaTogaW50KSAtPiBJbWFnZS5JbWFnZToKICAgIGRlbCBkcGkKICAgIGlzYm4gPSBub3JtYWxpemVfaXNibihlbGVtZW50LmNvbnRlbnQuZ2V0KCJpc2JuIiwgZWxlbWVudC5jb250ZW50LmdldCgidGV4dCIsICIiKSkpCiAgICBjYW52YXMgPSBJbWFnZS5uZXcoIlJHQkEiLCBzaXplLCAoMCwgMCwgMCwgMCkpCiAgICBpZiBsZW4oaXNibikgIT0gMTM6CiAgICAgICAgcmV0dXJuIGNhbnZhcwogICAgbGF5b3V0ID0gYnVpbGRfYmFyY29kZV9sYXlvdXQoaXNibiwgZWxlbWVudC5jb250ZW50LmdldCgiYWRkb24iLCAiIikpCiAgICBkcmF3ID0gSW1hZ2VEcmF3LkRyYXcoY2FudmFzKQogICAgd2lkdGgsIGhlaWdodCA9IHNpemUKICAgIGZvciBiYXIgaW4gbGF5b3V0LmJhcnM6CiAgICAgICAgbGVmdCA9IHJvdW5kKGJhci54ICogd2lkdGgpCiAgICAgICAgdG9wID0gcm91bmQoYmFyLnRvcCAqIGhlaWdodCkKICAgICAgICByaWdodCA9IG1heChsZWZ0ICsgMSwgcm91bmQoKGJhci54ICsgYmFyLndpZHRoKSAqIHdpZHRoKSkKICAgICAgICBib3R0b20gPSBtYXgodG9wICsgMSwgcm91bmQoYmFyLmJvdHRvbSAqIGhlaWdodCkpCiAgICAgICAgZHJhdy5yZWN0YW5nbGUoKGxlZnQsIHRvcCwgcmlnaHQgLSAxLCBib3R0b20gLSAxKSwgZmlsbD0iYmxhY2siKQoKICAgIGZhbWlsaWVzID0gZm9udF9jYW5kaWRhdGVzKAogICAgICAgICJvY3IiLAogICAgICAgIGVsZW1lbnQuY29udGVudC5nZXQoImZvbnRfZmFtaWxpZXMiLCBlbGVtZW50LmNvbnRlbnQuZ2V0KCJmb250X2ZhbWlseSIsICJPQ1ItQiIpKSwKICAgICkKICAgIGZvbnQgPSByZXNvbHZlX2ZvbnQoCiAgICAgICAgZmFtaWxpZXNbMF0sCiAgICAgICAgZWxlbWVudC5jb250ZW50LmdldCgiZm9udF9wYXRoIikKICAgICAgICBpZiBpc2luc3RhbmNlKGVsZW1lbnQuY29udGVudC5nZXQoImZvbnRfcGF0aCIpLCBzdHIpCiAgICAgICAgZWxzZSBOb25lLAogICAgICAgIG1heCg4LCByb3VuZChoZWlnaHQgKiAwLjEzKSksCiAgICAgICAgZmFtaWxpZXNbMTpdLAogICAgKQoKICAgIGRlZiBkcmF3X2FuY2hvcihhbmNob3I6IEJhcmNvZGVUZXh0QW5jaG9yKSAtPiBOb25lOgogICAgICAgIGxlZnQgPSByb3VuZChhbmNob3IubGVmdCAqIHdpZHRoKQogICAgICAgIHRvcCA9IHJvdW5kKGFuY2hvci50b3AgKiBoZWlnaHQpCiAgICAgICAgcmlnaHQgPSBtYXgobGVmdCArIDEsIHJvdW5kKGFuY2hvci5yaWdodCAqIHdpZHRoKSkKICAgICAgICBib3R0b20gPSBtYXgodG9wICsgMSwgcm91bmQoYW5jaG9yLmJvdHRvbSAqIGhlaWdodCkpCiAgICAgICAgYm94ID0gZHJhdy50ZXh0YmJveCgoMCwgMCksIGFuY2hvci50ZXh0LCBmb250PWZvbnQpCiAgICAgICAgdGV4dF93aWR0aCA9IG1heCgwLCBib3hbMl0gLSBib3hbMF0pCiAgICAgICAgdGV4dF9oZWlnaHQgPSBtYXgoMCwgYm94WzNdIC0gYm94WzFdKQogICAgICAgIGlmIGFuY2hvci5hbGlnbiA9PSAibGVmdCI6CiAgICAgICAgICAgIHggPSBsZWZ0CiAgICAgICAgZWxpZiBhbmNob3IuYWxpZ24gPT0gInJpZ2h0IjoKICAgICAgICAgICAgeCA9IG1heChsZWZ0LCByaWdodCAtIHRleHRfd2lkdGgpCiAgICAgICAgZWxzZToKICAgICAgICAgICAgeCA9IGxlZnQgKyBtYXgoMCwgKHJpZ2h0IC0gbGVmdCAtIHRleHRfd2lkdGgpIC8vIDIpCiAgICAgICAgeSA9IHRvcCArIG1heCgwLCAoYm90dG9tIC0gdG9wIC0gdGV4dF9oZWlnaHQpIC8vIDIpIC0gYm94WzFdCiAgICAgICAgZHJhdy50ZXh0KCh4LCB5KSwgYW5jaG9yLnRleHQsIGZpbGw9ImJsYWNrIiwgZm9udD1mb250KQoKICAgIGRyYXdfYW5jaG9yKGxheW91dC5maXJzdF9kaWdpdCkKICAgIGRyYXdfYW5jaG9yKGxheW91dC5sZWZ0X2RpZ2l0cykKICAgIGRyYXdfYW5jaG9yKGxheW91dC5yaWdodF9kaWdpdHMpCiAgICBpZiBsYXlvdXQuYWRkb25fZGlnaXRzIGlzIG5vdCBOb25lOgogICAgICAgIGRyYXdfYW5jaG9yKGxheW91dC5hZGRvbl9kaWdpdHMpCiAgICByZXR1cm4gX2FwcGx5X2FscGhhKGNhbnZhcywgZmxvYXQoZWxlbWVudC5vcGFjaXR5KSkK"
+
+          path = Path("python/src/epub_a4_word/cover/render.py")
+          lines = path.read_text(encoding="utf-8").splitlines()
+          fonts_index = lines.index("from .fonts import resolve_font")
+          lines[fonts_index:fonts_index] = [
+              "from .barcode_layout import BarcodeTextAnchor, build_barcode_layout",
+          ]
+          isbn_index = lines.index(
+              "from .isbn import encode_ean13_modules, encode_ean_addon_modules, normalize_isbn"
+          )
+          lines[isbn_index] = "from .isbn import normalize_isbn"
+          print_index = lines.index("from .print_plan import PrintMark, PrintPage")
+          lines[print_index + 1 : print_index + 1] = [
+              "from .typography import font_candidates",
+          ]
+
+          font_start = lines.index("    font = resolve_font(")
+          font_end = lines.index("    )", font_start)
+          lines[font_start : font_end + 1] = [
+              "    families = font_candidates(",
+              '        str(content.get("font_role", "default")),',
+              '        content.get("font_families", content.get("font_family", "sans-serif")),',
+              "    )",
+              "    font = resolve_font(",
+              "        families[0],",
+              '        content.get("font_path") if isinstance(content.get("font_path"), str) else None,',
+              "        size_px,",
+              "        families[1:],",
+              "    )",
+          ]
+
+          barcode_start = lines.index("def _prepare_barcode(element: CoverElement, size: tuple[int, int], dpi: int) -> Image.Image:")
+          clip_start = lines.index("def _clip_layer(", barcode_start)
+          barcode = base64.b64decode(barcode_b64).decode("utf-8").splitlines()
+          lines[barcode_start:clip_start] = barcode + [""]
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add python/src/epub_a4_word/cover/render.py
+          git commit -m "fix: share publisher font and barcode rendering"
+          git push origin HEAD:fix/reference-back-cover-isbn-clarity
