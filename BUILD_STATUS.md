@@ -18,15 +18,14 @@
 - Windows／macOS／Ubuntu PySide6 測試架構。
 - Windows PyInstaller onedir、Qt `qwindows.dll`、封裝後 EXE smoke、ZIP 與 SHA-256 驗證架構。
 
-## 本次必須重新執行的 GitHub Actions
+## PR #9 精確 HEAD 驗證
 
-- `Desktop PySide6 tests`：Ubuntu／Windows／macOS，Python 3.13。
-- `Android debug APK`：Kotlin 單元測試、共用 Python、Debug APK、16 KB alignment。
-- `Windows portable EXE`：焦點回歸、PyInstaller、封裝後 EXE smoke、ZIP 重新解壓驗證。
+提交 `df96192ef7096740f8f8b9f00f678cff1d8525d6` 已完成：
 
-PR #9 必須以目前分支的精確 HEAD 重新執行上述三條工作流程；舊提交的綠燈不能替代本次驗證。
-
-只有全部 required checks 通過後才能合併與交付新版 Windows ZIP。
+- `Desktop PySide6 tests`：Ubuntu／Windows／macOS 全部成功。
+- `Android debug APK`：Kotlin、共用 Python、Debug APK 與 16 KB alignment 全部成功。
+- `Windows portable EXE`：焦點測試、來源 smoke、PyInstaller、目錄驗證、封裝後 EXE smoke、ZIP 與 SHA-256 全部成功。
+- Windows Portable ZIP SHA-256：`8373de8c51422fda7c712ea7f77433ae29a003467617424abfbfff4c8b5c0f91`。
 
 ## Windows 實機驗收
 
