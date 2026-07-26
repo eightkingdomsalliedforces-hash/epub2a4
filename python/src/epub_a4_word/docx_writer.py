@@ -13,9 +13,10 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
-from .crop_marks import CropMarkFrame, add_crop_marks
+from .crop_marks import add_page_guides
 from .imposition import ImpositionMode, build_imposition
 from .models import ImageBlock, TextBlock, TextRun
+from .page_placement import build_page_placement
 from .pagination import LayoutSettings, MiniPage, resolve_layout
 from .text_metrics import paragraph_metrics
 
@@ -288,18 +289,13 @@ def write_docx(
     document.core_properties.title = title
     document.core_properties.author = author
 
-    if imposition_mode == "b6_on_a5" and settings.output_mark_mode == "crop_marks":
-        add_crop_marks(
-            section,
-            CropMarkFrame(
-                page_width_cm=settings.paper_width_cm,
-                page_height_cm=settings.paper_height_cm,
-                left_cm=settings.page_margin_left_cm,
-                top_cm=settings.page_margin_top_cm,
-                width_cm=settings.cell_width_cm,
-                height_cm=settings.cell_height_cm,
-            ),
-        )
+    placement = build_page_placement(settings)
+    add_page_guides(
+        section,
+        placement.guides,
+        paper_width_mm=placement.paper_width_mm,
+        paper_height_mm=placement.paper_height_mm,
+    )
 
     warnings: list[str] = []
     plan = build_imposition(len(pages), imposition_mode)
@@ -309,10 +305,7 @@ def write_docx(
         table.autofit = False
         _set_fixed_layout(table)
         _set_table_width(table, settings.cell_width_cm * settings.grid_cols)
-        _set_table_borders(
-            table,
-            settings.cut_guides and (settings.grid_rows > 1 or settings.grid_cols > 1),
-        )
+        _set_table_borders(table, False)
 
     def configure_row(row) -> None:
         row.height = Cm(settings.cell_height_cm)
