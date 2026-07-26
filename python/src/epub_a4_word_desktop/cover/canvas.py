@@ -20,7 +20,7 @@ from epub_a4_word.cover.print_plan import build_print_plan
 from epub_a4_word.cover.project_io import loads_project
 
 from .guides import GuideLayer
-from .items import CoverImageItem, CoverTextItem
+from .items import CoverBarcodeItem, CoverImageItem, CoverTextItem
 
 
 class ZoomControls(QWidget):
@@ -68,7 +68,9 @@ class CoverCanvas(QGraphicsView):
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
         self.setBackgroundBrush(QColor("#d1d5db"))
         self.project_json = ""
-        self.items_by_id: dict[str, CoverImageItem | CoverTextItem] = {}
+        self.items_by_id: dict[
+            str, CoverBarcodeItem | CoverImageItem | CoverTextItem
+        ] = {}
         self.guide_layer = GuideLayer(scene)
         self._paper_item = None
         self._preview_item: QGraphicsPixmapItem | None = None
@@ -107,11 +109,13 @@ class CoverCanvas(QGraphicsView):
         self._paper_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
 
         for element in sorted(project.elements, key=lambda item: item.z_index):
-            item: CoverImageItem | CoverTextItem | None
+            item: CoverBarcodeItem | CoverImageItem | CoverTextItem | None
             if element.kind is ElementKind.IMAGE:
                 item = CoverImageItem(element)
             elif element.kind is ElementKind.TEXT:
                 item = CoverTextItem(element)
+            elif element.kind is ElementKind.BARCODE_PLACEHOLDER:
+                item = CoverBarcodeItem(element)
             else:
                 item = None
             if item is None:
@@ -215,13 +219,19 @@ class CoverCanvas(QGraphicsView):
             self.set_zoom(self._zoom_factor * multiplier)
             event.accept()
             return
-        selected = [item for item in self.scene().selectedItems() if isinstance(item, CoverImageItem)]
+        selected = [
+            item
+            for item in self.scene().selectedItems()
+            if isinstance(item, CoverImageItem)
+        ]
         if len(selected) == 1 and event.angleDelta().y() != 0:
             item = selected[0]
             multiplier = 1.10 if event.angleDelta().y() > 0 else 1.0 / 1.10
             scale = min(5.0, max(0.1, item.content_scale * multiplier))
             item.set_content_scale(scale)
-            self.element_patch_requested.emit(item.element_id, {"content": {"scale": scale}})
+            self.element_patch_requested.emit(
+                item.element_id, {"content": {"scale": scale}}
+            )
             event.accept()
             return
         super().wheelEvent(event)
