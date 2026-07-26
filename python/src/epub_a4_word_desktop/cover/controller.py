@@ -18,7 +18,7 @@ from PySide6.QtGui import QUndoStack
 from epub_a4_word.cover import service as shared_service
 from epub_a4_word.cover.composition import CompositionSelection
 from epub_a4_word.cover.geometry import RectMm, calculate_layout
-from epub_a4_word.cover.isbn import normalize_isbn
+from epub_a4_word.cover.isbn import canonical_isbn13
 from epub_a4_word.cover.models import (
     CoverElement,
     CoverProject,
@@ -187,23 +187,48 @@ class CoverController(QObject):
         self.replace_project(candidate_json, label=f"套用模板：{template_id}")
 
     def apply_isbn(self, value: object) -> str:
-        isbn = normalize_isbn(value)
+        isbn = canonical_isbn13(value)
         if not isbn:
             raise ValueError("ISBN 必須是通過校驗的 ISBN-10 或 ISBN-13。")
         project = self._require_project()
         candidate = replace(project, metadata=replace(project.metadata, isbn=isbn))
         active_template = str(candidate.background.get("active_template", ""))
         if active_template == "publisher_back_matter":
-            candidate = apply_cover_template(candidate, active_template)
-        else:
+            generated_project = apply_cover_template(candidate, active_template)
+            generated = generated_project.elements_by_id
+            sync_ids = ("back-isbn-label", "back-isbn-code")
+            existing_ids = {element.id for element in candidate.elements}
             updated: list[CoverElement] = []
+            for element in candidate.elements:
+                generated_element = generated.get(element.id)
+                if element.id in sync_ids and generated_element is not None:
+                    updated.append(
+                        replace(
+                            element,
+                            kind=generated_element.kind,
+                            region=generated_element.region,
+                            content=dict(generated_element.content),
+                        )
+                    )
+                else:
+                    updated.append(element)
+            for element_id in sync_ids:
+                if element_id not in existing_ids and element_id in generated:
+                    updated.append(generated[element_id])
+            candidate = replace(
+                candidate,
+                background=generated_project.background,
+                elements=tuple(updated),
+            )
+        else:
+            updated = []
             for element in candidate.elements:
                 content = dict(element.content)
                 if element.kind is ElementKind.BARCODE_PLACEHOLDER:
                     content["isbn"] = isbn
                     content["text"] = isbn
                 elif element.id == "back-isbn-label":
-                    content["text"] = f"ISBN-13 {isbn}" if len(isbn) == 13 else f"ISBN-10 {isbn}"
+                    content["text"] = f"ISBN-13 {isbn}"
                 updated.append(replace(element, content=content))
             candidate = replace(candidate, elements=tuple(updated))
         self.replace_project(dumps_project(candidate), label="套用 ISBN")
