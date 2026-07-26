@@ -308,13 +308,11 @@ def _top_bottom_blocks(project: CoverProject, layout: CoverLayout) -> tuple[Cove
 
 def _publisher_logo_rect(layout: CoverLayout) -> RectMm:
     safe = layout.back_safe_rect
-    width = safe.width_mm * 0.58
-    height = safe.height_mm * 0.34
     return RectMm(
-        safe.x_mm + (safe.width_mm - width) / 2.0,
-        safe.y_mm + safe.height_mm * 0.38,
-        width,
-        height,
+        safe.x_mm + safe.width_mm * 0.26,
+        safe.y_mm + safe.height_mm * 0.34,
+        safe.width_mm * 0.48,
+        safe.height_mm * 0.36,
     )
 
 
@@ -327,23 +325,23 @@ def _publisher_back_matter(
     isbn = normalize_isbn(project.metadata.isbn)
     if len(isbn) == 13:
         label_rect = RectMm(
-            safe.x_mm,
-            safe.y_mm,
-            safe.width_mm * 0.55,
-            max(5.0, safe.height_mm * 0.035),
+            safe.x_mm + safe.width_mm * 0.10,
+            safe.y_mm + safe.height_mm * 0.06,
+            safe.width_mm * 0.36,
+            safe.height_mm * 0.035,
         )
         barcode_rect = RectMm(
-            safe.x_mm,
-            label_rect.bottom_mm + 1.5,
-            safe.width_mm * 0.55,
-            max(24.0, safe.height_mm * 0.16),
+            label_rect.x_mm,
+            safe.y_mm + safe.height_mm * 0.105,
+            safe.width_mm * 0.36,
+            safe.height_mm * 0.105,
         )
         elements.append(
             text_element(
                 "back-isbn-label",
                 Region.BACK,
                 label_rect,
-                f"ISBN-13 {isbn}",
+                f"ISBN {isbn}",
                 8.0,
                 align="left",
                 z_index=20,
@@ -382,10 +380,10 @@ def _publisher_back_matter(
     )
     if publisher_lines:
         info_rect = RectMm(
-            safe.x_mm + safe.width_mm * 0.61,
-            safe.y_mm,
-            safe.width_mm * 0.39,
-            max(30.0, safe.height_mm * 0.20),
+            safe.x_mm + safe.width_mm * 0.48,
+            safe.y_mm + safe.height_mm * 0.06,
+            safe.width_mm * 0.30,
+            safe.height_mm * 0.14,
         )
         elements.append(
             text_element(
@@ -394,7 +392,7 @@ def _publisher_back_matter(
                 info_rect,
                 "\n".join(publisher_lines),
                 8.0,
-                align="right",
+                align="left",
                 z_index=20,
             )
         )

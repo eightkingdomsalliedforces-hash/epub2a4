@@ -228,7 +228,7 @@ class CoverController(QObject):
                     content["isbn"] = isbn
                     content["text"] = isbn
                 elif element.id == "back-isbn-label":
-                    content["text"] = f"ISBN-13 {isbn}"
+                    content["text"] = f"ISBN {isbn}"
                 updated.append(replace(element, content=content))
             candidate = replace(candidate, elements=tuple(updated))
         self.replace_project(dumps_project(candidate), label="套用 ISBN")
@@ -263,9 +263,18 @@ class CoverController(QObject):
         return destination.resolve()
 
     @staticmethod
+    def _uses_publisher_logo_slot(project: CoverProject, region: Region) -> bool:
+        return (
+            region is Region.BACK
+            and str(project.background.get("active_template", ""))
+            == "publisher_back_matter"
+            and isinstance(project.background.get("publisher_logo_slot"), Mapping)
+        )
+
+    @staticmethod
     def _target_rect(project: CoverProject, region: Region):
         layout = calculate_layout(project)
-        if region is Region.BACK and str(project.background.get("active_template", "")) == "publisher_back_matter":
+        if CoverController._uses_publisher_logo_slot(project, region):
             slot = project.background.get("publisher_logo_slot")
             if isinstance(slot, Mapping):
                 try:
@@ -314,7 +323,7 @@ class CoverController(QObject):
         )
         content: dict[str, Any] = {
             "path": str(copied),
-            "fit": "cover",
+            "fit": "contain" if self._uses_publisher_logo_slot(project, region) else "cover",
             "scale": selection.scale if selection else 1.0,
             "offset_x": selection.offset_x if selection else 0.0,
             "offset_y": selection.offset_y if selection else 0.0,
