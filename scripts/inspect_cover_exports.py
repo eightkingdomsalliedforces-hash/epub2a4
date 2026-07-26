@@ -31,6 +31,12 @@ NS = {
 TWIPS_PER_MM = 1440 / 25.4
 
 
+def _configure_utf8_stdout() -> None:
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8", errors="strict")
+
+
 def _jsonable(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_jsonable(item) for item in value]
@@ -142,6 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         "pdf": inspect_pdf(args.pdf),
         "docx": inspect_docx(args.docx),
     }
+    _configure_utf8_stdout()
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 
