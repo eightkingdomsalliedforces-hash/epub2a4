@@ -10,6 +10,27 @@ from collections.abc import Iterable
 from PIL import ImageFont
 
 _FONT_SUFFIXES = frozenset({".ttf", ".otf", ".ttc"})
+_STYLE_SUFFIXES = (
+    "semibold",
+    "demibold",
+    "extrabold",
+    "ultrabold",
+    "extralight",
+    "ultralight",
+    "regular",
+    "medium",
+    "normal",
+    "roman",
+    "book",
+    "bold",
+    "light",
+    "thin",
+    "black",
+    "heavy",
+    "italic",
+    "oblique",
+)
+
 _FILE_ALIASES: dict[str, tuple[str, ...]] = {
     "dfpyuanw5gb": ("dfpyuanw5gb",),
     "dfpyuanw5": ("dfpyuanw5gb", "dfpyuanw5"),
@@ -104,11 +125,19 @@ def _family_values(font_family: object, fallback_families: Iterable[object]) -> 
     return tuple(result)
 
 
+def _canonical_font_stem(path: Path) -> str:
+    normalized = _normalize_hint(path.stem)
+    for suffix in _STYLE_SUFFIXES:
+        if normalized.endswith(suffix) and len(normalized) > len(suffix):
+            return normalized[: -len(suffix)]
+    return normalized
+
+
 def _matching_font_path(families: tuple[str, ...]) -> Path | None:
     files = _installed_font_files()
     if not files:
         return None
-    file_keys = tuple((path, _normalize_hint(path.stem)) for path in files)
+    file_keys = tuple((path, _canonical_font_stem(path)) for path in files)
     for family in families:
         normalized = _normalize_hint(family)
         if not normalized:
