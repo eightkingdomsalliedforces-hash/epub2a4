@@ -50,6 +50,7 @@ _ALLOWED_SETTINGS = {
     "show_assembly_marks",
     "cover_image_path",
     "image_mode",
+    "translator",
     "confirmed_back_cover_asset_id",
 }
 
@@ -309,7 +310,12 @@ def new_project(source_path: str, settings_json: str) -> str:
     assets_dir = working_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
     page_count, estimated = _resolve_page_count(inspection, settings, source)
-    metadata = replace(inspection.metadata, page_count_is_estimate=estimated)
+    translator = str(settings.get("translator", "")).strip()
+    metadata = replace(
+        inspection.metadata,
+        translator=translator or inspection.metadata.translator,
+        page_count_is_estimate=estimated,
+    )
     image_mode_value = settings.get("image_mode", ImageMode.FRONT_ONLY.value)
     try:
         image_mode = ImageMode(str(image_mode_value))
