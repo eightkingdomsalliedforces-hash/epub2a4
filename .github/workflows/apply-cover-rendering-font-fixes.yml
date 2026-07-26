@@ -1,0 +1,672 @@
+name: Apply cover rendering and font fixes
+
+on:
+  push:
+    branches:
+      - fix/reference-back-cover-isbn-clarity
+    paths:
+      - .github/workflows/apply-cover-rendering-font-fixes.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/reference-back-cover-isbn-clarity
+
+      - name: Patch production and existing regression tests
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          def sub_once(text: str, pattern: str, replacement: str, label: str) -> str:
+              updated, count = re.subn(pattern, replacement, text, count=1, flags=re.S)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one regex match, found {count}")
+              return updated
+
+          # Controller: downloaded covers replace overlapping region images.
+          path = Path("python/src/epub_a4_word_desktop/cover/controller.py")
+          text = path.read_text(encoding="utf-8")
+          marker = "    def add_downloaded_images(\n"
+          helper = '''    @staticmethod
+          def _without_replaced_cover_images(
+              elements: list[CoverElement],
+              replacement_regions: set[Region],
+          ) -> list[CoverElement]:
+              replace_spread = Region.SPREAD in replacement_regions
+              return [
+                  element
+                  for element in elements
+                  if not (
+                      element.kind is ElementKind.IMAGE
+                      and (
+                          replace_spread
+                          or element.region is Region.SPREAD
+                          or element.region in replacement_regions
+                      )
+                  )
+              ]
+
+          '''
+          text = replace_once(text, marker, helper + marker, "controller helper insertion")
+          old = '''        project = self._require_project()
+          elements = list(project.elements)
+          highest_z = max((element.z_index for element in elements), default=0)
+          added: list[str] = []
+          order = (
+              CandidateCategory.BACK,
+              CandidateCategory.SPINE,
+              CandidateCategory.FRONT,
+          )
+          normalized = {CandidateCategory(key): value for key, value in selections.items()}
+          '''
+          new = '''        project = self._require_project()
+          added: list[str] = []
+          order = (
+              CandidateCategory.BACK,
+              CandidateCategory.SPINE,
+              CandidateCategory.FRONT,
+          )
+          normalized = {CandidateCategory(key): value for key, value in selections.items()}
+          replacement_regions = {
+              self._region_for_category(category)
+              for category in normalized
+              if category in order
+          }
+          elements = self._without_replaced_cover_images(
+              list(project.elements), replacement_regions
+          )
+          highest_z = max((element.z_index for element in elements), default=0)
+          '''
+          text = replace_once(text, old, new, "controller downloaded replacement")
+          old = '''        project = self._require_project()
+          highest_z = max((element.z_index for element in project.elements), default=0)
+          element = self._image_element(
+              project,
+              Path(source_path).expanduser().resolve(),
+              Region.SPREAD,
+              z_index=highest_z + 1,
+              element_id=f"composed-spread-{uuid4().hex}",
+          )
+          self.replace_project(
+              dumps_project(replace(project, elements=project.elements + (element,))),
+              label="套用合成完整書衣",
+          )
+          '''
+          new = '''        project = self._require_project()
+          retained = self._without_replaced_cover_images(
+              list(project.elements), {Region.SPREAD}
+          )
+          highest_z = max((element.z_index for element in retained), default=0)
+          element = self._image_element(
+              project,
+              Path(source_path).expanduser().resolve(),
+              Region.SPREAD,
+              z_index=highest_z + 1,
+              element_id=f"composed-spread-{uuid4().hex}",
+          )
+          self.replace_project(
+              dumps_project(replace(project, elements=tuple(retained) + (element,))),
+              label="套用合成完整書衣",
+          )
+          '''
+          text = replace_once(text, old, new, "controller spread replacement")
+          path.write_text(text, encoding="utf-8")
+
+          # Desktop graphics items: correct invalidation bounds, font sizing and barcode layout.
+          path = Path("python/src/epub_a4_word_desktop/cover/items.py")
+          text = path.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap\n",
+              "from PySide6.QtGui import QColor, QFont, QFontDatabase, QPainter, QPen, QPixmap\n",
+              "items Qt imports",
+          )
+          text = replace_once(
+              text,
+              "from epub_a4_word.cover.models import CoverElement\n\n\nclass CoverElementItem",
+              '''from epub_a4_word.cover.barcode_layout import BarcodeTextAnchor, build_barcode_layout
+          from epub_a4_word.cover.models import CoverElement
+          from epub_a4_word.cover.typography import font_candidates, points_to_mm
+
+
+          def _qt_font_for_scene(
+              role: str,
+              scene_size: float,
+              requested: object = None,
+              weight: int = 400,
+          ) -> QFont:
+              candidates = font_candidates(role, requested)
+              try:
+                  installed = {
+                      family.casefold(): family for family in QFontDatabase.families()
+                  }
+              except RuntimeError:
+                  installed = {}
+              selected = next(
+                  (installed[name.casefold()] for name in candidates if name.casefold() in installed),
+                  candidates[0],
+              )
+              font = QFont(selected)
+              if hasattr(font, "setFamilies"):
+                  font.setFamilies(list(candidates))
+              font.setPixelSize(max(1, round(float(scene_size))))
+              try:
+                  font.setWeight(QFont.Weight(int(weight)))
+              except (TypeError, ValueError):
+                  font.setWeight(QFont.Weight.Normal)
+              return font
+
+
+          class CoverElementItem''',
+              "items helper insertion",
+          )
+          old = '''    def boundingRect(self) -> QRectF:
+              return QRectF(0.0, 0.0, self._width_mm, self._height_mm)
+          '''
+          new = '''    def contentRect(self) -> QRectF:
+              return QRectF(0.0, 0.0, self._width_mm, self._height_mm)
+
+              def boundingRect(self) -> QRectF:
+                  half = self.HANDLE_SIZE_MM / 2.0
+                  return self.contentRect().adjusted(
+                      -half,
+                      -(5.0 + half),
+                      half,
+                      half,
+                  )
+          '''
+          # Correct accidental indentation in the replacement before applying.
+          new = new.replace("\n              def boundingRect", "\n    def boundingRect").replace("\n                  half", "\n        half").replace("\n                  return", "\n        return").replace("\n                      -half", "\n            -half").replace("\n                      -(5.0 + half)", "\n            -(5.0 + half)").replace("\n                      half,", "\n            half,").replace("\n                  )", "\n        )")
+          text = replace_once(text, old, new, "items bounding rect")
+          text = text.replace("rect = self.boundingRect()", "rect = self.contentRect()")
+          text = text.replace("target = self.boundingRect()", "target = self.contentRect()")
+          replacement_tail = r'''class CoverBarcodeItem(CoverElementItem):
+              """Editable EAN-13 barcode rendered directly on the cover scene."""
+
+              def __init__(self, element: CoverElement) -> None:
+                  super().__init__(element)
+                  self._content = dict(element.content)
+
+              @staticmethod
+              def _anchor_rect(target: QRectF, anchor: BarcodeTextAnchor) -> QRectF:
+                  return QRectF(
+                      target.left() + anchor.left * target.width(),
+                      target.top() + anchor.top * target.height(),
+                      max(0.1, (anchor.right - anchor.left) * target.width()),
+                      max(0.1, (anchor.bottom - anchor.top) * target.height()),
+                  )
+
+              @staticmethod
+              def _anchor_alignment(anchor: BarcodeTextAnchor) -> Qt.AlignmentFlag:
+                  horizontal = {
+                      "left": Qt.AlignmentFlag.AlignLeft,
+                      "right": Qt.AlignmentFlag.AlignRight,
+                  }.get(anchor.align, Qt.AlignmentFlag.AlignHCenter)
+                  return horizontal | Qt.AlignmentFlag.AlignVCenter
+
+              def paint(
+                  self,
+                  painter: QPainter,
+                  option: QStyleOptionGraphicsItem,
+                  widget: QWidget | None = None,
+              ) -> None:
+                  del option, widget
+                  target = self.contentRect()
+                  isbn = canonical_isbn13(
+                      self._content.get("isbn", self._content.get("text", ""))
+                  )
+                  if isbn:
+                      layout = build_barcode_layout(isbn, self._content.get("addon", ""))
+                      painter.save()
+                      painter.setPen(Qt.PenStyle.NoPen)
+                      painter.setBrush(QColor("black"))
+                      for bar in layout.bars:
+                          painter.drawRect(
+                              QRectF(
+                                  target.left() + bar.x * target.width(),
+                                  target.top() + bar.top * target.height(),
+                                  max(0.08, bar.width * target.width()),
+                                  max(0.08, (bar.bottom - bar.top) * target.height()),
+                              )
+                          )
+                      painter.setPen(QColor("black"))
+                      painter.setFont(
+                          _qt_font_for_scene(
+                              "ocr",
+                              max(1.0, target.height() * 0.13),
+                              self._content.get("font_families", self._content.get("font_family")),
+                          )
+                      )
+                      anchors = [layout.first_digit, layout.left_digits, layout.right_digits]
+                      if layout.addon_digits is not None:
+                          anchors.append(layout.addon_digits)
+                      for anchor in anchors:
+                          painter.drawText(
+                              self._anchor_rect(target, anchor),
+                              self._anchor_alignment(anchor),
+                              anchor.text,
+                          )
+                      painter.restore()
+                  self._paint_selection_handles(painter)
+
+
+          class CoverTextItem(CoverElementItem):
+              def __init__(self, element: CoverElement) -> None:
+                  super().__init__(element)
+                  self._content = dict(element.content)
+
+              def _font(self) -> QFont:
+                  try:
+                      scene_size = points_to_mm(self._content.get("font_size_pt", 12.0))
+                  except ValueError:
+                      scene_size = points_to_mm(12.0)
+                  return _qt_font_for_scene(
+                      str(self._content.get("font_role", "default")),
+                      scene_size,
+                      self._content.get("font_families", self._content.get("font_family")),
+                      int(self._content.get("font_weight", 400)),
+                  )
+
+              def paint(
+                  self,
+                  painter: QPainter,
+                  option: QStyleOptionGraphicsItem,
+                  widget: QWidget | None = None,
+              ) -> None:
+                  del option, widget
+                  painter.save()
+                  painter.setFont(self._font())
+                  painter.setPen(QColor(str(self._content.get("color", "#111827"))))
+                  horizontal = {
+                      "left": Qt.AlignmentFlag.AlignLeft,
+                      "center": Qt.AlignmentFlag.AlignHCenter,
+                      "right": Qt.AlignmentFlag.AlignRight,
+                  }.get(str(self._content.get("align", "left")), Qt.AlignmentFlag.AlignLeft)
+                  vertical = {
+                      "top": Qt.AlignmentFlag.AlignTop,
+                      "bottom": Qt.AlignmentFlag.AlignBottom,
+                  }.get(
+                      str(self._content.get("vertical_align", "center")),
+                      Qt.AlignmentFlag.AlignVCenter,
+                  )
+                  painter.drawText(
+                      self.contentRect(),
+                      horizontal | vertical | Qt.TextFlag.TextWordWrap,
+                      str(self._content.get("text", "")),
+                  )
+                  painter.restore()
+                  self._paint_selection_handles(painter)
+          '''
+          text = sub_once(
+              text,
+              r"class CoverBarcodeItem\(CoverElementItem\):.*\Z",
+              replacement_tail,
+              "items barcode/text tail",
+          )
+          path.write_text(text, encoding="utf-8")
+
+          # Templates: separate rounded publisher heading/details and compact geometry.
+          path = Path("python/src/epub_a4_word/cover/templates.py")
+          text = path.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              '        "back-publisher-info",\n',
+              '        "back-publisher-info",\n        "back-publisher-heading",\n        "back-publisher-details",\n',
+              "template standard ids",
+          )
+          text_function = '''def text_element(
+              element_id: str,
+              region: Region,
+              rect: RectMm,
+              text: str,
+              font_size_pt: float,
+              align: str = "center",
+              rotation_deg: float = 0.0,
+              *,
+              font_weight: int = 400,
+              color: str = "#111111",
+              z_index: int = 10,
+              font_role: str = "default",
+              font_family: str = "sans-serif",
+              vertical_align: str = "center",
+              line_spacing: float = 1.15,
+          ) -> CoverElement:
+              return CoverElement(
+                  id=element_id,
+                  kind=ElementKind.TEXT,
+                  region=region,
+                  transform=ElementTransform(
+                      rect.x_mm,
+                      rect.y_mm,
+                      rect.width_mm,
+                      rect.height_mm,
+                      rotation_deg,
+                  ),
+                  z_index=z_index,
+                  content={
+                      "text": text,
+                      "font_family": font_family,
+                      "font_role": font_role,
+                      "font_size_pt": font_size_pt,
+                      "font_weight": font_weight,
+                      "color": color,
+                      "align": align,
+                      "vertical_align": vertical_align,
+                      "line_spacing": line_spacing,
+                      "direction": "horizontal",
+                  },
+              )
+
+
+          def _shape_element'''
+          text = sub_once(
+              text,
+              r"def text_element\(.*?\n\ndef _shape_element",
+              text_function,
+              "template text_element",
+          )
+          publisher_function = '''def _publisher_back_matter(
+              project: CoverProject,
+              layout: CoverLayout,
+          ) -> tuple[CoverElement, ...]:
+              safe = layout.back_safe_rect
+              elements: list[CoverElement] = []
+              isbn = normalize_isbn(project.metadata.isbn)
+              if len(isbn) == 13:
+                  label_rect = RectMm(
+                      safe.x_mm + safe.width_mm * 0.03,
+                      safe.y_mm + safe.height_mm * 0.025,
+                      safe.width_mm * 0.39,
+                      safe.height_mm * 0.028,
+                  )
+                  barcode_rect = RectMm(
+                      safe.x_mm + safe.width_mm * 0.03,
+                      safe.y_mm + safe.height_mm * 0.060,
+                      safe.width_mm * 0.44,
+                      safe.height_mm * 0.125,
+                  )
+                  elements.append(
+                      text_element(
+                          "back-isbn-label",
+                          Region.BACK,
+                          label_rect,
+                          f"ISBN {isbn[:3]}-{isbn[3:6]}-{isbn[6:9]}-{isbn[9:12]}-{isbn[12]}",
+                          7.0,
+                          align="left",
+                          z_index=20,
+                          font_role="ocr",
+                          font_family="OCR-B",
+                      )
+                  )
+                  elements.append(
+                      CoverElement(
+                          id="back-isbn-code",
+                          kind=ElementKind.BARCODE_PLACEHOLDER,
+                          region=Region.BACK,
+                          transform=ElementTransform(
+                              barcode_rect.x_mm,
+                              barcode_rect.y_mm,
+                              barcode_rect.width_mm,
+                              barcode_rect.height_mm,
+                          ),
+                          z_index=20,
+                          content={
+                              "isbn": isbn,
+                              "addon": normalize_ean_addon(project.metadata.isbn_addon),
+                              "text": isbn,
+                              "font_role": "ocr",
+                              "font_family": "OCR-B",
+                              "color": "#111111",
+                              "align": "left",
+                          },
+                      )
+                  )
+
+              info_x = safe.x_mm + safe.width_mm * 0.49
+              info_width = safe.width_mm * 0.38
+              publisher = project.metadata.publisher.strip()
+              if publisher:
+                  heading_rect = RectMm(
+                      info_x,
+                      safe.y_mm + safe.height_mm * 0.025,
+                      info_width,
+                      safe.height_mm * 0.035,
+                  )
+                  elements.append(
+                      text_element(
+                          "back-publisher-heading",
+                          Region.BACK,
+                          heading_rect,
+                          publisher,
+                          7.5,
+                          align="left",
+                          font_weight=500,
+                          z_index=20,
+                          font_role="publisher_heading",
+                          font_family="DFYuan-W5",
+                          vertical_align="top",
+                      )
+                  )
+
+              detail_lines = tuple(
+                  value.strip()
+                  for value in (
+                      project.metadata.price,
+                      project.metadata.publication_place,
+                  )
+                  if value.strip()
+              )
+              if detail_lines:
+                  details_rect = RectMm(
+                      info_x,
+                      safe.y_mm + safe.height_mm * 0.064,
+                      info_width,
+                      safe.height_mm * 0.105,
+                  )
+                  elements.append(
+                      text_element(
+                          "back-publisher-details",
+                          Region.BACK,
+                          details_rect,
+                          "\\n".join(detail_lines),
+                          6.5,
+                          align="left",
+                          z_index=20,
+                          font_role="publisher_details",
+                          font_family="DFYuan-W3",
+                          vertical_align="top",
+                          line_spacing=1.15,
+                      )
+                  )
+              return tuple(elements)
+
+
+          _BUILDERS ='''
+          text = sub_once(
+              text,
+              r"def _publisher_back_matter\(.*?\n\n_BUILDERS =",
+              publisher_function,
+              "template publisher function",
+          )
+          path.write_text(text, encoding="utf-8")
+
+          # Shared Pillow renderer: use font roles and shared barcode geometry.
+          path = Path("python/src/epub_a4_word/cover/render.py")
+          text = path.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "from .fonts import resolve_font\n",
+              "from .barcode_layout import BarcodeTextAnchor, build_barcode_layout\nfrom .fonts import resolve_font\n",
+              "render barcode import",
+          )
+          text = replace_once(
+              text,
+              "from .print_plan import PrintMark, PrintPage\n",
+              "from .print_plan import PrintMark, PrintPage\nfrom .typography import font_candidates\n",
+              "render typography import",
+          )
+          old = '''    font = resolve_font(
+              str(content.get("font_family", "sans-serif")),
+              content.get("font_path") if isinstance(content.get("font_path"), str) else None,
+              size_px,
+          )
+          '''
+          new = '''    families = font_candidates(
+              str(content.get("font_role", "default")),
+              content.get("font_families", content.get("font_family", "sans-serif")),
+          )
+          font = resolve_font(
+              families[0],
+              content.get("font_path") if isinstance(content.get("font_path"), str) else None,
+              size_px,
+              families[1:],
+          )
+          '''
+          text = replace_once(text, old, new, "render text font resolution")
+          barcode_function = '''def _prepare_barcode(element: CoverElement, size: tuple[int, int], dpi: int) -> Image.Image:
+              del dpi
+              isbn = normalize_isbn(element.content.get("isbn", element.content.get("text", "")))
+              canvas = Image.new("RGBA", size, (0, 0, 0, 0))
+              if len(isbn) != 13:
+                  return canvas
+              layout = build_barcode_layout(isbn, element.content.get("addon", ""))
+              draw = ImageDraw.Draw(canvas)
+              width, height = size
+              for bar in layout.bars:
+                  left = round(bar.x * width)
+                  top = round(bar.top * height)
+                  right = max(left + 1, round((bar.x + bar.width) * width))
+                  bottom = max(top + 1, round(bar.bottom * height))
+                  draw.rectangle((left, top, right - 1, bottom - 1), fill="black")
+
+              families = font_candidates(
+                  "ocr",
+                  element.content.get("font_families", element.content.get("font_family", "OCR-B")),
+              )
+              font = resolve_font(
+                  families[0],
+                  element.content.get("font_path")
+                  if isinstance(element.content.get("font_path"), str)
+                  else None,
+                  max(8, round(height * 0.13)),
+                  families[1:],
+              )
+
+              def draw_anchor(anchor: BarcodeTextAnchor) -> None:
+                  left = round(anchor.left * width)
+                  top = round(anchor.top * height)
+                  right = max(left + 1, round(anchor.right * width))
+                  bottom = max(top + 1, round(anchor.bottom * height))
+                  box = draw.textbbox((0, 0), anchor.text, font=font)
+                  text_width = max(0, box[2] - box[0])
+                  text_height = max(0, box[3] - box[1])
+                  if anchor.align == "left":
+                      x = left
+                  elif anchor.align == "right":
+                      x = max(left, right - text_width)
+                  else:
+                      x = left + max(0, (right - left - text_width) // 2)
+                  y = top + max(0, (bottom - top - text_height) // 2) - box[1]
+                  draw.text((x, y), anchor.text, fill="black", font=font)
+
+              draw_anchor(layout.first_digit)
+              draw_anchor(layout.left_digits)
+              draw_anchor(layout.right_digits)
+              if layout.addon_digits is not None:
+                  draw_anchor(layout.addon_digits)
+              return _apply_alpha(canvas, float(element.opacity))
+
+
+          def _clip_layer'''
+          text = sub_once(
+              text,
+              r"def _prepare_barcode\(.*?\n\ndef _clip_layer",
+              barcode_function,
+              "render barcode function",
+          )
+          path.write_text(text, encoding="utf-8")
+
+          # Update previous template assertions to the new, more accurate structure.
+          path = Path("python-tests/cover/test_publisher_back_template.py")
+          text = path.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              '''    info = result.elements_by_id["back-publisher-info"]
+              assert info.region is Region.BACK
+              assert info.content["text"] == "範例出版社\\nNT$320\\n台北"
+              ''',
+              '''    heading = result.elements_by_id["back-publisher-heading"]
+              details = result.elements_by_id["back-publisher-details"]
+              assert heading.region is Region.BACK
+              assert heading.content["text"] == "範例出版社"
+              assert details.content["text"] == "NT$320\\n台北"
+              ''',
+              "template test fields",
+          )
+          text = replace_once(
+              text,
+              '    info = result.elements_by_id["back-publisher-info"]\n',
+              '    heading = result.elements_by_id["back-publisher-heading"]\n    details = result.elements_by_id["back-publisher-details"]\n',
+              "template test geometry variables",
+          )
+          text = replace_once(
+              text,
+              '''    assert _relative_transform(label.transform, safe) == pytest.approx(
+                  (0.10, 0.06, 0.36, 0.035), abs=0.01
+              )
+              assert _relative_transform(barcode.transform, safe) == pytest.approx(
+                  (0.10, 0.105, 0.36, 0.105), abs=0.015
+              )
+              assert _relative_transform(info.transform, safe) == pytest.approx(
+                  (0.48, 0.06, 0.30, 0.14), abs=0.015
+              )
+              ''',
+              '''    assert _relative_transform(label.transform, safe) == pytest.approx(
+                  (0.03, 0.025, 0.39, 0.028), abs=0.01
+              )
+              assert _relative_transform(barcode.transform, safe) == pytest.approx(
+                  (0.03, 0.060, 0.44, 0.125), abs=0.015
+              )
+              assert _relative_transform(heading.transform, safe) == pytest.approx(
+                  (0.49, 0.025, 0.38, 0.035), abs=0.015
+              )
+              assert _relative_transform(details.transform, safe) == pytest.approx(
+                  (0.49, 0.064, 0.38, 0.105), abs=0.015
+              )
+              ''',
+              "template test geometry assertions",
+          )
+          text = replace_once(
+              text,
+              '    assert label.content["text"] == "ISBN 9780306406157"\n    assert info.content["align"] == "left"\n',
+              '    assert label.content["text"] == "ISBN 978-030-640-615-7"\n    assert heading.content["align"] == "left"\n    assert details.content["align"] == "left"\n',
+              "template test label assertions",
+          )
+          text = replace_once(
+              text,
+              '    assert "back-publisher-info" not in result.elements_by_id\n',
+              '    assert "back-publisher-info" not in result.elements_by_id\n    assert "back-publisher-heading" not in result.elements_by_id\n    assert "back-publisher-details" not in result.elements_by_id\n',
+              "template test hidden fields",
+          )
+          path.write_text(text, encoding="utf-8")
+
+      - name: Commit fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add python/src python-tests/cover/test_publisher_back_template.py
+          git commit -m "fix: remove cover ghosting and match publisher typography"
+          git push origin HEAD:fix/reference-back-cover-isbn-clarity
