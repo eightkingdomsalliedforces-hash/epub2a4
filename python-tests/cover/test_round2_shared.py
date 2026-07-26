@@ -88,3 +88,33 @@ def test_open_library_request_identifies_application() -> None:
     assert headers is not None
     assert "EPUB2A4-CoverTool" in headers["User-Agent"]
     assert "github.com/eightkingdomsalliedforces-hash/epub2a4" in headers["User-Agent"]
+
+
+def test_open_library_accepts_current_unprefixed_work_key() -> None:
+    http = CaptureHttp(
+        {
+            "docs": [
+                {
+                    "key": "OL24577320W",
+                    "title": "A Certain Magical Index, Vol. 1 - light novel",
+                    "author_name": ["鎌池和馬"],
+                    "isbn": ["9780316339124"],
+                    "cover_i": 123456,
+                    "edition_key": ["OL32593075M"],
+                }
+            ]
+        }
+    )
+    provider = OpenLibraryProvider(http, min_interval_seconds=0)
+
+    response = provider.search(
+        CoverSearchRequest(
+            kind=SearchKind.FRONT,
+            title="A Certain Magical Index",
+        )
+    )
+
+    assert len(response.candidates) == 1
+    assert response.candidates[0].source_page == (
+        "https://openlibrary.org/works/OL24577320W"
+    )
