@@ -448,9 +448,23 @@ class CoverController(QObject):
         generation = self._preview_generation
         preview_dir = self.working_dir / "previews"
         preview_dir.mkdir(parents=True, exist_ok=True)
+        project = self._require_project()
+        raster_project = replace(
+            project,
+            elements=tuple(
+                element
+                for element in project.elements
+                if element.kind
+                not in {
+                    ElementKind.IMAGE,
+                    ElementKind.TEXT,
+                    ElementKind.BARCODE_PLACEHOLDER,
+                }
+            ),
+        )
         worker = PreviewWorker(
             self.service,
-            self.project_json,
+            dumps_project(raster_project),
             preview_dir / f"preview-{generation}.png",
             generation,
         )
