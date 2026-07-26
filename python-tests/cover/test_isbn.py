@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from epub_a4_word.cover.isbn import (
+    canonical_isbn13,
     encode_ean13_modules,
+    isbn13_from_isbn10,
     normalize_isbn,
     preferred_isbn,
     valid_isbns,
@@ -32,6 +34,25 @@ class FakeHttp:
         }
 
 
+class Isbn10OnlyHttp:
+    def get_json(self, _url, _params):
+        return {
+            "items": [
+                {
+                    "id": "book-10",
+                    "volumeInfo": {
+                        "title": "ISBN-10 only",
+                        "industryIdentifiers": [
+                            {"type": "ISBN_10", "identifier": "0-306-40615-2"},
+                        ],
+                        "imageLinks": {"thumbnail": "https://books.google.test/cover-10.jpg"},
+                        "infoLink": "https://books.google.test/book/10",
+                    },
+                }
+            ]
+        }
+
+
 def test_normalize_isbn_accepts_valid_isbn10_and_isbn13() -> None:
     assert normalize_isbn("0-306-40615-2") == "0306406152"
     assert normalize_isbn("978-0-306-40615-7") == "9780306406157"
@@ -51,6 +72,14 @@ def test_valid_isbns_deduplicates_and_prefers_isbn13() -> None:
     assert preferred_isbn(values) == "9780306406157"
 
 
+def test_isbn10_converts_to_canonical_ean13() -> None:
+    assert isbn13_from_isbn10("0-306-40615-2") == "9780306406157"
+    assert canonical_isbn13("0306406152") == "9780306406157"
+    assert canonical_isbn13("9780306406157") == "9780306406157"
+    assert canonical_isbn13("not-an-isbn") == ""
+    assert preferred_isbn(("0306406152",)) == "9780306406157"
+
+
 def test_ean13_module_pattern_has_standard_guards_and_length() -> None:
     modules = encode_ean13_modules("9780306406157")
     assert len(modules) == 95
@@ -64,4 +93,12 @@ def test_google_books_candidate_keeps_isbn10_and_isbn13() -> None:
     response = provider.search(CoverSearchRequest(title="Example Volume 1"))
     candidate = response.candidates[0]
     assert candidate.isbns == ("0306406152", "9780306406157")
+    assert candidate.isbn == "9780306406157"
+
+
+def test_google_books_isbn10_only_candidate_uses_convertible_isbn13() -> None:
+    provider = GoogleBooksProvider(Isbn10OnlyHttp(), api_key="test")
+    response = provider.search(CoverSearchRequest(title="ISBN-10 only"))
+    candidate = response.candidates[0]
+    assert candidate.isbns == ("0306406152",)
     assert candidate.isbn == "9780306406157"
