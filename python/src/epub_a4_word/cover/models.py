@@ -41,6 +41,7 @@ class CoverMetadata:
     publisher: str = ""
     price: str = ""
     publication_place: str = ""
+    translator: str = ""
     isbn_addon: str = ""
     language: str = ""
     page_count_is_estimate: bool = False
