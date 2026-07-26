@@ -3,8 +3,20 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Callable
 
+import pytest
+
+from epub_a4_word.cover.geometry import calculate_layout
 from epub_a4_word.cover.models import CoverMetadata, CoverProject, ElementKind, Region
 from epub_a4_word.cover.templates import apply_template, list_templates
+
+
+def _relative_transform(transform, safe) -> tuple[float, float, float, float]:
+    return (
+        (transform.x_mm - safe.x_mm) / safe.width_mm,
+        (transform.y_mm - safe.y_mm) / safe.height_mm,
+        transform.width_mm / safe.width_mm,
+        transform.height_mm / safe.height_mm,
+    )
 
 
 def test_publisher_template_catalog_entry_is_available() -> None:
@@ -46,6 +58,46 @@ def test_publisher_template_creates_only_non_empty_editable_fields(
     assert info.region is Region.BACK
     assert info.content["text"] == "範例出版社\nNT$320\n台北"
     assert not any(element.kind is ElementKind.IMAGE for element in result.elements)
+
+
+def test_publisher_template_matches_reference_layout(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    project = sample_project()
+    project = replace(
+        project,
+        metadata=replace(
+            project.metadata,
+            isbn="9780306406157",
+            publisher="台灣角川",
+            price="定價：NT$110",
+            publication_place="臺灣出版",
+        ),
+    )
+    result = apply_template(project, "publisher_back_matter")
+    safe = calculate_layout(result).back_safe_rect
+
+    label = result.elements_by_id["back-isbn-label"]
+    barcode = result.elements_by_id["back-isbn-code"]
+    info = result.elements_by_id["back-publisher-info"]
+    assert _relative_transform(label.transform, safe) == pytest.approx(
+        (0.10, 0.06, 0.36, 0.035), abs=0.01
+    )
+    assert _relative_transform(barcode.transform, safe) == pytest.approx(
+        (0.10, 0.105, 0.36, 0.105), abs=0.015
+    )
+    assert _relative_transform(info.transform, safe) == pytest.approx(
+        (0.48, 0.06, 0.30, 0.14), abs=0.015
+    )
+    slot = result.background["publisher_logo_slot"]
+    assert (
+        (slot["x_mm"] - safe.x_mm) / safe.width_mm,
+        (slot["y_mm"] - safe.y_mm) / safe.height_mm,
+        slot["width_mm"] / safe.width_mm,
+        slot["height_mm"] / safe.height_mm,
+    ) == pytest.approx((0.26, 0.34, 0.48, 0.36), abs=0.01)
+    assert label.content["text"] == "ISBN 9780306406157"
+    assert info.content["align"] == "left"
 
 
 def test_publisher_template_hides_missing_fields_without_placeholders(
