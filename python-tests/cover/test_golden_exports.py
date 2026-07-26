@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -114,6 +115,8 @@ def test_inspection_and_geometry_cli_tools(golden_project, tmp_path: Path) -> No
     docx = export_docx(golden_project, tmp_path / "cli.docx").path
     snapshot_path = tmp_path / "snapshot.json"
 
+    inspect_environment = os.environ.copy()
+    inspect_environment["PYTHONIOENCODING"] = "cp1252"
     inspect_run = subprocess.run(
         [
             sys.executable,
@@ -128,6 +131,8 @@ def test_inspection_and_geometry_cli_tools(golden_project, tmp_path: Path) -> No
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        env=inspect_environment,
     )
     assert inspect_run.returncode == 0, inspect_run.stderr
     payload = json.loads(inspect_run.stdout)
