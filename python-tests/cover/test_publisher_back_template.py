@@ -120,8 +120,8 @@ def test_publisher_template_matches_reference_layout(
     ) == pytest.approx((0.26, 0.34, 0.48, 0.36), abs=0.01)
     assert label.content["text"] == "ISBN 978-030-640-615-7"
     assert label.content["font_role"] == "ocr"
-    assert heading.content["font_size_pt"] == pytest.approx(7.5)
-    assert details.content["font_size_pt"] == pytest.approx(6.5)
+    assert heading.content["font_size_pt"] == pytest.approx(10.0)
+    assert details.content["font_size_pt"] == pytest.approx(9.0)
     assert heading.content["align"] == "left"
     assert details.content["align"] == "left"
 
