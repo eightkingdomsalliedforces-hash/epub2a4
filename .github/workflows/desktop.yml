@@ -59,8 +59,26 @@ jobs:
         run: python -m pytest desktop/tests/test_publisher_workflow.py::test_controller_converts_isbn10_to_ean13_for_barcode -q --tb=short
       - name: Verify moved barcode geometry
         run: python -m pytest desktop/tests/test_publisher_workflow.py::test_controller_isbn_sync_preserves_moved_barcode_geometry -q --tb=short
-      - name: Verify publisher logo slot
-        run: python -m pytest desktop/tests/test_publisher_workflow.py::test_publisher_logo_image_uses_contain_without_cropping -q --tb=short
+      - name: Capture publisher logo slot failure
+        shell: bash
+        run: |
+          set +e
+          python -m pytest desktop/tests/test_publisher_workflow.py::test_publisher_logo_image_uses_contain_without_cropping -vv --tb=long --junitxml=publisher-logo-slot.xml > publisher-logo-slot.log 2>&1
+          code=$?
+          echo "$code" > publisher-logo-slot.exit
+          cat publisher-logo-slot.log
+          exit 0
+      - name: Upload publisher logo slot diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: publisher-logo-slot-diagnostics
+          path: |
+            publisher-logo-slot.log
+            publisher-logo-slot.xml
+            publisher-logo-slot.exit
+          if-no-files-found: error
+      - name: Require publisher logo slot test
+        run: test "$(cat publisher-logo-slot.exit)" = "0"
       - name: Verify publisher canvas and inspector paths
         run: >-
           python -m pytest
