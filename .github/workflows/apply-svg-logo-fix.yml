@@ -1,0 +1,198 @@
+name: Apply SVG logo compatibility fix
+
+on:
+  push:
+    branches:
+      - fix/reference-back-cover-isbn-clarity
+    paths:
+      - .github/workflows/apply-svg-logo-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/reference-back-cover-isbn-clarity
+          fetch-depth: 0
+
+      - name: Apply tested SVG compatibility changes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text('utf-8')
+              if old not in text:
+                  raise SystemExit(f'expected block not found in {path}: {old[:120]!r}')
+              target.write_text(text.replace(old, new, 1), 'utf-8')
+
+          render = 'python/src/epub_a4_word/cover/render.py'
+          replace_once(
+              render,
+              'class CoverRenderError(ValueError):\n    """Raised when a project element cannot be rendered safely."""\n\n\ndef mm_to_px',
+              'class CoverRenderError(ValueError):\n    """Raised when a project element cannot be rendered safely."""\n\n\nclass SvgRendererUnavailableError(CoverRenderError):\n    """Raised when a safe SVG has no available rasterizer on this platform."""\n\n\ndef mm_to_px',
+          )
+          replace_once(
+              render,
+              '        except ImportError as exc:\n            raise CoverRenderError("缺少 SVG 轉換元件，無法顯示出版社 Logo。") from exc',
+              '        except ImportError as exc:\n            raise SvgRendererUnavailableError(\n                "目前平台缺少 SVG 轉換元件，已略過出版社 Logo。"\n            ) from exc',
+          )
+          replace_once(
+              render,
+              '        if element.kind is ElementKind.IMAGE:\n            local = _prepare_image(element, (width, height))',
+              '        if element.kind is ElementKind.IMAGE:\n            try:\n                local = _prepare_image(element, (width, height))\n            except SvgRendererUnavailableError as exc:\n                warnings.append(str(exc))\n                continue',
+          )
+
+          download = 'python/src/epub_a4_word/cover/search/logo_download.py'
+          replace_once(
+              download,
+              'from dataclasses import dataclass\nimport hashlib',
+              'from dataclasses import dataclass\nimport hashlib',
+          )
+          replace_once(
+              download,
+              'from pathlib import Path\nimport re\nfrom xml.etree import ElementTree',
+              'from pathlib import Path\nimport re\nfrom collections.abc import Callable\nfrom xml.etree import ElementTree',
+          )
+          replace_once(
+              download,
+              'def download_logo(\n    candidate: LogoCandidate,\n    destination_dir: Path | str,\n    *,\n    http=None,\n) -> DownloadedLogo:',
+              'def download_logo(\n    candidate: LogoCandidate,\n    destination_dir: Path | str,\n    *,\n    http=None,\n    svg_converter: Callable[[bytes, int, int], bytes] | None = None,\n) -> DownloadedLogo:',
+          )
+          replace_once(
+              download,
+              '    if is_svg:\n        width, height = _validate_svg(data)\n        image_format = "SVG"\n        transparent = True\n        suffix = ".svg"\n        normalized_type = "image/svg+xml"',
+              '    if is_svg:\n        width, height = _validate_svg(data)\n        if svg_converter is None:\n            image_format = "SVG"\n            transparent = True\n            suffix = ".svg"\n            normalized_type = "image/svg+xml"\n        else:\n            try:\n                data = bytes(svg_converter(data, width, height))\n            except ImageDownloadError:\n                raise\n            except Exception as exc:\n                raise ImageDownloadError("無法將 SVG Logo 轉換為 PNG。") from exc\n            image_format, width, height, transparent = _validate_raster(data)\n            if image_format != "PNG":\n                raise ImageDownloadError("SVG 轉換器必須產生 PNG 圖片。")\n            suffix = ".png"\n            normalized_type = "image/png"',
+          )
+          replace_once(
+              download,
+              'def import_logo_file(\n    source_path: Path | str,\n    destination_dir: Path | str,\n) -> DownloadedLogo:',
+              'def import_logo_file(\n    source_path: Path | str,\n    destination_dir: Path | str,\n    *,\n    svg_converter: Callable[[bytes, int, int], bytes] | None = None,\n) -> DownloadedLogo:',
+          )
+          replace_once(
+              download,
+              '    return download_logo(candidate, destination_dir, http=_LocalClient())',
+              '    return download_logo(\n        candidate,\n        destination_dir,\n        http=_LocalClient(),\n        svg_converter=svg_converter,\n    )',
+          )
+
+          controller = 'python/src/epub_a4_word_desktop/cover/controller.py'
+          replace_once(
+              controller,
+              'from .commands import ReplaceProjectCommand\nfrom .models import patch_element',
+              'from .commands import ReplaceProjectCommand\nfrom .models import patch_element\nfrom .svg_logo import rasterize_svg_logo',
+          )
+          replace_once(
+              controller,
+              '        downloaded = import_logo_file(\n            source_path,\n            self.working_dir / "logo-imports",\n        )',
+              '        downloaded = import_logo_file(\n            source_path,\n            self.working_dir / "logo-imports",\n            svg_converter=rasterize_svg_logo,\n        )',
+          )
+
+          cover_page = 'python/src/epub_a4_word_desktop/pages/cover_page.py'
+          replace_once(
+              cover_page,
+              'from epub_a4_word_desktop.cover.setup_panel import CoverSetupPanel, CoverSetupValues',
+              'from epub_a4_word_desktop.cover.setup_panel import CoverSetupPanel, CoverSetupValues\nfrom epub_a4_word_desktop.cover.svg_logo import rasterize_svg_logo',
+          )
+          replace_once(
+              cover_page,
+              '                downloaded = import_logo_file(\n                    cached,\n                    self.controller.working_dir / "logo-downloads",\n                )',
+              '                downloaded = import_logo_file(\n                    cached,\n                    self.controller.working_dir / "logo-downloads",\n                    svg_converter=rasterize_svg_logo,\n                )',
+          )
+          replace_once(
+              cover_page,
+              '                downloaded = download_logo(\n                    candidate,\n                    self.controller.working_dir / "logo-downloads",\n                )',
+              '                downloaded = download_logo(\n                    candidate,\n                    self.controller.working_dir / "logo-downloads",\n                    svg_converter=rasterize_svg_logo,\n                )',
+          )
+
+          Path('python/src/epub_a4_word_desktop/cover/svg_logo.py').write_text('''from __future__ import annotations
+
+from PySide6.QtCore import QByteArray, QBuffer, QIODevice, Qt
+from PySide6.QtGui import QImage, QPainter
+from PySide6.QtSvg import QSvgRenderer
+
+from epub_a4_word.cover.search.errors import ImageDownloadError
+
+_MAX_RASTER_EDGE = 2048
+
+
+def rasterize_svg_logo(data: bytes, width: int, height: int) -> bytes:
+    """Rasterize an already validated SVG to a transparent PNG for project storage."""
+
+    renderer = QSvgRenderer(QByteArray(data))
+    if not renderer.isValid():
+        raise ImageDownloadError("SVG Logo 無法由 Qt 解析。")
+
+    source_width = max(1, int(width))
+    source_height = max(1, int(height))
+    if source_width >= source_height:
+        output_width = _MAX_RASTER_EDGE
+        output_height = max(1, round(_MAX_RASTER_EDGE * source_height / source_width))
+    else:
+        output_height = _MAX_RASTER_EDGE
+        output_width = max(1, round(_MAX_RASTER_EDGE * source_width / source_height))
+
+    image = QImage(
+        output_width,
+        output_height,
+        QImage.Format.Format_ARGB32_Premultiplied,
+    )
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    try:
+        renderer.render(painter)
+    finally:
+        painter.end()
+
+    payload = QByteArray()
+    buffer = QBuffer(payload)
+    if not buffer.open(QIODevice.OpenModeFlag.WriteOnly):
+        raise ImageDownloadError("無法建立 SVG Logo 的 PNG 緩衝區。")
+    try:
+        if not image.save(buffer, "PNG"):
+            raise ImageDownloadError("無法將 SVG Logo 儲存為 PNG。")
+    finally:
+        buffer.close()
+    return bytes(payload)
+''', 'utf-8')
+
+          Path('desktop/tests/test_svg_logo.py').write_text('''from __future__ import annotations
+
+from io import BytesIO
+
+from PIL import Image
+
+from epub_a4_word_desktop.cover.svg_logo import rasterize_svg_logo
+
+
+def test_qt_svg_logo_rasterizer_returns_transparent_png() -> None:
+    svg = (
+        b"<svg xmlns='http://www.w3.org/2000/svg' width='120' height='40'>"
+        b"<rect width='120' height='40' fill='#f15a24'/>"
+        b"</svg>"
+    )
+
+    payload = rasterize_svg_logo(svg, 120, 40)
+
+    with Image.open(BytesIO(payload)) as image:
+        assert image.format == "PNG"
+        assert image.size == (2048, 683)
+        assert "A" in image.getbands()
+''', 'utf-8')
+          PY
+
+      - name: Remove one-time workflow and commit
+        shell: bash
+        run: |
+          rm -f .github/workflows/apply-svg-logo-fix.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "fix: rasterize SVG publisher logos on desktop"
+          git push origin HEAD:fix/reference-back-cover-isbn-clarity
