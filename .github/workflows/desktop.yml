@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - ".github/workflows/desktop.yml"
-      - ".github/patches/publisher-change-search.patch"
+      - ".github/scripts/apply_publisher_change.py"
 
 permissions:
   contents: write
@@ -27,8 +27,7 @@ jobs:
           fetch-depth: 0
       - name: Apply publisher change fix
         run: |
-          git apply --check .github/patches/publisher-change-search.patch
-          git apply .github/patches/publisher-change-search.patch
+          python .github/scripts/apply_publisher_change.py
           git diff --check
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
@@ -56,7 +55,8 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git show 43ce3f86d0d941ab5ed32b3a3b9ca8bfeabc52a3:.github/workflows/desktop.yml > .github/workflows/desktop.yml
-          git rm .github/patches/publisher-change-search.patch
+          git rm -f --ignore-unmatch .github/patches/publisher-change-search.patch
+          git rm -f --ignore-unmatch .github/scripts/apply_publisher_change.py
           git add -A
           git commit -m "fix: search replacement logo when publisher changes"
           git push origin HEAD:fix/reference-back-cover-isbn-clarity
