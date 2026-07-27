@@ -9,7 +9,11 @@ import pytest
 
 from epub_a4_word.cover.search.errors import ImageDownloadError
 from epub_a4_word.cover.search.logo_cache import LogoCache
-from epub_a4_word.cover.search.logo_download import MAX_LOGO_BYTES, download_logo
+from epub_a4_word.cover.search.logo_download import (
+    MAX_LOGO_BYTES,
+    download_logo,
+    import_logo_file,
+)
 from epub_a4_word.cover.search.logo_models import LogoCandidate, LogoSourceCategory
 
 
@@ -88,3 +92,69 @@ def test_logo_cache_reuses_downloaded_file_offline(tmp_path: Path) -> None:
 
     assert cached.is_file()
     assert reopened.get("https://example.test/logo.png") == cached
+
+
+def test_manual_png_import_accepts_svg_converter_without_calling_it(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "logo.png"
+    source.write_bytes(_png_bytes())
+
+    def unexpected_converter(_data: bytes, _width: int, _height: int) -> bytes:
+        raise AssertionError("PNG must not invoke the SVG converter")
+
+    downloaded = import_logo_file(
+        source,
+        tmp_path / "validated",
+        svg_converter=unexpected_converter,
+    )
+
+    assert downloaded.image_format == "PNG"
+    assert downloaded.path.suffix == ".png"
+
+
+def test_manual_svg_import_converts_validated_svg_to_png(tmp_path: Path) -> None:
+    source = tmp_path / "logo.svg"
+    source.write_bytes(
+        b"<svg xmlns='http://www.w3.org/2000/svg' width='120' height='40'>"
+        b"<rect width='120' height='40' fill='#f15a24'/></svg>"
+    )
+    calls: list[tuple[int, int]] = []
+
+    def converter(_data: bytes, width: int, height: int) -> bytes:
+        calls.append((width, height))
+        return _png_bytes()
+
+    downloaded = import_logo_file(
+        source,
+        tmp_path / "validated",
+        svg_converter=converter,
+    )
+
+    assert calls == [(120, 40)]
+    assert downloaded.image_format == "PNG"
+    assert downloaded.content_type == "image/png"
+    assert downloaded.path.suffix == ".png"
+
+
+def test_online_svg_download_converts_validated_svg_to_png(tmp_path: Path) -> None:
+    svg = (
+        b"<svg xmlns='http://www.w3.org/2000/svg' width='80' height='20'>"
+        b"<rect width='80' height='20' fill='black'/></svg>"
+    )
+    calls: list[tuple[int, int]] = []
+
+    def converter(_data: bytes, width: int, height: int) -> bytes:
+        calls.append((width, height))
+        return _png_bytes()
+
+    downloaded = download_logo(
+        _candidate("https://example.test/logo.svg", "image/svg+xml"),
+        tmp_path,
+        http=FakeBinaryClient(svg, "image/svg+xml"),
+        svg_converter=converter,
+    )
+
+    assert calls == [(80, 20)]
+    assert downloaded.image_format == "PNG"
+    assert downloaded.path.suffix == ".png"

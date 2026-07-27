@@ -65,3 +65,19 @@ def test_controller_embeds_selected_logo_and_refreshes_spine(tmp_path: Path) -> 
     assert Path(updated.metadata.publisher_logo.path).is_file()
     assert updated.metadata.publisher_logo.official_source is True
     assert updated.elements_by_id["spine-publisher-logo"].content["fit"] == "contain"
+
+
+def test_controller_manual_png_logo_import_uses_supported_api(tmp_path: Path) -> None:
+    source = tmp_path / "manual-logo.png"
+    Image.new("RGBA", (120, 40), (255, 90, 36, 255)).save(source)
+    project = apply_template(_project(tmp_path), "publisher_back_matter_with_spine")
+    controller = CoverController(working_dir=tmp_path / "work", auto_preview=False)
+    controller.replace_project(dumps_project(project), clear_history=True)
+
+    asset_id = controller.apply_manual_publisher_logo(source)
+    updated = loads_project(controller.project_json)
+
+    assert asset_id.startswith("publisher-logo-")
+    assert updated.metadata.publisher_logo is not None
+    assert updated.metadata.publisher_logo.manual_selection is True
+    assert Path(updated.metadata.publisher_logo.path).suffix == ".png"

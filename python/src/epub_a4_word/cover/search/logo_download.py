@@ -5,6 +5,7 @@ import hashlib
 from io import BytesIO
 from pathlib import Path
 import re
+from typing import Callable
 from xml.etree import ElementTree
 
 from PIL import Image, UnidentifiedImageError
@@ -15,6 +16,7 @@ from .logo_models import LogoCandidate
 
 MAX_LOGO_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_DIMENSION = 20_000
+SvgConverter = Callable[[bytes, int, int], bytes]
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,7 @@ def download_logo(
     destination_dir: Path | str,
     *,
     http=None,
+    svg_converter: SvgConverter | None = None,
 ) -> DownloadedLogo:
     client = http or LogoHttpClient()
     data, content_type, final_url = client.download_bytes(
@@ -104,10 +107,23 @@ def download_logo(
     is_svg = normalized_type == "image/svg+xml" or data.lstrip().startswith(b"<svg")
     if is_svg:
         width, height = _validate_svg(data)
-        image_format = "SVG"
-        transparent = True
-        suffix = ".svg"
-        normalized_type = "image/svg+xml"
+        if svg_converter is None:
+            image_format = "SVG"
+            transparent = True
+            suffix = ".svg"
+            normalized_type = "image/svg+xml"
+        else:
+            try:
+                data = svg_converter(data, width, height)
+            except ImageDownloadError:
+                raise
+            except Exception as exc:
+                raise ImageDownloadError("SVG Logo 轉換為 PNG 失敗。") from exc
+            image_format, width, height, transparent = _validate_raster(data)
+            if image_format != "PNG":
+                raise ImageDownloadError("SVG Logo 轉換器必須輸出 PNG。")
+            suffix = ".png"
+            normalized_type = "image/png"
     else:
         image_format, width, height, transparent = _validate_raster(data)
         suffix = {
@@ -146,6 +162,8 @@ def download_logo(
 def import_logo_file(
     source_path: Path | str,
     destination_dir: Path | str,
+    *,
+    svg_converter: SvgConverter | None = None,
 ) -> DownloadedLogo:
     source = Path(source_path).expanduser().resolve()
     if not source.is_file():
@@ -171,4 +189,9 @@ def import_logo_file(
                 raise ImageDownloadError("Logo 超過 10 MiB 限制。")
             return data, candidate.media_type or "application/octet-stream", str(source)
 
-    return download_logo(candidate, destination_dir, http=_LocalClient())
+    return download_logo(
+        candidate,
+        destination_dir,
+        http=_LocalClient(),
+        svg_converter=svg_converter,
+    )
