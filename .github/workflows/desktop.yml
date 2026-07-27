@@ -30,18 +30,50 @@ jobs:
         run: |
           git apply --check .github/patches/svg-logo-compat.patch
           git apply .github/patches/svg-logo-compat.patch
-      - name: Apply controller ISBN compatibility patch
+      - name: Apply deterministic desktop compatibility edits
+        shell: bash
         run: |
-          git apply --check --include=python/src/epub_a4_word_desktop/cover/controller.py .github/patches/desktop-regression-fixes.patch
-          git apply --include=python/src/epub_a4_word_desktop/cover/controller.py .github/patches/desktop-regression-fixes.patch
-      - name: Apply setup template alias patch
-        run: |
-          git apply --check --include=python/src/epub_a4_word_desktop/cover/setup_panel.py .github/patches/desktop-regression-fixes.patch
-          git apply --include=python/src/epub_a4_word_desktop/cover/setup_panel.py .github/patches/desktop-regression-fixes.patch
-      - name: Apply canvas lifetime patch
-        run: |
-          git apply --check --include=python/src/epub_a4_word_desktop/cover/canvas.py .github/patches/desktop-regression-fixes.patch
-          git apply --include=python/src/epub_a4_word_desktop/cover/canvas.py .github/patches/desktop-regression-fixes.patch
+          python - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              Path("python/src/epub_a4_word_desktop/cover/controller.py"): (
+                  '        if active_template == "publisher_back_matter":\n',
+                  '        if active_template in {\n'
+                  '            "publisher_back_matter",\n'
+                  '            "publisher_back_matter_with_spine",\n'
+                  '        }:\n',
+              ),
+              Path("python/src/epub_a4_word_desktop/cover/setup_panel.py"): (
+                  '            "publisher_back_matter_with_spine",\n'
+                  '        )\n'
+                  '        self.create_button = QPushButton',
+                  '            "publisher_back_matter",\n'
+                  '        )\n'
+                  '        self.create_button = QPushButton',
+              ),
+              Path("python/src/epub_a4_word_desktop/cover/canvas.py"): (
+                  '        scene = self.scene()\n'
+                  '        scene.clear()\n'
+                  '        self.items_by_id.clear()\n'
+                  '        self.group_members_by_element.clear()\n',
+                  '        scene = self.scene()\n'
+                  '        self._syncing_group_selection = True\n'
+                  '        try:\n'
+                  '            self.items_by_id.clear()\n'
+                  '            self.group_members_by_element.clear()\n'
+                  '            scene.clear()\n'
+                  '        finally:\n'
+                  '            self._syncing_group_selection = False\n',
+              ),
+          }
+          for path, (old, new) in replacements.items():
+              text = path.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one replacement target, found {count}")
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
