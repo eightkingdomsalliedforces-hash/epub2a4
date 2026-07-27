@@ -26,12 +26,22 @@ jobs:
         with:
           ref: fix/reference-back-cover-isbn-clarity
           fetch-depth: 0
-      - name: Apply compatibility patches
+      - name: Apply SVG compatibility patch
         run: |
           git apply --check .github/patches/svg-logo-compat.patch
           git apply .github/patches/svg-logo-compat.patch
-          git apply --check .github/patches/desktop-regression-fixes.patch
-          git apply .github/patches/desktop-regression-fixes.patch
+      - name: Apply controller ISBN compatibility patch
+        run: |
+          git apply --check --include=python/src/epub_a4_word_desktop/cover/controller.py .github/patches/desktop-regression-fixes.patch
+          git apply --include=python/src/epub_a4_word_desktop/cover/controller.py .github/patches/desktop-regression-fixes.patch
+      - name: Apply setup template alias patch
+        run: |
+          git apply --check --include=python/src/epub_a4_word_desktop/cover/setup_panel.py .github/patches/desktop-regression-fixes.patch
+          git apply --include=python/src/epub_a4_word_desktop/cover/setup_panel.py .github/patches/desktop-regression-fixes.patch
+      - name: Apply canvas lifetime patch
+        run: |
+          git apply --check --include=python/src/epub_a4_word_desktop/cover/canvas.py .github/patches/desktop-regression-fixes.patch
+          git apply --include=python/src/epub_a4_word_desktop/cover/canvas.py .github/patches/desktop-regression-fixes.patch
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
