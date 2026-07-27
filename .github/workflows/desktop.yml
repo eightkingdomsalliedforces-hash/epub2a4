@@ -50,15 +50,35 @@ jobs:
         run: python -m pytest desktop/tests/test_converter_crop_controls.py -q
       - name: Test shared-geometry layout preview
         run: python -m pytest desktop/tests/test_layout_preview.py -q
-      - name: Run remaining desktop regression tests
-        run: >-
-          python -m pytest desktop/tests -q
-          --ignore=desktop/tests/test_svg_logo.py
-          --ignore=desktop/tests/test_publisher_metadata_panel.py
-          --ignore=desktop/tests/test_publisher_logo_dialog.py
-          --ignore=desktop/tests/test_publisher_logo_embedding.py
-          --ignore=desktop/tests/test_converter_crop_controls.py
-          --ignore=desktop/tests/test_layout_preview.py
+      - name: Capture remaining desktop regression results
+        shell: bash
+        run: |
+          set +e
+          python -m pytest desktop/tests -q --tb=short --junitxml=remaining-desktop.xml \
+            --ignore=desktop/tests/test_svg_logo.py \
+            --ignore=desktop/tests/test_publisher_metadata_panel.py \
+            --ignore=desktop/tests/test_publisher_logo_dialog.py \
+            --ignore=desktop/tests/test_publisher_logo_embedding.py \
+            --ignore=desktop/tests/test_converter_crop_controls.py \
+            --ignore=desktop/tests/test_layout_preview.py \
+            > remaining-desktop.log 2>&1
+          code=$?
+          echo "$code" > remaining-desktop.exit
+          cat remaining-desktop.log
+          exit 0
+      - name: Upload remaining desktop diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remaining-desktop-diagnostics
+          path: |
+            remaining-desktop.log
+            remaining-desktop.xml
+            remaining-desktop.exit
+          if-no-files-found: error
+      - name: Require remaining desktop tests
+        shell: bash
+        run: test "$(cat remaining-desktop.exit)" = "0"
       - name: Compile and verify structure
         run: |
           python -m compileall -q python/src app/src/main/python
