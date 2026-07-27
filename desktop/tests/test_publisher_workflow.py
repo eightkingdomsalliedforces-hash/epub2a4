@@ -133,7 +133,7 @@ def test_controller_isbn_sync_preserves_moved_barcode_geometry(tmp_path: Path) -
     assert updated.elements_by_id["back-isbn-code"].content["isbn"] == "9783161484100"
 
 
-def test_publisher_logo_image_uses_contain_without_cropping(tmp_path: Path) -> None:
+def test_publisher_logo_image_uses_contain_without_cropping(qtbot, tmp_path: Path) -> None:
     controller = CoverController(working_dir=tmp_path, auto_preview=False)
     project = _publisher_project(tmp_path)
     controller.replace_project(dumps_project(project), clear_history=True)

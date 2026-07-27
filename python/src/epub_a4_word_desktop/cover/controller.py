@@ -39,6 +39,7 @@ from epub_a4_word.cover.templates import (
 
 from .commands import ReplaceProjectCommand
 from .models import patch_element
+from .svg_logo import rasterize_svg_logo
 
 
 class CoverService(Protocol):
@@ -261,6 +262,7 @@ class CoverController(QObject):
         downloaded = import_logo_file(
             source_path,
             self.working_dir / "logo-imports",
+            svg_converter=rasterize_svg_logo,
         )
         return self.apply_publisher_logo(
             downloaded,
@@ -275,36 +277,15 @@ class CoverController(QObject):
         if not isbn:
             raise ValueError("ISBN 必須是通過校驗的 ISBN-10 或 ISBN-13。")
         project = self._require_project()
-        candidate = replace(project, metadata=replace(project.metadata, isbn=isbn))
-        active_template = str(candidate.background.get("active_template", ""))
-        if active_template == "publisher_back_matter":
-            generated_project = apply_cover_template(candidate, active_template)
-            generated = generated_project.elements_by_id
-            sync_ids = ("back-isbn-label", "back-isbn-code")
-            existing_ids = {element.id for element in candidate.elements}
-            updated: list[CoverElement] = []
-            for element in candidate.elements:
-                generated_element = generated.get(element.id)
-                if element.id in sync_ids and generated_element is not None:
-                    updated.append(
-                        replace(
-                            element,
-                            kind=generated_element.kind,
-                            region=generated_element.region,
-                            content=dict(generated_element.content),
-                        )
-                    )
-                else:
-                    updated.append(element)
-            for element_id in sync_ids:
-                if element_id not in existing_ids and element_id in generated:
-                    updated.append(generated[element_id])
-            candidate = replace(
-                candidate,
-                background=generated_project.background,
-                elements=tuple(updated),
-            )
+        metadata = replace(project.metadata, isbn=isbn)
+        active_template = str(project.background.get("active_template", ""))
+        if active_template in {
+            "publisher_back_matter",
+            "publisher_back_matter_with_spine",
+        }:
+            candidate = refresh_template_metadata(project, metadata)
         else:
+            candidate = replace(project, metadata=metadata)
             updated = []
             for element in candidate.elements:
                 content = dict(element.content)

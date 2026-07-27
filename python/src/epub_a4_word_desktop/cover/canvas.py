@@ -88,9 +88,13 @@ class CoverCanvas(QGraphicsView):
         layout = calculate_layout(project)
         plan = build_print_plan(layout)
         scene = self.scene()
-        scene.clear()
-        self.items_by_id.clear()
-        self.group_members_by_element.clear()
+        self._syncing_group_selection = True
+        try:
+            self.items_by_id.clear()
+            self.group_members_by_element.clear()
+            scene.clear()
+        finally:
+            self._syncing_group_selection = False
         self.guide_layer = GuideLayer(scene)
         self._preview_item = None
         self.project_json = project_json

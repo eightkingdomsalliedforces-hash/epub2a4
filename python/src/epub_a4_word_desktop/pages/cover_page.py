@@ -56,6 +56,7 @@ from epub_a4_word_desktop.cover.publisher_metadata_panel import (
 from epub_a4_word_desktop.cover.search_controller import SearchController, SharedSearchFacade
 from epub_a4_word_desktop.cover.search_panel import CoverSearchPanel
 from epub_a4_word_desktop.cover.setup_panel import CoverSetupPanel, CoverSetupValues
+from epub_a4_word_desktop.cover.svg_logo import rasterize_svg_logo
 from epub_a4_word_desktop.settings.credentials import (
     KeyringCredentialStore,
     LayeredCredentialStore,
@@ -76,7 +77,7 @@ class TemplatePanel(QGroupBox):
             ("上下色塊", "top_bottom_blocks"),
             ("全圖覆蓋", "full_bleed_image"),
             ("經典書籍", "classic_book"),
-            ("出版社封底＋直式書脊", "publisher_back_matter_with_spine"),
+            ("出版社封底＋直式書脊", "publisher_back_matter"),
         ):
             self.combo.addItem(label, template_id)
         self.apply_button = QPushButton("套用模板", self)
@@ -448,11 +449,13 @@ class CoverPage(QWidget):
                 downloaded = import_logo_file(
                     cached,
                     self.controller.working_dir / "logo-downloads",
+                    svg_converter=rasterize_svg_logo,
                 )
             else:
                 downloaded = download_logo(
                     candidate,
                     self.controller.working_dir / "logo-downloads",
+                    svg_converter=rasterize_svg_logo,
                 )
                 cache.put(candidate.image_url, downloaded)
             self.controller.apply_publisher_logo(downloaded, candidate)

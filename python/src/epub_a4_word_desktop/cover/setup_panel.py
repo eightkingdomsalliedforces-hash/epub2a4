@@ -170,7 +170,7 @@ class CoverSetupPanel(QWidget):
         self.template_combo.addItem("經典書籍", "classic_book")
         self.template_combo.addItem(
             "出版社封底＋直式書脊",
-            "publisher_back_matter_with_spine",
+            "publisher_back_matter",
         )
         self.create_button = QPushButton("建立／更新封面專案", self)
         self.create_button.setEnabled(False)

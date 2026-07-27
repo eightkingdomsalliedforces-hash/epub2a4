@@ -38,6 +38,10 @@ class CoverRenderError(ValueError):
     """Raised when a project element cannot be rendered safely."""
 
 
+class SvgRendererUnavailableError(CoverRenderError):
+    """Raised when a safe SVG has no available rasterizer on this platform."""
+
+
 def mm_to_px(value_mm: float, dpi: int) -> int:
     if dpi <= 0:
         raise ValueError("DPI 必須大於 0。")
@@ -225,7 +229,9 @@ def _prepare_image(element: CoverElement, size: tuple[int, int]) -> Image.Image:
         try:
             import cairosvg
         except ImportError as exc:
-            raise CoverRenderError("缺少 SVG 轉換元件，無法顯示出版社 Logo。") from exc
+            raise SvgRendererUnavailableError(
+                "目前平台缺少 SVG 轉換元件，已略過出版社 Logo。"
+            ) from exc
         try:
             png = cairosvg.svg2png(bytestring=data, unsafe=False)
             with Image.open(BytesIO(png)) as opened:
@@ -560,7 +566,11 @@ def _render_spread_with_warnings(
         rect = _transform_rect(element)
         width, height = _rect_size(rect, dpi)
         if element.kind is ElementKind.IMAGE:
-            local = _prepare_image(element, (width, height))
+            try:
+                local = _prepare_image(element, (width, height))
+            except SvgRendererUnavailableError as exc:
+                warnings.append(str(exc))
+                continue
         elif element.kind is ElementKind.TEXT:
             local, overflow = _prepare_text(element, (width, height), dpi)
             if overflow:
