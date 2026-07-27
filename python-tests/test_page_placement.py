@@ -10,7 +10,7 @@ def _resolved(mode: str, **kwargs):
     return resolve_layout(LayoutSettings(imposition_mode=mode, **kwargs))
 
 
-def test_b6_on_a5_uses_bottom_right_trim_and_l_guides() -> None:
+def test_b6_on_a5_uses_bottom_right_trim_and_full_cut_lines() -> None:
     placement = build_page_placement(
         _resolved("b6_on_a5", output_mark_mode="crop_marks")
     )
@@ -26,8 +26,8 @@ def test_b6_on_a5_uses_bottom_right_trim_and_l_guides() -> None:
         placement.content_height_mm,
     ) == pytest.approx((20.0, 28.0, 128.0, 182.0))
     assert placement.guides == (
-        CropGuide(0.0, 28.0, 20.0, 28.0, "crop"),
-        CropGuide(20.0, 0.0, 20.0, 28.0, "crop"),
+        CropGuide(0.0, 28.0, 148.0, 28.0, "crop"),
+        CropGuide(20.0, 0.0, 20.0, 210.0, "crop"),
     )
 
 
