@@ -515,6 +515,7 @@ class CoverViewModel @JvmOverloads constructor(
 
 private fun trimPresetFor(trimSize: TrimSize): TrimPreset = when {
     trimSize.matches(TrimPreset.A5) -> TrimPreset.A5
+    trimSize.matches(TrimPreset.B6) -> TrimPreset.B6
     trimSize.matches(TrimPreset.A6) -> TrimPreset.A6
     trimSize.matches(TrimPreset.INCH_4X6) -> TrimPreset.INCH_4X6
     else -> throw IllegalArgumentException("轉換結果的裁切尺寸不受支援。")
