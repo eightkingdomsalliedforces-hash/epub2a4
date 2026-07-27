@@ -1,0 +1,50 @@
+diff --git a/python/src/epub_a4_word_desktop/cover/controller.py b/python/src/epub_a4_word_desktop/cover/controller.py
+index f057f14..b9f909a 100644
+--- a/python/src/epub_a4_word_desktop/cover/controller.py
++++ b/python/src/epub_a4_word_desktop/cover/controller.py
+@@ -278,7 +278,10 @@ class CoverController(QObject):
+         project = self._require_project()
+         candidate = replace(project, metadata=replace(project.metadata, isbn=isbn))
+         active_template = str(candidate.background.get("active_template", ""))
+-        if active_template == "publisher_back_matter":
++        if active_template in {
++            "publisher_back_matter",
++            "publisher_back_matter_with_spine",
++        }:
+             generated_project = apply_cover_template(candidate, active_template)
+             generated = generated_project.elements_by_id
+             sync_ids = ("back-isbn-label", "back-isbn-code")
+diff --git a/python/src/epub_a4_word_desktop/cover/setup_panel.py b/python/src/epub_a4_word_desktop/cover/setup_panel.py
+index 1ee15ec..e98dbef 100644
+--- a/python/src/epub_a4_word_desktop/cover/setup_panel.py
++++ b/python/src/epub_a4_word_desktop/cover/setup_panel.py
+@@ -171,7 +171,7 @@ class CoverSetupPanel(QWidget):
+         self.template_combo.addItem("經典書籍", "classic_book")
+         self.template_combo.addItem(
+             "出版社封底＋直式書脊",
+-            "publisher_back_matter_with_spine",
++            "publisher_back_matter",
+         )
+         self.create_button = QPushButton("建立／更新封面專案", self)
+         self.create_button.setEnabled(False)
+diff --git a/python/src/epub_a4_word_desktop/cover/canvas.py b/python/src/epub_a4_word_desktop/cover/canvas.py
+index ff9c9c7..9f63a55 100644
+--- a/python/src/epub_a4_word_desktop/cover/canvas.py
++++ b/python/src/epub_a4_word_desktop/cover/canvas.py
+@@ -90,9 +90,14 @@ class CoverCanvas(QGraphicsView):
+         layout = calculate_layout(project)
+         plan = build_print_plan(layout)
+         scene = self.scene()
+-        scene.clear()
+-        self.items_by_id.clear()
+-        self.group_members_by_element.clear()
++        self._syncing_group_selection = True
++        try:
++            self.items_by_id.clear()
++            self.group_members_by_element.clear()
++            scene.clear()
++        finally:
++            self._syncing_group_selection = False
+         self.guide_layer = GuideLayer(scene)
+         self._preview_item = None
+         self.project_json = project_json
