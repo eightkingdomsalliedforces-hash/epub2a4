@@ -15,6 +15,12 @@ from .google_books import GoogleBooksProvider
 from .google_custom import GoogleCustomSearchProvider
 from .gutendex import GutendexProvider
 from .http import JsonHttpClient
+from .logo_cache import LogoCache
+from .logo_download import DownloadedLogo, download_logo, import_logo_file
+from .logo_http import LogoHttpClient
+from .logo_models import LogoCandidate, LogoSearchPage, LogoSourceCategory
+from .logo_ranking import dedupe_logo_candidates, rank_logo_candidates
+from .publisher_logo import PublisherLogoSearch
 from .models import (
     BookIdentity,
     CandidateCategory,
@@ -44,6 +50,17 @@ __all__ = [
     "CoverSearchError",
     "CoverSearchRequest",
     "DownloadedImage",
+    "rank_logo_candidates",
+    "import_logo_file",
+    "download_logo",
+    "dedupe_logo_candidates",
+    "PublisherLogoSearch",
+    "LogoSourceCategory",
+    "LogoSearchPage",
+    "LogoHttpClient",
+    "LogoCandidate",
+    "LogoCache",
+    "DownloadedLogo",
     "GeneralCoverSearch",
     "GoogleBooksProvider",
     "GoogleCustomSearchProvider",

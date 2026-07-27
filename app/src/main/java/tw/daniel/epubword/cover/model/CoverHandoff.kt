@@ -18,6 +18,7 @@ data class CoverHandoff(
 fun OutputMode.coverTrimSize(): TrimSize = when (this) {
     OutputMode.SIGNATURE16, OutputMode.FOUR_UP -> TrimSize(105.0, 148.0)
     OutputMode.A5 -> TrimSize(148.0, 210.0)
+    OutputMode.B6_ON_A5 -> TrimSize(128.0, 182.0)
     OutputMode.PHOTO_4X6 -> TrimSize(101.6, 152.4)
 }
 

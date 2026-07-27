@@ -18,6 +18,7 @@ _TRIM_SIZE_BY_MODE: dict[str, tuple[float, float]] = {
 }
 _ALLOWED_MARGINS = {"safe", "maximized", "borderless"}
 _ALLOWED_MARK_MODES = {"normal", "crop_marks"}
+_ALLOWED_GUIDE_RENDER_MODES = {"vml", "drawingml"}
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,7 @@ class ConversionRequest:
     page_numbers: bool = True
     cut_guides: bool = True
     output_mark_mode: str = "normal"
+    guide_render_mode: str = "vml"
     content_only: bool = True
 
     def validate(self) -> None:
@@ -61,6 +63,8 @@ class ConversionRequest:
             raise ValueError("輸出標記模式無效。")
         if self.imposition_mode != "b6_on_a5" and self.output_mark_mode != "normal":
             raise ValueError("只有 B6 內容置於 A5 紙張模式支援裁切標記。")
+        if self.guide_render_mode not in _ALLOWED_GUIDE_RENDER_MODES:
+            raise ValueError("裁切線相容模式無效。")
         if not self.font_name.strip():
             raise ValueError("字型名稱不可為空。")
         if self.body_font_pt <= 0 or self.heading_font_pt <= 0:
@@ -76,6 +80,7 @@ class ConversionRequest:
             page_numbers=bool(self.page_numbers),
             cut_guides=bool(self.cut_guides),
             output_mark_mode=self.output_mark_mode,
+            guide_render_mode=self.guide_render_mode,
         )
 
 

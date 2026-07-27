@@ -27,6 +27,25 @@ class CoverProjectJsonTest {
     }
 
     @Test
+    fun preservesPublisherMetadataUsedBySharedTemplates() {
+        val fixture = JSONObject(javaClass.getResource("/cover-project-v1.json")!!.readText())
+        fixture.getJSONObject("metadata")
+            .put("price", "NT$110")
+            .put("publication_place", "台北")
+            .put("translator", "李彥樺")
+            .put("isbn_addon", "00110")
+
+        val restored = CoverProjectJson.decode(
+            CoverProjectJson.encode(CoverProjectJson.decode(fixture.toString())),
+        )
+
+        assertEquals("NT$110", restored.metadata.price)
+        assertEquals("台北", restored.metadata.publicationPlace)
+        assertEquals("李彥樺", restored.metadata.translator)
+        assertEquals("00110", restored.metadata.isbnAddon)
+    }
+
+    @Test
     fun rejectsUnknownSchemaAndDuplicateElementIds() {
         val fixture = JSONObject(javaClass.getResource("/cover-project-v1.json")!!.readText())
         fixture.put("schema_version", 2)

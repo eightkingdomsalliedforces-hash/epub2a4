@@ -38,6 +38,7 @@ data class CoverEditorCallbacks(
     val onSelectEmbeddedImage: (String) -> Unit = {},
     val onAddText: () -> Unit = {},
     val onToggleGuides: () -> Unit = {},
+    val onPreviewWord: () -> Unit = {},
     val onPrepareExport: (Int) -> Unit = {},
     val onRequestExportDirectory: () -> Unit = {},
     val onSelectElement: (String?) -> Unit = {},
@@ -106,6 +107,10 @@ fun CoverEditorScreen(
                         onClick = { if (selected != null) sheet = EditorSheet.INSPECTOR },
                         enabled = selected != null,
                     ) { Text("屬性") }
+                    TextButton(
+                        onClick = callbacks.onPreviewWord,
+                        enabled = state.canExport,
+                    ) { Text("Word 預覽") }
                     Button(
                         onClick = { showExportDialog = true },
                         enabled = state.canExport,
@@ -158,6 +163,9 @@ fun CoverEditorScreen(
     when (sheet) {
         EditorSheet.TEMPLATES -> ModalBottomSheet(onDismissRequest = { sheet = EditorSheet.NONE }) {
             TemplateChoices(
+                publisherReady = normalizedPublisherIsbn13(
+                    state.project?.metadata?.isbn.orEmpty(),
+                ).isNotBlank() && !state.project?.metadata?.publisher.isNullOrBlank(),
                 onApply = {
                     callbacks.onApplyTemplate(it)
                     sheet = EditorSheet.NONE
@@ -212,21 +220,31 @@ fun CoverEditorScreen(
 }
 
 @Composable
-private fun TemplateChoices(onApply: (String) -> Unit) {
+private fun TemplateChoices(
+    publisherReady: Boolean,
+    onApply: (String) -> Unit,
+) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("套用模板", style = MaterialTheme.typography.titleLarge)
-        listOf(
-            "minimal_text" to "極簡文字",
-            "front_image_plain_back" to "正面圖片＋純色封底",
-            "full_spread" to "跨頁滿版圖片",
-            "top_bottom_blocks" to "上下色塊",
-        ).forEach { (id, label) ->
-            Button(onClick = { onApply(id) }, modifier = Modifier.fillMaxWidth()) {
-                Text(label)
+        COVER_TEMPLATE_OPTIONS.forEach { option ->
+            val enabled = option.id != PUBLISHER_BACK_MATTER_TEMPLATE_ID || publisherReady
+            Button(
+                onClick = { onApply(option.id) },
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(option.label)
             }
+        }
+        if (!publisherReady) {
+            Text(
+                "出版社式封底需要先返回設定頁，填入有效 ISBN-13 與出版社名稱後重新建立。",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }

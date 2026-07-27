@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import replace
+from dataclasses import asdict, replace
 from pathlib import Path
 import re
 from uuid import uuid4
 
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -27,6 +27,9 @@ from PySide6.QtWidgets import (
 from epub_a4_word.cover.composition import compose_full_spread
 from epub_a4_word.cover.geometry import calculate_layout
 from epub_a4_word.cover.isbn import normalize_isbn, preferred_isbn, valid_isbns
+from epub_a4_word.cover.publisher_directory import publisher_profile
+from epub_a4_word.cover.search.logo_cache import LogoCache
+from epub_a4_word.cover.search.logo_download import download_logo, import_logo_file
 from epub_a4_word.cover.models import (
     CoverElement,
     ElementKind,
@@ -45,9 +48,15 @@ from epub_a4_word_desktop.cover.export_worker import ExportWorker, export_paths
 from epub_a4_word_desktop.cover.inspector import ElementInspector
 from epub_a4_word_desktop.cover.layers_panel import LayersPanel
 from epub_a4_word_desktop.cover.project_files import open_project_bundle, save_project_bundle
+from epub_a4_word_desktop.cover.publisher_logo_dialog import PublisherLogoDialog
+from epub_a4_word_desktop.cover.publisher_metadata_panel import (
+    PublisherMetadataPanel,
+    PublisherMetadataValues,
+)
 from epub_a4_word_desktop.cover.search_controller import SearchController, SharedSearchFacade
 from epub_a4_word_desktop.cover.search_panel import CoverSearchPanel
 from epub_a4_word_desktop.cover.setup_panel import CoverSetupPanel, CoverSetupValues
+from epub_a4_word_desktop.cover.svg_logo import rasterize_svg_logo
 from epub_a4_word_desktop.settings.credentials import (
     KeyringCredentialStore,
     LayeredCredentialStore,
@@ -68,7 +77,7 @@ class TemplatePanel(QGroupBox):
             ("上下色塊", "top_bottom_blocks"),
             ("全圖覆蓋", "full_bleed_image"),
             ("經典書籍", "classic_book"),
-            ("出版社式封底", "publisher_back_matter"),
+            ("出版社封底＋直式書脊", "publisher_back_matter"),
         ):
             self.combo.addItem(label, template_id)
         self.apply_button = QPushButton("套用模板", self)
@@ -193,6 +202,15 @@ class CoverPage(QWidget):
         self.canvas = CoverCanvas(self)
         self.inspector = ElementInspector(self)
         self.setup_panel = CoverSetupPanel(self)
+        self.publisher_metadata_panel = PublisherMetadataPanel(self)
+        self.publisher_metadata_panel.setEnabled(False)
+        self.reset_publisher_template_button = QPushButton("重設模板版面", self)
+        self.reset_publisher_template_button.setEnabled(False)
+        self._publisher_update_timer = QTimer(self)
+        self._publisher_update_timer.setSingleShot(True)
+        self._publisher_update_timer.setInterval(300)
+        self._pending_publisher_values: PublisherMetadataValues | None = None
+        self._syncing_publisher_panel = False
         self.export_panel = ExportPanel(self)
         self.search_panel = CoverSearchPanel(
             self.search_controller,
@@ -222,6 +240,8 @@ class CoverPage(QWidget):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.addWidget(self.setup_panel)
+        right_layout.addWidget(self.publisher_metadata_panel)
+        right_layout.addWidget(self.reset_publisher_template_button)
         right_layout.addWidget(self.inspector, 1)
         right_layout.addWidget(self.export_panel)
 
@@ -257,6 +277,22 @@ class CoverPage(QWidget):
         self.redo_button.clicked.connect(lambda _checked=False: self.controller.redo())
         self.setup_panel.create_requested.connect(self._create_project)
         self.template_panel.template_selected.connect(self._apply_template)
+        self.publisher_metadata_panel.values_changed.connect(
+            self._schedule_publisher_metadata_update
+        )
+        self.publisher_metadata_panel.search_logo_requested.connect(
+            self._search_publisher_logo
+        )
+        self.publisher_metadata_panel.manual_logo_requested.connect(
+            self._choose_manual_publisher_logo
+        )
+        self.publisher_metadata_panel.clear_logo_requested.connect(
+            self._clear_publisher_logo
+        )
+        self.reset_publisher_template_button.clicked.connect(
+            self._reset_publisher_template
+        )
+        self._publisher_update_timer.timeout.connect(self._commit_publisher_metadata)
         self.assets_panel.image_imported.connect(self._add_image)
         self.assets_panel.add_text_requested.connect(self._add_text)
         self.assets_panel.crop_requested.connect(self._crop_asset)
@@ -351,6 +387,128 @@ class CoverPage(QWidget):
             )
             self.controller.apply_template(values.template_id)
             self.search_panel.bind_project(self.controller.project_json)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _schedule_publisher_metadata_update(
+        self, values: PublisherMetadataValues
+    ) -> None:
+        if self._syncing_publisher_panel or not self.controller.project_json:
+            return
+        self._pending_publisher_values = values
+        self._publisher_update_timer.start()
+
+    def _commit_publisher_metadata(self) -> None:
+        values = self._pending_publisher_values
+        self._pending_publisher_values = None
+        if values is None or not self.controller.project_json:
+            return
+        project = loads_project(self.controller.project_json)
+        previous_publisher = project.metadata.publisher.strip()
+        next_publisher = values.publisher.strip()
+        publisher_changed = bool(
+            previous_publisher
+            and next_publisher
+            and previous_publisher != next_publisher
+        )
+        search_replacement_logo = False
+        if publisher_changed:
+            search_replacement_logo = (
+                QMessageBox.question(
+                    self,
+                    "更換出版社",
+                    f"出版社已從「{previous_publisher}」改為「{next_publisher}」。是否一併搜尋替代 Logo？",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                == QMessageBox.StandardButton.Yes
+            )
+        try:
+            self.controller.update_metadata(values.as_settings())
+        except Exception as exc:
+            self._show_error(str(exc))
+            return
+        if search_replacement_logo:
+            self._search_publisher_logo(next_publisher)
+
+    def _reset_publisher_template(self, _checked: bool = False) -> None:
+        if not self.controller.project_json:
+            return
+        try:
+            values = self.publisher_metadata_panel.values()
+            self.controller.update_metadata(values.as_settings(), reset_layout=True)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+
+    def _logo_cache(self) -> LogoCache:
+        root = (
+            self.runtime_paths.cache_dir / "publisher-logos"
+            if self.runtime_paths is not None
+            else self.controller.working_dir / "publisher-logo-cache"
+        )
+        return LogoCache(root)
+
+    def _search_publisher_logo(self, publisher: str) -> None:
+        query = str(publisher).strip()
+        if not query:
+            self._show_error("請先輸入出版社名稱。")
+            return
+        profile = publisher_profile(query)
+        self.publisher_metadata_panel.publisher_id_edit.setText(profile.publisher_id)
+        dialog = PublisherLogoDialog(parent=self)
+        dialog.manual_file_requested.connect(self._choose_manual_publisher_logo)
+        dialog.no_logo_requested.connect(self._clear_publisher_logo)
+        dialog.start_search(query, profile)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        candidate = dialog.selected_candidate()
+        if candidate is None:
+            return
+        try:
+            cache = self._logo_cache()
+            cached = cache.get(candidate.image_url)
+            if cached is not None:
+                downloaded = import_logo_file(
+                    cached,
+                    self.controller.working_dir / "logo-downloads",
+                    svg_converter=rasterize_svg_logo,
+                )
+            else:
+                downloaded = download_logo(
+                    candidate,
+                    self.controller.working_dir / "logo-downloads",
+                    svg_converter=rasterize_svg_logo,
+                )
+                cache.put(candidate.image_url, downloaded)
+            self.controller.apply_publisher_logo(downloaded, candidate)
+            self.status_label.setText(
+                f"已套用出版社 Logo：{candidate.title}"
+            )
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _choose_manual_publisher_logo(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "選擇出版社 Logo",
+            "",
+            "Logo 圖片 (*.svg *.png *.jpg *.jpeg *.webp *.gif *.bmp *.tif *.tiff)",
+        )
+        if not path:
+            return
+        try:
+            self.controller.apply_manual_publisher_logo(path)
+            self.status_label.setText(f"已套用手動 Logo：{Path(path).name}")
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _clear_publisher_logo(self) -> None:
+        if not self.controller.project_json:
+            return
+        try:
+            self.controller.clear_publisher_logo()
+            self.status_label.setText("已移除出版社 Logo。")
         except Exception as exc:
             self._show_error(str(exc))
 
@@ -658,6 +816,14 @@ class CoverPage(QWidget):
         self.export_panel.set_project_loaded(True)
         self.inspector.set_element(None)
         project = loads_project(project_json)
+        self._syncing_publisher_panel = True
+        try:
+            self.publisher_metadata_panel.set_values(asdict(project.metadata))
+            self.publisher_metadata_panel.set_logo_metadata(project.metadata.publisher_logo)
+        finally:
+            self._syncing_publisher_panel = False
+        self.publisher_metadata_panel.setEnabled(True)
+        self.reset_publisher_template_button.setEnabled(True)
         self.status_label.setText(
             f"{project.metadata.title or Path(project.source_file).name}｜{project.page_count} 頁"
         )

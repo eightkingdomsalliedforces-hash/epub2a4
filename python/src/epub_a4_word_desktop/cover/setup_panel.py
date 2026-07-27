@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
 from epub_a4_word.cover.models import ImageMode
 from epub_a4_word.cover.service import inspect_source
 
+from .publisher_metadata_panel import PublisherMetadataPanel, PublisherMetadataValues
+
 
 @dataclass(frozen=True)
 class CoverSetupValues:
@@ -35,6 +37,19 @@ class CoverSetupValues:
     bleed_mm: float
     image_mode: ImageMode
     template_id: str
+    isbn: str = ""
+    isbn_addon: str = ""
+    publisher: str = ""
+    price: str = ""
+    publication_place: str = ""
+    translator: str = ""
+    publisher_id: str = ""
+    english_title: str = ""
+    volume_number: str = ""
+    arc_label: str = ""
+    series_name: str = ""
+    internal_book_code: str = ""
+    spine_accent_color: str = "#F15A24"
     confirmed_back_cover_asset_id: str | None = None
 
     def settings(self, working_dir: Path | str) -> dict[str, Any]:
@@ -51,6 +66,19 @@ class CoverSetupValues:
             "show_crop_marks": True,
             "show_assembly_marks": True,
             "image_mode": self.image_mode.value,
+            "isbn": self.isbn.strip(),
+            "isbn_addon": self.isbn_addon.strip(),
+            "publisher": self.publisher.strip(),
+            "price": self.price.strip(),
+            "publication_place": self.publication_place.strip(),
+            "translator": self.translator.strip(),
+            "publisher_id": self.publisher_id.strip(),
+            "english_title": self.english_title.strip(),
+            "volume_number": self.volume_number.strip(),
+            "arc_label": self.arc_label.strip(),
+            "series_name": self.series_name.strip(),
+            "internal_book_code": self.internal_book_code.strip(),
+            "spine_accent_color": self.spine_accent_color.strip() or "#F15A24",
             **(
                 {"confirmed_back_cover_asset_id": self.confirmed_back_cover_asset_id}
                 if self.confirmed_back_cover_asset_id
@@ -97,6 +125,8 @@ class CoverSetupPanel(QWidget):
         self.page_count_spin.setValue(160)
         self.page_count_confirmed = QCheckBox("我已確認正文頁數", self)
         self.page_count_note = QLabel("", self)
+        self.publisher_metadata_panel = PublisherMetadataPanel(self)
+        self.translator_edit = self.publisher_metadata_panel.translator_edit
         self.cover_status_note = QLabel("", self)
         self.confirm_back_cover = QCheckBox("將可能的封底作為封底使用", self)
         self.confirm_back_cover.setVisible(False)
@@ -138,7 +168,10 @@ class CoverSetupPanel(QWidget):
         self.template_combo.addItem("上下色塊", "top_bottom_blocks")
         self.template_combo.addItem("全圖覆蓋", "full_bleed_image")
         self.template_combo.addItem("經典書籍", "classic_book")
-        self.template_combo.addItem("出版社式封底", "publisher_back_matter")
+        self.template_combo.addItem(
+            "出版社封底＋直式書脊",
+            "publisher_back_matter",
+        )
         self.create_button = QPushButton("建立／更新封面專案", self)
         self.create_button.setEnabled(False)
 
@@ -161,6 +194,7 @@ class CoverSetupPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
         layout.addLayout(form)
+        layout.addWidget(self.publisher_metadata_panel)
         layout.addWidget(self.create_button)
 
         self.page_count = self.page_count_spin
@@ -260,6 +294,7 @@ class CoverSetupPanel(QWidget):
         estimated = False
         if isinstance(metadata, dict):
             estimated = bool(metadata.get("page_count_is_estimate", False))
+            self.publisher_metadata_panel.set_values(metadata)
             embedded = metadata.get("embedded_images", ())
             roles = {
                 str(item.get("role", ""))
@@ -338,6 +373,7 @@ class CoverSetupPanel(QWidget):
             raise ValueError("請確認正文頁數。")
         trim = self.trim_combo.currentData()
         manual = self.manual_spine_spin.value() if self.manual_spine_enabled.isChecked() else None
+        publisher_values = self.publisher_metadata_panel.values()
         return CoverSetupValues(
             source_path=source,
             trim_size_mm=(float(trim[0]), float(trim[1])),
@@ -347,6 +383,19 @@ class CoverSetupPanel(QWidget):
             bleed_mm=self.bleed_spin.value(),
             image_mode=ImageMode(str(self.image_mode_combo.currentData())),
             template_id=str(self.template_combo.currentData()),
+            isbn=publisher_values.isbn,
+            isbn_addon=publisher_values.isbn_addon,
+            publisher=publisher_values.publisher,
+            price=publisher_values.price,
+            publication_place=publisher_values.publication_place,
+            translator=publisher_values.translator,
+            publisher_id=publisher_values.publisher_id,
+            english_title=publisher_values.english_title,
+            volume_number=publisher_values.volume_number,
+            arc_label=publisher_values.arc_label,
+            series_name=publisher_values.series_name,
+            internal_book_code=publisher_values.internal_book_code,
+            spine_accent_color=publisher_values.spine_accent_color,
             confirmed_back_cover_asset_id=(
                 self._back_cover_candidate_asset_id
                 if self.confirm_back_cover.isChecked()

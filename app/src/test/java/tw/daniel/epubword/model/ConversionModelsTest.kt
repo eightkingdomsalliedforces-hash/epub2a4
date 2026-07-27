@@ -7,8 +7,16 @@ import org.junit.Test
 
 class ConversionModelsTest {
     @Test
-    fun docxOnlyOffersSinglePageModes() {
-        assertEquals(listOf(OutputMode.A5, OutputMode.PHOTO_4X6), OutputMode.allowedFor(InputKind.DOCX))
+    fun docxOffersSinglePageModesIncludingB6OnA5() {
+        assertEquals(
+            listOf(OutputMode.A5, OutputMode.B6_ON_A5, OutputMode.PHOTO_4X6),
+            OutputMode.allowedFor(InputKind.DOCX),
+        )
+    }
+
+    @Test
+    fun epubOffersB6OnA5() {
+        assertTrue(OutputMode.B6_ON_A5 in OutputMode.allowedFor(InputKind.EPUB))
     }
 
     @Test
@@ -23,6 +31,19 @@ class ConversionModelsTest {
     }
 
     @Test
+    fun b6OnA5KeepsCutGuidesAndSerializesCropMarkMode() {
+        val result = ConversionOptions(
+            outputMode = OutputMode.B6_ON_A5,
+            cutGuides = true,
+        ).normalizedFor(InputKind.DOCX)
+        val json = result.toJson()
+
+        assertTrue(result.cutGuides)
+        assertTrue(json.contains("\"imposition_mode\":\"b6_on_a5\""))
+        assertTrue(json.contains("\"output_mark_mode\":\"crop_marks\""))
+    }
+
+    @Test
     fun optionJsonEscapesFontAndUsesWireValues() {
         val json = ConversionOptions(
             outputMode = OutputMode.PHOTO_4X6,
@@ -34,6 +55,7 @@ class ConversionModelsTest {
         assertTrue(json.contains("\"margin_mode\":\"safe\""))
         assertTrue(json.contains("Noto \\\"Serif\\\""))
     }
+
     @Test
     fun contentOnlyDefaultsOnAndIsSerialized() {
         val defaults = ConversionOptions()
@@ -42,5 +64,4 @@ class ConversionModelsTest {
         assertTrue(defaults.contentOnly)
         assertTrue(disabled.contains("\"content_only\":false"))
     }
-
 }

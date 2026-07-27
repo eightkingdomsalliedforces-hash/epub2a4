@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 from .geometry import CoverLayout, RectMm, calculate_layout
 from .isbn import normalize_ean_addon, normalize_isbn
+from .publisher_info_layout import layout_publisher_info
+from .spine_layout import build_spine_slots
 from .models import (
     CoverElement,
     CoverProject,
@@ -39,9 +42,9 @@ _TEMPLATE_CATALOG: tuple[TemplateSummary, ...] = (
         "以可編輯色塊分隔標題與出版資訊。",
     ),
     TemplateSummary(
-        "publisher_back_matter",
-        "出版社式封底",
-        "上方 ISBN／條碼與出版資訊，中央保留可選標誌留白。",
+        "publisher_back_matter_with_spine",
+        "出版社封底＋直式書脊",
+        "出版社式 ISBN／條碼封底與依書脊寬度自動調整的直式書脊。",
     ),
 )
 
@@ -51,12 +54,22 @@ STANDARD_TEMPLATE_IDS = frozenset(
         "front-author",
         "spine-title",
         "spine-author",
+        "spine-background",
+        "spine-publisher-logo",
+        "spine-title-main",
+        "spine-title-english",
+        "spine-volume",
+        "spine-arc",
+        "spine-internal-code",
+        "spine-publisher-name",
         "back-description",
         "back-publisher",
         "back-isbn",
         "back-isbn-label",
         "back-isbn-code",
         "back-publisher-info",
+        "back-publisher-heading",
+        "back-publisher-details",
     }
 )
 
@@ -77,6 +90,10 @@ def text_element(
     font_weight: int = 400,
     color: str = "#111111",
     z_index: int = 10,
+    font_role: str = "default",
+    font_family: str = "sans-serif",
+    vertical_align: str = "center",
+    line_spacing: float = 1.15,
 ) -> CoverElement:
     return CoverElement(
         id=element_id,
@@ -92,12 +109,14 @@ def text_element(
         z_index=z_index,
         content={
             "text": text,
-            "font_family": "sans-serif",
+            "font_family": font_family,
+            "font_role": font_role,
             "font_size_pt": font_size_pt,
             "font_weight": font_weight,
             "color": color,
             "align": align,
-            "line_spacing": 1.15,
+            "vertical_align": vertical_align,
+            "line_spacing": line_spacing,
             "direction": "horizontal",
         },
     )
@@ -308,17 +327,15 @@ def _top_bottom_blocks(project: CoverProject, layout: CoverLayout) -> tuple[Cove
 
 def _publisher_logo_rect(layout: CoverLayout) -> RectMm:
     safe = layout.back_safe_rect
-    width = safe.width_mm * 0.58
-    height = safe.height_mm * 0.34
     return RectMm(
-        safe.x_mm + (safe.width_mm - width) / 2.0,
-        safe.y_mm + safe.height_mm * 0.38,
-        width,
-        height,
+        safe.x_mm + safe.width_mm * 0.26,
+        safe.y_mm + safe.height_mm * 0.34,
+        safe.width_mm * 0.48,
+        safe.height_mm * 0.36,
     )
 
 
-def _publisher_back_matter(
+def _publisher_back_matter_only(
     project: CoverProject,
     layout: CoverLayout,
 ) -> tuple[CoverElement, ...]:
@@ -327,26 +344,29 @@ def _publisher_back_matter(
     isbn = normalize_isbn(project.metadata.isbn)
     if len(isbn) == 13:
         label_rect = RectMm(
-            safe.x_mm,
-            safe.y_mm,
-            safe.width_mm * 0.55,
-            max(5.0, safe.height_mm * 0.035),
+            safe.x_mm + safe.width_mm * 0.03,
+            safe.y_mm + safe.height_mm * 0.025,
+            safe.width_mm * 0.39,
+            safe.height_mm * 0.028,
         )
         barcode_rect = RectMm(
-            safe.x_mm,
-            label_rect.bottom_mm + 1.5,
-            safe.width_mm * 0.55,
-            max(24.0, safe.height_mm * 0.16),
+            safe.x_mm + safe.width_mm * 0.03,
+            safe.y_mm + safe.height_mm * 0.060,
+            safe.width_mm * 0.44,
+            safe.height_mm * 0.125,
         )
         elements.append(
             text_element(
                 "back-isbn-label",
                 Region.BACK,
                 label_rect,
-                f"ISBN-13 {isbn}",
-                8.0,
+                f"ISBN {isbn[:3]}-{isbn[3:6]}-{isbn[6:9]}-{isbn[9:12]}-{isbn[12]}",
+                7.0,
                 align="left",
                 z_index=20,
+                font_role="ocr",
+                font_family="OCR-B",
+                vertical_align="top",
             )
         )
         elements.append(
@@ -365,41 +385,171 @@ def _publisher_back_matter(
                     "isbn": isbn,
                     "addon": normalize_ean_addon(project.metadata.isbn_addon),
                     "text": isbn,
+                    "font_role": "ocr",
+                    "font_family": "OCR-B",
                     "color": "#111111",
                     "align": "left",
                 },
             )
         )
 
-    publisher_lines = tuple(
-        value.strip()
-        for value in (
-            project.metadata.publisher,
-            project.metadata.price,
-            project.metadata.publication_place,
-        )
-        if value.strip()
+    info_x = safe.x_mm + safe.width_mm * 0.49
+    info_y = safe.y_mm + safe.height_mm * 0.025
+    info_width = safe.width_mm * 0.38
+    info_layout = layout_publisher_info(
+        metadata=project.metadata,
+        x_mm=info_x,
+        y_mm=info_y,
+        max_width_mm=info_width,
+        max_height_mm=max(1.0, safe.bottom_mm - info_y),
     )
-    if publisher_lines:
-        info_rect = RectMm(
-            safe.x_mm + safe.width_mm * 0.61,
-            safe.y_mm,
-            safe.width_mm * 0.39,
-            max(30.0, safe.height_mm * 0.20),
+    shared_content = {
+        "group_id": "publisher-info-stack",
+        "layout_warnings": list(info_layout.warnings),
+    }
+    if info_layout.heading_rect is not None:
+        heading = text_element(
+            "back-publisher-heading",
+            Region.BACK,
+            info_layout.heading_rect,
+            info_layout.heading_text,
+            info_layout.heading_font_pt,
+            align="left",
+            font_weight=500,
+            z_index=20,
+            font_role="publisher_heading",
+            font_family="DFPYuanW5-GB",
+            vertical_align="top",
         )
         elements.append(
-            text_element(
-                "back-publisher-info",
-                Region.BACK,
-                info_rect,
-                "\n".join(publisher_lines),
-                8.0,
-                align="right",
-                z_index=20,
+            replace(
+                heading,
+                content={
+                    **heading.content,
+                    **shared_content,
+                    "layout_role": "heading",
+                },
+            )
+        )
+
+    if info_layout.details_rect is not None:
+        details = text_element(
+            "back-publisher-details",
+            Region.BACK,
+            info_layout.details_rect,
+            "\n".join(info_layout.detail_lines),
+            info_layout.details_font_pt,
+            align="left",
+            z_index=20,
+            font_role="publisher_details",
+            font_family="DFPYuanW3-GB",
+            vertical_align="top",
+            line_spacing=1.12,
+        )
+        elements.append(
+            replace(
+                details,
+                content={
+                    **details.content,
+                    **shared_content,
+                    "layout_role": "details",
+                    "line_spacing_mm": info_layout.details_line_spacing_mm,
+                },
             )
         )
     return tuple(elements)
 
+
+def _publisher_spine_elements(
+    project: CoverProject,
+    layout: CoverLayout,
+) -> tuple[CoverElement, ...]:
+    spine = layout.spine_rect
+    elements: list[CoverElement] = [
+        _shape_element(
+            "spine-background",
+            Region.SPINE,
+            spine,
+            "#ffffff",
+            z_index=-5,
+        )
+    ]
+    accent = project.metadata.spine_accent_color.strip() or "#F15A24"
+    _tier, slots = build_spine_slots(layout, accent)
+    values = {
+        "spine-title-main": project.metadata.title,
+        "spine-title-english": project.metadata.english_title,
+        "spine-volume": project.metadata.volume_number,
+        "spine-arc": project.metadata.arc_label,
+        "spine-author": project.metadata.author,
+        "spine-internal-code": project.metadata.internal_book_code,
+        "spine-publisher-name": project.metadata.publisher,
+    }
+    for slot in slots:
+        text = str(values.get(slot.element_id, "")).strip()
+        if not text:
+            continue
+        element = text_element(
+            slot.element_id,
+            Region.SPINE,
+            slot.rect,
+            text,
+            slot.font_size_pt,
+            rotation_deg=90.0,
+            font_weight=slot.font_weight,
+            color=slot.color,
+            z_index=20,
+            font_role=(
+                "publisher_heading"
+                if slot.role == "publisher"
+                else "default"
+            ),
+            vertical_align="center",
+        )
+        elements.append(
+            replace(
+                element,
+                content={
+                    **element.content,
+                    "group_id": "publisher-spine-stack",
+                    "layout_role": slot.role,
+                },
+            )
+        )
+    logo = project.metadata.publisher_logo
+    if logo is not None and logo.path and Path(logo.path).is_file():
+        logo_rect = _vertical_slice(layout.spine_safe_rect, 0.01, 0.13)
+        elements.append(
+            CoverElement(
+                id="spine-publisher-logo",
+                kind=ElementKind.IMAGE,
+                region=Region.SPINE,
+                transform=ElementTransform(
+                    logo_rect.x_mm,
+                    logo_rect.y_mm,
+                    logo_rect.width_mm,
+                    logo_rect.height_mm,
+                    90.0,
+                ),
+                z_index=21,
+                content={
+                    "path": logo.path,
+                    "fit": "contain",
+                    "group_id": "publisher-spine-stack",
+                    "layout_role": "logo",
+                },
+            )
+        )
+    return tuple(elements)
+
+
+def _publisher_back_matter_with_spine(
+    project: CoverProject,
+    layout: CoverLayout,
+) -> tuple[CoverElement, ...]:
+    return _publisher_back_matter_only(project, layout) + _publisher_spine_elements(
+        project, layout
+    )
 
 _BUILDERS = {
     "source_cover_only": _source_cover_only,
@@ -407,13 +557,14 @@ _BUILDERS = {
     "front_image_plain_back": _front_image_plain_back,
     "full_spread": _full_spread,
     "top_bottom_blocks": _top_bottom_blocks,
-    "publisher_back_matter": _publisher_back_matter,
+    "publisher_back_matter_with_spine": _publisher_back_matter_with_spine,
 }
 
 _TEMPLATE_ALIASES = {
     "minimal": "source_cover_only",
     "classic_book": "minimal_text",
     "full_bleed_image": "full_spread",
+    "publisher_back_matter": "publisher_back_matter_with_spine",
 }
 
 
@@ -432,18 +583,32 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
         and not element.id.startswith("template-")
     )
     standard_elements = _standard_panel_elements(project, layout)
+    has_front_image = any(
+        element.kind is ElementKind.IMAGE
+        and element.region in {Region.FRONT, Region.SPREAD}
+        and isinstance(element.content.get("path"), str)
+        and bool(str(element.content.get("path", "")).strip())
+        for element in retained
+    )
     if canonical_template_id == "front_image_plain_back":
         standard_elements = tuple(
             element for element in standard_elements if element.region is Region.BACK
         )
-    elif canonical_template_id == "publisher_back_matter":
+    elif canonical_template_id == "publisher_back_matter_with_spine":
         standard_elements = tuple(
-            element for element in standard_elements if element.region is not Region.BACK
+            element
+            for element in standard_elements
+            if element.region is not Region.BACK
+            and not (has_front_image and element.region is Region.FRONT)
         )
     elif canonical_template_id in {"source_cover_only", "full_spread"}:
         standard_elements = ()
 
-    if canonical_template_id in {"source_cover_only", "full_spread"}:
+    if canonical_template_id in {
+        "source_cover_only",
+        "full_spread",
+        "publisher_back_matter_with_spine",
+    }:
         spine_elements, new_warnings = (), ()
     else:
         spine_elements, new_warnings = _spine_elements(project, layout)
@@ -454,12 +619,20 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
     for warning in new_warnings:
         if warning not in warnings:
             warnings.append(warning)
+    for element in generated:
+        layout_warnings = element.content.get("layout_warnings", ())
+        if not isinstance(layout_warnings, (list, tuple)):
+            continue
+        for warning in layout_warnings:
+            text = str(warning).strip()
+            if text and text not in warnings:
+                warnings.append(text)
     if warnings:
         background["warnings"] = warnings
     else:
         background.pop("warnings", None)
     background["active_template"] = canonical_template_id
-    if canonical_template_id == "publisher_back_matter":
+    if canonical_template_id == "publisher_back_matter_with_spine":
         logo = _publisher_logo_rect(layout)
         background.setdefault("color", "#ffffff")
         background["publisher_logo_slot"] = {
@@ -483,3 +656,55 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
         background=background,
         elements=retained + generated,
     )
+
+
+def refresh_template_metadata(
+    project: CoverProject,
+    metadata,
+    *,
+    reset_layout: bool = False,
+) -> CoverProject:
+    """Refresh template-managed content while preserving edited geometry."""
+
+    candidate = replace(project, metadata=metadata)
+    active = str(project.background.get("active_template", "")).strip()
+    if not active:
+        return candidate
+    canonical = _TEMPLATE_ALIASES.get(active, active)
+    if reset_layout:
+        return apply_template(candidate, canonical)
+
+    generated = apply_template(candidate, canonical)
+    old_by_id = project.elements_by_id
+    generated_ids = {element.id for element in generated.elements}
+    merged: list[CoverElement] = []
+    for element in generated.elements:
+        old = old_by_id.get(element.id)
+        if old is None or element.id not in STANDARD_TEMPLATE_IDS:
+            merged.append(element)
+            continue
+        old_content = dict(old.content)
+        was_hidden = bool(old_content.get("template_hidden", False))
+        opacity = float(old_content.get("template_saved_opacity", 1.0)) if was_hidden else old.opacity
+        content = dict(element.content)
+        content.pop("template_hidden", None)
+        content.pop("template_saved_opacity", None)
+        merged.append(
+            replace(
+                element,
+                transform=old.transform,
+                z_index=old.z_index,
+                opacity=opacity,
+                content=content,
+            )
+        )
+
+    for old in project.elements:
+        if old.id not in STANDARD_TEMPLATE_IDS or old.id in generated_ids:
+            continue
+        content = dict(old.content)
+        content["template_hidden"] = True
+        content.setdefault("template_saved_opacity", old.opacity)
+        merged.append(replace(old, opacity=0.0, content=content))
+
+    return replace(generated, elements=tuple(merged))

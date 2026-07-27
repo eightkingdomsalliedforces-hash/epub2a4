@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..conversion.controller import ConversionController
-from ..conversion.layout_preview import B6OnA5Preview
+from ..conversion.layout_preview import LayoutPreview
 from ..conversion.legacy_adapter import allowed_modes_for_path
 from ..conversion.models import ConversionCompletion, ConversionRequest
 
@@ -36,10 +36,6 @@ _MARGIN_LABELS = {
     "safe": "安全邊界",
     "maximized": "最大化內容",
     "borderless": "無外邊界",
-}
-_MARK_LABELS = {
-    "normal": "普通列印",
-    "crop_marks": "附裁切標記",
 }
 
 
@@ -71,11 +67,6 @@ class ConverterPage(QWidget):
         self.margin_combo = QComboBox(self)
         for value, label in _MARGIN_LABELS.items():
             self.margin_combo.addItem(label, value)
-        self.output_mark_combo = QComboBox(self)
-        self.output_mark_combo.setObjectName("conversion-output-marks")
-        for value, label in _MARK_LABELS.items():
-            self.output_mark_combo.addItem(label, value)
-
         self.font_edit = QLineEdit("Noto Serif CJK TC", self)
         self.body_size = QDoubleSpinBox(self)
         self.body_size.setRange(6.0, 24.0)
@@ -89,13 +80,18 @@ class ConverterPage(QWidget):
         self.page_numbers.setChecked(True)
         self.cut_guides = QCheckBox("顯示裁切／折線", self)
         self.cut_guides.setChecked(True)
+        self.high_compat_guides = QCheckBox("高相容裁切線", self)
+        self.high_compat_guides.setToolTip(
+            "改用 DrawingML 頁面圖形，供不完整支援 VML 的 Word 閱讀器使用。"
+        )
         self.content_only = QCheckBox("只輸出內文，不含封面與封底", self)
         self.content_only.setObjectName("conversion-content-only")
         self.content_only.setChecked(True)
         self.content_only.setToolTip(
             "只排除已明確辨識或由你確認的 EPUB 封面頁；不會刪除正文插圖。"
         )
-        self.b6_preview = B6OnA5Preview(self)
+        self.layout_preview = LayoutPreview(self)
+        self.b6_preview = self.layout_preview
 
         self.start_button = QPushButton("開始轉換", self)
         self.start_button.clicked.connect(self._start_conversion)
@@ -130,13 +126,13 @@ class ConverterPage(QWidget):
         form.addRow("輸出 DOCX", output_row)
         form.addRow("輸出模式", self.mode_combo)
         form.addRow("邊界模式", self.margin_combo)
-        form.addRow("B6 輸出", self.output_mark_combo)
-        form.addRow("版面預覽", self.b6_preview)
+        form.addRow("版面預覽", self.layout_preview)
         form.addRow("字型", self.font_edit)
         form.addRow("內文字級", self.body_size)
         form.addRow("標題字級", self.heading_size)
         form.addRow("", self.page_numbers)
         form.addRow("", self.cut_guides)
+        form.addRow("", self.high_compat_guides)
         form.addRow("", self.content_only)
 
         action_layout = QHBoxLayout()
@@ -161,7 +157,8 @@ class ConverterPage(QWidget):
         self.controller.cancelled.connect(self._on_cancelled)
         self.source_edit.editingFinished.connect(self._sync_source_from_text)
         self.mode_combo.currentIndexChanged.connect(self._sync_mode_controls)
-        self.output_mark_combo.currentIndexChanged.connect(self._sync_mode_controls)
+        self.cut_guides.toggled.connect(self._sync_mode_controls)
+        self.high_compat_guides.toggled.connect(self._sync_mode_controls)
         self._populate_modes(Path("book.epub"))
         self._sync_mode_controls()
         self._set_running(False)
@@ -184,14 +181,32 @@ class ConverterPage(QWidget):
         self._sync_mode_controls()
 
     def _sync_mode_controls(self, _value: object = None) -> None:
-        is_b6 = self.mode_combo.currentData() == "b6_on_a5"
-        self.output_mark_combo.setEnabled(is_b6)
-        self.output_mark_combo.setVisible(is_b6)
-        self.b6_preview.setVisible(is_b6)
-        self.cut_guides.setEnabled(not is_b6)
-        if not is_b6:
-            self.output_mark_combo.setCurrentIndex(self.output_mark_combo.findData("normal"))
-        self.b6_preview.set_crop_marks(self.output_mark_combo.currentData() == "crop_marks")
+        mode = str(self.mode_combo.currentData() or "signature16")
+        self.cut_guides.setEnabled(True)
+        request = self._preview_request(mode)
+        self.layout_preview.set_settings(request.to_layout_settings())
+
+    def _preview_request(self, mode: str) -> ConversionRequest:
+        return ConversionRequest(
+            input_path=Path(self.source_edit.text().strip() or "book.epub"),
+            output_path=Path(self.output_edit.text().strip() or "preview.docx"),
+            imposition_mode=mode,
+            margin_mode=str(self.margin_combo.currentData() or "maximized"),
+            font_name=self.font_edit.text(),
+            body_font_pt=self.body_size.value(),
+            heading_font_pt=self.heading_size.value(),
+            page_numbers=self.page_numbers.isChecked(),
+            cut_guides=self.cut_guides.isChecked(),
+            output_mark_mode=(
+                "crop_marks"
+                if mode == "b6_on_a5" and self.cut_guides.isChecked()
+                else "normal"
+            ),
+            guide_render_mode=(
+                "drawingml" if self.high_compat_guides.isChecked() else "vml"
+            ),
+            content_only=self.content_only.isChecked(),
+        )
 
     def set_source_path(self, source: Path | str) -> None:
         path = Path(source).expanduser()
@@ -236,11 +251,14 @@ class ConverterPage(QWidget):
             body_font_pt=self.body_size.value(),
             heading_font_pt=self.heading_size.value(),
             page_numbers=self.page_numbers.isChecked(),
-            cut_guides=self.cut_guides.isChecked() if mode != "b6_on_a5" else False,
+            cut_guides=self.cut_guides.isChecked(),
             output_mark_mode=(
-                str(self.output_mark_combo.currentData() or "normal")
-                if mode == "b6_on_a5"
+                "crop_marks"
+                if mode == "b6_on_a5" and self.cut_guides.isChecked()
                 else "normal"
+            ),
+            guide_render_mode=(
+                "drawingml" if self.high_compat_guides.isChecked() else "vml"
             ),
             content_only=self.content_only.isChecked(),
         )

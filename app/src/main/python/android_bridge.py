@@ -14,14 +14,15 @@ from typing import Any
 
 from epub_a4_word import __version__ as CORE_VERSION
 from epub_a4_word.converter import convert_input
+from epub_a4_word.docx_compat import install_story_template_fallbacks
 from epub_a4_word.pagination import LayoutSettings
 from epub_a4_word.cover import service as cover_service
 
 BRIDGE_VERSION = "1.0"
 _SUPPORTED_INPUTS = {".epub": "epub", ".docx": "docx"}
 _SUPPORTED_MODES = {
-    "epub": ("signature16", "four_up", "single_a5", "single_4x6"),
-    "docx": ("single_a5", "single_4x6"),
+    "epub": ("signature16", "four_up", "single_a5", "b6_on_a5", "single_4x6"),
+    "docx": ("single_a5", "b6_on_a5", "single_4x6"),
 }
 _SETTING_FIELDS = {
     "imposition_mode",
@@ -33,8 +34,18 @@ _SETTING_FIELDS = {
     "paragraph_spacing_pt",
     "page_numbers",
     "cut_guides",
+    "output_mark_mode",
     "content_only",
 }
+
+
+def _install_android_docx_compat() -> bool:
+    """Force the inline story templates at the Android/Chaquopy boundary."""
+
+    return install_story_template_fallbacks(force=True)
+
+
+_install_android_docx_compat()
 
 
 class ConversionCancelled(RuntimeError):
@@ -110,7 +121,7 @@ def _settings_for(source_type: str, options: dict[str, Any]) -> LayoutSettings:
     mode = options["imposition_mode"]
     if mode not in _SUPPORTED_MODES[source_type]:
         if source_type == "docx":
-            raise ValueError("DOCX 重新排版只支援 A5 或 4×6 英吋單頁模式。")
+            raise ValueError("DOCX 重新排版只支援 A5、B6 置於 A5 或 4×6 英吋單頁模式。")
         raise ValueError("EPUB 輸出模式無效。")
     try:
         return LayoutSettings(**options)
@@ -179,19 +190,9 @@ def cover_apply_template_json(project_json: str, template_id: str) -> str:
     return cover_service.apply_template(project_json, template_id)
 
 
-def cover_extract_embedded_asset_json(project_json: str, asset_id: str) -> str:
+def cover_render_preview_json(project_json: str, output_png: str, max_px: int = 1600) -> str:
     return json.dumps(
-        cover_service.extract_embedded_asset(project_json, asset_id),
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-
-
-def cover_render_preview_json(
-    project_json: str, output_png: str, max_px: int = 1600
-) -> str:
-    return json.dumps(
-        cover_service.render_preview(project_json, output_png, max_px),
+        cover_service.render_preview(project_json, output_png, max_px=max_px),
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -204,7 +205,15 @@ def cover_export_json(
     dpi: int = 300,
 ) -> str:
     return json.dumps(
-        cover_service.export_cover(project_json, pdf_path, docx_path, dpi),
+        cover_service.export_cover(project_json, pdf_path, docx_path, dpi=dpi),
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def cover_extract_embedded_asset_json(project_json: str, asset_id: str) -> str:
+    return json.dumps(
+        cover_service.extract_embedded_asset(project_json, asset_id),
         ensure_ascii=False,
         separators=(",", ":"),
     )
