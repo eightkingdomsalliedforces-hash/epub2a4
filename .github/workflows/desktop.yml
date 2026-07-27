@@ -46,12 +46,21 @@ jobs:
           python -m pip install -e ".[test]"
           python -m pip install "PySide6==6.11.1" "pytest-qt>=4.4,<5" "keyring==25.7.0" "platformdirs==4.10.1"
 
-      - name: Run focused and full verification
-        shell: bash
+      - name: Verify SVG compatibility paths
+        run: >-
+          python -m pytest
+          python-tests/cover/test_publisher_logo_render.py
+          desktop/tests/test_svg_logo.py
+          -q
+
+      - name: Run all shared tests
+        run: python -m pytest python-tests -q
+
+      - name: Run all desktop tests
+        run: python -m pytest desktop/tests -q
+
+      - name: Compile and verify structure
         run: |
-          python -m pytest python-tests/cover/test_publisher_logo_render.py desktop/tests/test_svg_logo.py -q
-          python -m pytest python-tests -q
-          python -m pytest desktop/tests -q
           python -m compileall -q python/src app/src/main/python
           python scripts/verify_project.py
 
