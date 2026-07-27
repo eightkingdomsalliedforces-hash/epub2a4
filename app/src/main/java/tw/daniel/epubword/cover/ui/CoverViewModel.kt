@@ -54,9 +54,7 @@ class CoverViewModel @JvmOverloads constructor(
                 stagedSource = staged
                 resetEditorSession()
                 val metadata = inspection.optJSONObject("metadata") ?: JSONObject()
-                val fixedPages = if (
-                    !inspection.has("fixed_page_count") || inspection.isNull("fixed_page_count")
-                ) 0 else inspection.getInt("fixed_page_count")
+                val inspectedPages = resolveCoverInspectionPageCount(inspection)
                 _uiState.update {
                     it.copy(
                         status = CoverStatus.SETUP,
@@ -69,8 +67,8 @@ class CoverViewModel @JvmOverloads constructor(
                         metadataIsbn = metadata.optString("isbn"),
                         metadataPublisher = metadata.optString("publisher"),
                         metadataLanguage = metadata.optString("language"),
-                        pageCount = fixedPages,
-                        pageCountEstimated = fixedPages <= 0,
+                        pageCount = inspectedPages.pageCount,
+                        pageCountEstimated = inspectedPages.estimated,
                         pageCountConfirmed = false,
                         warnings = inspection.stringList("warnings"),
                         project = null,
