@@ -63,7 +63,7 @@ def _lines(path: Path):
     ]
 
 
-def test_b6_docx_uses_bottom_right_content_and_l_guides(tmp_path: Path) -> None:
+def test_b6_docx_uses_bottom_right_content_and_full_cut_lines(tmp_path: Path) -> None:
     output = _write(tmp_path, "b6_on_a5", output_mark_mode="crop_marks")
 
     section = Document(output).sections[0]
@@ -78,8 +78,8 @@ def test_b6_docx_uses_bottom_right_content_and_l_guides(tmp_path: Path) -> None:
     assert len(lines) == 2
     coordinates = [values[:4] for values, _inner in lines]
     expected = [
-        (0.0, 28.0 * 72.0 / 25.4, 20.0 * 72.0 / 25.4, 28.0 * 72.0 / 25.4),
-        (20.0 * 72.0 / 25.4, 0.0, 20.0 * 72.0 / 25.4, 28.0 * 72.0 / 25.4),
+        (0.0, 28.0 * 72.0 / 25.4, 148.0 * 72.0 / 25.4, 28.0 * 72.0 / 25.4),
+        (20.0 * 72.0 / 25.4, 0.0, 20.0 * 72.0 / 25.4, 210.0 * 72.0 / 25.4),
     ]
     for actual, wanted in zip(coordinates, expected, strict=True):
         assert actual == pytest.approx(wanted, abs=0.01)
