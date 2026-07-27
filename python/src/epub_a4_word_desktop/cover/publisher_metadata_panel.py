@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 from typing import Mapping
 
 from PySide6.QtCore import QSignalBlocker, Signal
@@ -74,13 +75,19 @@ class PublisherMetadataValues:
         )
 
 
+class PublisherMetadataValidationError(ValueError):
+    def __init__(self, field: str, message: str) -> None:
+        super().__init__(message)
+        self.field = field
+
+
 class PublisherMetadataPanel(QGroupBox):
     values_changed = Signal(object)
     search_logo_requested = Signal(str)
     manual_logo_requested = Signal()
     clear_logo_requested = Signal()
 
-    _COLOR_RE = __import__("re").compile(r"^#[0-9A-Fa-f]{6}$")
+    _COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("出版社封底與書脊資訊", parent)
@@ -131,18 +138,29 @@ class PublisherMetadataPanel(QGroupBox):
         self.error_label.hide()
 
         form = QFormLayout()
-        form.addRow("ISBN", self.isbn_edit)
-        form.addRow("ISBN 附加碼", self.isbn_addon_edit)
-        form.addRow("出版社", self.publisher_edit)
-        form.addRow("定價", self.price_edit)
-        form.addRow("出版／代理資訊", self.publication_place_edit)
-        form.addRow("譯者", self.translator_edit)
-        form.addRow("英文書名／副標題", self.english_title_edit)
-        form.addRow("集數／冊數", self.volume_number_edit)
-        form.addRow("卷別／篇章", self.arc_label_edit)
-        form.addRow("系列名稱", self.series_name_edit)
-        form.addRow("內部書號", self.internal_book_code_edit)
-        form.addRow("書脊強調色", self.spine_accent_color_edit)
+        self._field_error_labels: dict[str, QLabel] = {}
+
+        def add_field(label: str, field: str, widget: QWidget) -> None:
+            form.addRow(label, widget)
+            error = QLabel("", self)
+            error.setObjectName(f"publisher-metadata-error-{field}")
+            error.setWordWrap(True)
+            error.hide()
+            form.addRow("", error)
+            self._field_error_labels[field] = error
+
+        add_field("ISBN", "isbn", self.isbn_edit)
+        add_field("ISBN 附加碼", "isbn_addon", self.isbn_addon_edit)
+        add_field("出版社", "publisher", self.publisher_edit)
+        add_field("定價", "price", self.price_edit)
+        add_field("出版／代理資訊", "publication_place", self.publication_place_edit)
+        add_field("譯者", "translator", self.translator_edit)
+        add_field("英文書名／副標題", "english_title", self.english_title_edit)
+        add_field("集數／冊數", "volume_number", self.volume_number_edit)
+        add_field("卷別／篇章", "arc_label", self.arc_label_edit)
+        add_field("系列名稱", "series_name", self.series_name_edit)
+        add_field("內部書號", "internal_book_code", self.internal_book_code_edit)
+        add_field("書脊強調色", "spine_accent_color", self.spine_accent_color_edit)
         form.addRow("出版社 Logo", logo_row)
         form.addRow("Logo 狀態", self.logo_status_label)
         layout = QVBoxLayout(self)
@@ -181,14 +199,29 @@ class PublisherMetadataPanel(QGroupBox):
         raw_isbn = self.isbn_edit.text().strip()
         isbn = canonical_isbn13(raw_isbn) if raw_isbn else ""
         if raw_isbn and not isbn:
-            raise ValueError("ISBN 必須是通過校驗的 ISBN-10 或 ISBN-13。")
-        addon = "".join(character for character in self.isbn_addon_edit.text() if character.isdigit())
+            raise PublisherMetadataValidationError(
+                "isbn",
+                "ISBN 必須是通過校驗的 ISBN-10 或 ISBN-13。",
+            )
+        addon = "".join(
+            character
+            for character in self.isbn_addon_edit.text()
+            if character.isdigit()
+        )
         raw_addon = self.isbn_addon_edit.text().strip()
-        if raw_addon and (addon != raw_addon.replace(" ", "") or len(addon) not in {2, 5}):
-            raise ValueError("ISBN 附加碼必須是 2 位或 5 位數字。")
+        if raw_addon and (
+            addon != raw_addon.replace(" ", "") or len(addon) not in {2, 5}
+        ):
+            raise PublisherMetadataValidationError(
+                "isbn_addon",
+                "ISBN 附加碼必須是 2 位或 5 位數字。",
+            )
         color = self.spine_accent_color_edit.text().strip() or "#F15A24"
         if not self._COLOR_RE.fullmatch(color):
-            raise ValueError("書脊強調色必須使用 #RRGGBB 格式。")
+            raise PublisherMetadataValidationError(
+                "spine_accent_color",
+                "書脊強調色必須使用 #RRGGBB 格式。",
+            )
         return PublisherMetadataValues(
             isbn=isbn,
             isbn_addon=addon,
@@ -234,7 +267,6 @@ class PublisherMetadataPanel(QGroupBox):
             del blockers
         self.clear_validation_error()
 
-
     def set_logo_metadata(self, value: object) -> None:
         if value is None:
             self.logo_status_label.setText("尚未選擇 Logo")
@@ -247,19 +279,37 @@ class PublisherMetadataPanel(QGroupBox):
             f"{filename or '已選擇 Logo'} · {origin}"
         )
 
-    def set_validation_error(self, _field: str, message: str) -> None:
-        self.error_label.setText(message)
-        self.error_label.setVisible(bool(message))
+    def set_validation_error(self, field: str, message: str) -> None:
+        self.clear_validation_error()
+        label = self._field_error_labels.get(field)
+        if label is None:
+            self.error_label.setText(message)
+            self.error_label.setVisible(bool(message))
+            return
+        label.setText(message)
+        label.setVisible(bool(message))
 
-    def clear_validation_error(self) -> None:
-        self.error_label.clear()
-        self.error_label.hide()
+    def clear_validation_error(self, field: str | None = None) -> None:
+        labels = (
+            (self._field_error_labels[field],)
+            if field in self._field_error_labels
+            else tuple(self._field_error_labels.values())
+        )
+        for label in labels:
+            label.clear()
+            label.hide()
+        if field is None or field not in self._field_error_labels:
+            self.error_label.clear()
+            self.error_label.hide()
 
     def _on_any_changed(self, _text: str) -> None:
+        self.clear_validation_error()
         try:
             values = self.values()
+        except PublisherMetadataValidationError as exc:
+            self.set_validation_error(exc.field, str(exc))
+            return
         except ValueError as exc:
             self.set_validation_error("", str(exc))
             return
-        self.clear_validation_error()
         self.values_changed.emit(values)
