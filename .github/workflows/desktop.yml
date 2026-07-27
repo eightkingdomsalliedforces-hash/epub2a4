@@ -51,12 +51,17 @@ jobs:
           python -m compileall -q python/src app/src/main/python
           python scripts/verify_project.py
       - name: Commit verified fix and restore normal CI
+        shell: bash
         run: |
+          set -euxo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git show 43ce3f86d0d941ab5ed32b3a3b9ca8bfeabc52a3:.github/workflows/desktop.yml > .github/workflows/desktop.yml
           git rm -f --ignore-unmatch .github/patches/publisher-change-search.patch
           git rm -f --ignore-unmatch .github/scripts/apply_publisher_change.py
           git add -A
+          git status --short
           git commit -m "fix: search replacement logo when publisher changes"
+          git fetch origin fix/reference-back-cover-isbn-clarity
+          git rebase origin/fix/reference-back-cover-isbn-clarity
           git push origin HEAD:fix/reference-back-cover-isbn-clarity
