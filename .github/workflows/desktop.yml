@@ -1,4 +1,4 @@
-name: Diagnose desktop compatibility apply
+name: Apply and verify desktop implementation
 
 on:
   pull_request:
@@ -10,12 +10,16 @@ on:
       - ".github/scripts/apply_desktop_compat.py"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-apply:
+  apply-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: python/src:app/src/main/python
     steps:
       - name: Checkout source branch
         uses: actions/checkout@v4
@@ -23,38 +27,68 @@ jobs:
           ref: fix/reference-back-cover-isbn-clarity
           fetch-depth: 0
 
-      - name: Capture compatibility apply diagnostics
+      - name: Apply verified compatibility changes
         shell: bash
         run: |
-          set +e
-          {
-            echo "HEAD=$(git rev-parse HEAD)"
-            echo "=== SVG patch check ==="
-            git apply --check .github/patches/svg-logo-compat.patch
-            svg_check=$?
-            echo "svg_check=$svg_check"
-            if [ "$svg_check" = "0" ]; then
-              echo "=== SVG patch apply ==="
-              git apply .github/patches/svg-logo-compat.patch
-              svg_apply=$?
-            else
-              svg_apply=99
-            fi
-            echo "svg_apply=$svg_apply"
-            echo "=== Compatibility script ==="
-            python .github/scripts/apply_desktop_compat.py
-            script_code=$?
-            echo "script_code=$script_code"
-            echo "=== Worktree diff ==="
-            git diff --stat
-            git diff --check
-          } > desktop-compat-apply.log 2>&1
-          cat desktop-compat-apply.log
-          exit 0
+          git apply --check .github/patches/svg-logo-compat.patch
+          git apply .github/patches/svg-logo-compat.patch
+          python .github/scripts/apply_desktop_compat.py
+          git diff --check
 
-      - name: Upload apply diagnostics
-        uses: actions/upload-artifact@v4
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
         with:
-          name: desktop-compat-apply-diagnostics
-          path: desktop-compat-apply.log
-          if-no-files-found: error
+          python-version: "3.13"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libegl1
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install -e ".[test]"
+          python -m pip install "PySide6==6.11.1" "pytest-qt>=4.4,<5" "keyring==25.7.0" "platformdirs==4.10.1"
+
+      - name: Verify focused desktop feature paths
+        run: >-
+          python -m pytest
+          python-tests/cover/test_publisher_logo_render.py
+          desktop/tests/test_svg_logo.py
+          desktop/tests/test_publisher_metadata_panel.py
+          desktop/tests/test_publisher_logo_dialog.py
+          desktop/tests/test_publisher_logo_embedding.py
+          desktop/tests/test_converter_crop_controls.py
+          desktop/tests/test_layout_preview.py
+          desktop/tests/test_publisher_workflow.py
+          desktop/tests/test_user_reported_cover_regressions.py
+          desktop/tests/test_cover_canvas.py
+          -q --tb=short
+
+      - name: Run all shared tests
+        run: python -m pytest python-tests -q
+
+      - name: Run all desktop tests
+        run: python -m pytest desktop/tests -q
+
+      - name: Compile and verify structure
+        run: |
+          python -m compileall -q python/src app/src/main/python
+          python scripts/verify_project.py
+
+      - name: Commit verified implementation and restore normal CI
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git show 159d02747e4c6b45878db046b94ee6800eed848f:.github/workflows/desktop.yml > .github/workflows/desktop.yml
+          git rm -f --ignore-unmatch .github/patches/svg-logo-compat.patch
+          git rm -f --ignore-unmatch .github/patches/desktop-regression-fixes.patch
+          git rm -f --ignore-unmatch .github/workflows/apply-svg-logo-compat.yml
+          git rm -f --ignore-unmatch .github/scripts/apply_desktop_compat.py
+          git rm -f --ignore-unmatch .github/workflows/apply-desktop-implementation.yml
+          git rm -f --ignore-unmatch .github/patches/desktop-current.part*
+          git rm -f --ignore-unmatch .github/patches/desktop-full.part*
+          git rm -f --ignore-unmatch docs/superpowers/plans/.tree-base-test*
+          git add -A
+          git commit -m "fix: complete desktop publisher template and crop guides"
+          git push origin HEAD:fix/reference-back-cover-isbn-clarity
