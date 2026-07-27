@@ -65,3 +65,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "feat: add desktop publisher spine logos and crop guides"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+# Trigger after the workflow exists on the branch.
