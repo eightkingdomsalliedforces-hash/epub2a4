@@ -50,3 +50,8 @@ def install_story_template_fallbacks(*, force: bool = False) -> bool:
         changed = True
     _INSTALLED = True
     return changed
+
+
+# ``docx_writer`` imports this module before Android dispatches EPUB or DOCX
+# conversion. Installing here also protects the direct Word reflow path.
+install_story_template_fallbacks()
