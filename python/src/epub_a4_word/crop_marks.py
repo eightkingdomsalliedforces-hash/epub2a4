@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from docx.oxml import parse_xml
 
+from .docx_compat import install_story_template_fallbacks
 from .page_placement import CropGuide
 
 PT_PER_MM = 72.0 / 25.4
@@ -77,6 +78,7 @@ def add_page_guides(
 
     if not guides:
         return
+    install_story_template_fallbacks()
     header = section.header
     header.is_linked_to_previous = False
     paragraph = header.paragraphs[0]
