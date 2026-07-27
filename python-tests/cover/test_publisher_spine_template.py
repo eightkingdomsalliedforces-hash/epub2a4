@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from epub_a4_word.cover.geometry import calculate_layout
 from epub_a4_word.cover.models import CoverMetadata
 from epub_a4_word.cover.templates import apply_template
 
@@ -120,3 +121,34 @@ def test_wide_publisher_spine_matches_reference_vertical_typography(sample_proje
     assert author.content["font_size_pt"] >= 10.0
     assert publisher.content["direction"] == "vertical"
     assert publisher.content["font_size_pt"] >= 10.0
+
+
+def test_reported_603_spine_text_is_readable_and_bounded(sample_project) -> None:
+    project = replace(
+        sample_project(
+            page_count=133,
+            paper_caliper_mm=0.09,
+            manual_spine_width_mm=None,
+        ),
+        metadata=CoverMetadata(
+            title="魔法禁書目錄 1",
+            author="鎌池和馬",
+            publisher="台灣角川",
+            volume_number="1",
+        ),
+    )
+    result = apply_template(project, "publisher_back_matter_with_spine")
+    spine = calculate_layout(result).spine_rect
+
+    for element_id in (
+        "spine-title-main",
+        "spine-volume",
+        "spine-author",
+        "spine-publisher-name",
+    ):
+        transform = result.elements_by_id[element_id].transform
+        assert transform.width_mm >= 4.5
+        assert transform.x_mm >= spine.x_mm
+        assert transform.x_mm + transform.width_mm <= spine.right_mm
+        assert transform.y_mm >= spine.y_mm
+        assert transform.y_mm + transform.height_mm <= spine.bottom_mm
