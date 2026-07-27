@@ -13,6 +13,7 @@ class PythonCoverGatewayContractTest {
                 "cover_apply_template_json",
                 "cover_render_preview_json",
                 "cover_export_json",
+                "cover_assign_publisher_logo_json",
             ),
             PythonCoverGateway.BRIDGE_FUNCTIONS,
         )

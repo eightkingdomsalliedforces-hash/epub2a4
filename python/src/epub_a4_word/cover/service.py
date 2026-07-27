@@ -28,7 +28,7 @@ from .models import (
 from .pdf_export import ExportResult, export_original_pdf, export_pdf
 from .project_io import CoverValidationError, dumps_project, loads_project
 from .render import render_preview as _render_preview
-from .templates import apply_template as _apply_template
+from .templates import apply_template as _apply_template, assign_publisher_logo as _assign_publisher_logo
 
 _SUPPORTED_TRIMS = (
     (148.0, 210.0),
@@ -436,6 +436,10 @@ def extract_embedded_asset(project_json: str, asset_id: str) -> dict[str, Any]:
 
 def apply_template(project_json: str, template_id: str) -> str:
     return dumps_project(_apply_template(loads_project(project_json), template_id))
+
+
+def assign_publisher_logo(project_json: str, image_path: str) -> str:
+    return dumps_project(_assign_publisher_logo(loads_project(project_json), image_path))
 
 
 def render_preview(project_json: str, output_png: str, max_px: int = 1600) -> dict[str, Any]:

@@ -13,6 +13,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import tw.daniel.epubword.cover.ui.CoverEditorCallbacks
 import tw.daniel.epubword.cover.ui.CoverSetupCallbacks
 import tw.daniel.epubword.cover.ui.CoverViewModel
+import tw.daniel.epubword.cover.ui.publisherLogoSearchUri
+import android.net.Uri
 import tw.daniel.epubword.ui.AppRoot
 import tw.daniel.epubword.ui.ConversionViewModel
 import tw.daniel.epubword.ui.theme.EpubWordTheme
@@ -39,6 +41,9 @@ class MainActivity : ComponentActivity() {
                 val coverImageLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument(),
                 ) { uri -> if (uri != null) coverViewModel.importLocalImage(uri) }
+                val publisherLogoLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument(),
+                ) { uri -> if (uri != null) coverViewModel.assignPublisherLogo(uri) }
                 val coverDirectoryLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocumentTree(),
                 ) { uri ->
@@ -119,6 +124,17 @@ class MainActivity : ComponentActivity() {
                         onBleed = coverViewModel::setBleed,
                         onImageMode = coverViewModel::setImageMode,
                         onTemplate = coverViewModel::setTemplate,
+                        onChoosePublisherLogo = { publisherLogoLauncher.launch(arrayOf("image/*")) },
+                        onSearchPublisherLogo = {
+                            if (coverState.metadataPublisher.isNotBlank()) {
+                                startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse(publisherLogoSearchUri(coverState.metadataPublisher)),
+                                    ),
+                                )
+                            }
+                        },
                         onCreateProject = coverViewModel::createProject,
                     ),
                     coverEditorCallbacks = CoverEditorCallbacks(

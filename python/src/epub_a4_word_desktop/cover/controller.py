@@ -28,7 +28,10 @@ from epub_a4_word.cover.models import (
 )
 from epub_a4_word.cover.project_io import dumps_project, loads_project
 from epub_a4_word.cover.search.models import CandidateCategory
-from epub_a4_word.cover.templates import apply_template as apply_cover_template
+from epub_a4_word.cover.templates import (
+    apply_template as apply_cover_template,
+    assign_publisher_logo as assign_template_publisher_logo,
+)
 
 from .commands import ReplaceProjectCommand
 from .models import patch_element
@@ -357,6 +360,12 @@ class CoverController(QObject):
         candidate = replace(project, elements=project.elements + (element,))
         self.replace_project(dumps_project(candidate), label="加入本機圖片")
         return element.id
+
+    def assign_publisher_logo(self, source_path: Path | str) -> None:
+        project = self._require_project()
+        copied = self._copy_local_image(Path(source_path).expanduser().resolve())
+        candidate = assign_template_publisher_logo(project, copied)
+        self.replace_project(dumps_project(candidate), label="更新出版社 Logo")
 
     def add_downloaded_images(
         self,

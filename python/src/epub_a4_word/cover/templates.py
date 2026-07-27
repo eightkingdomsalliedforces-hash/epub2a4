@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from pathlib import Path
+import re
 
 from .geometry import CoverLayout, RectMm, calculate_layout
 from .isbn import normalize_ean_addon, normalize_isbn
@@ -51,12 +53,15 @@ STANDARD_TEMPLATE_IDS = frozenset(
         "front-author",
         "spine-title",
         "spine-author",
+        "spine-publisher",
         "back-description",
         "back-publisher",
         "back-isbn",
         "back-isbn-label",
         "back-isbn-code",
         "back-publisher-info",
+        "back-publisher-logo",
+        "spine-publisher-logo",
     }
 )
 
@@ -101,6 +106,57 @@ def text_element(
             "direction": "horizontal",
         },
     )
+
+
+def assign_publisher_logo(project: CoverProject, path: Path | str) -> CoverProject:
+    """Replace the publisher-template Logo while retaining its designated slot."""
+    slot = project.background.get("publisher_logo_slot")
+    if not isinstance(slot, dict):
+        raise ValueError("請先套用出版社式封底，才能放入出版社 Logo。")
+    resolved_path = str(Path(path).expanduser().resolve())
+    logo = CoverElement(
+        id="back-publisher-logo",
+        kind=ElementKind.IMAGE,
+        region=Region.BACK,
+        transform=ElementTransform(
+            float(slot["x_mm"]),
+            float(slot["y_mm"]),
+            float(slot["width_mm"]),
+            float(slot["height_mm"]),
+        ),
+        z_index=30,
+        content={
+            "path": resolved_path,
+            "fit": "contain",
+            "scale": 1.0,
+            "clip_to_region": True,
+        },
+    )
+    layout = calculate_layout(project)
+    spine_safe = layout.spine_safe_rect
+    spine_logo_inset = layout.spine_rect.width_mm * 0.15
+    spine_logo = CoverElement(
+        id="spine-publisher-logo",
+        kind=ElementKind.IMAGE,
+        region=Region.SPINE,
+        transform=ElementTransform(
+            layout.spine_rect.x_mm + spine_logo_inset,
+            spine_safe.y_mm,
+            layout.spine_rect.width_mm - spine_logo_inset * 2.0,
+            min(14.0, spine_safe.height_mm * 0.10),
+        ),
+        z_index=30,
+        content={
+            "path": resolved_path,
+            "fit": "contain",
+            "scale": 1.0,
+            "clip_to_region": True,
+        },
+    )
+    template_logo_ids = {logo.id, spine_logo.id}
+    retained = tuple(element for element in project.elements if element.id not in template_logo_ids)
+    logos = (logo, spine_logo) if layout.spine_rect.width_mm >= 6.0 else (logo,)
+    return replace(project, elements=retained + logos)
 
 
 def _shape_element(
@@ -203,31 +259,51 @@ def _spine_elements(
     if width < 4.0:
         title_rect = safe
     else:
-        title_rect = _vertical_slice(safe, 0.04, 0.68)
+        title_rect = _vertical_slice(safe, 0.14 if width >= 6.0 else 0.04, 0.48 if width >= 6.0 else 0.68)
 
+    title = project.metadata.title
+    chinese_title = bool(re.search(r"[\u3400-\u9fff]", title))
     elements: list[CoverElement] = [
         text_element(
             "spine-title",
             Region.SPINE,
             title_rect,
-            project.metadata.title,
-            6.0 if width < 4.0 else 8.0,
-            rotation_deg=90.0,
+            title,
+            8.0 if width < 8.0 else (12.0 if width < 10.0 else 14.0),
+            rotation_deg=0.0 if chinese_title else 90.0,
             font_weight=600,
         )
     ]
+    title_content = dict(elements[0].content)
+    title_content["direction"] = "vertical" if chinese_title else "horizontal"
+    elements[0] = replace(elements[0], content=title_content)
     if width >= 4.0 and project.metadata.author:
-        author_rect = _vertical_slice(safe, 0.76, 0.20)
-        elements.append(
-            text_element(
+        author_rect = _vertical_slice(safe, 0.64 if width >= 6.0 else 0.76, 0.18)
+        author = text_element(
                 "spine-author",
                 Region.SPINE,
                 author_rect,
                 project.metadata.author,
-                6.0,
-                rotation_deg=90.0,
+                8.0 if width < 8.0 else (9.0 if width < 10.0 else 10.0),
+                rotation_deg=0.0 if re.search(r"[\u3400-\u9fff]", project.metadata.author) else 90.0,
             )
+        author_content = dict(author.content)
+        author_content["direction"] = (
+            "vertical" if re.search(r"[\u3400-\u9fff]", project.metadata.author) else "horizontal"
         )
+        elements.append(replace(author, content=author_content))
+    if width >= 6.0 and project.metadata.publisher:
+        publisher = text_element(
+            "spine-publisher",
+            Region.SPINE,
+            _vertical_slice(safe, 0.84, 0.12),
+            project.metadata.publisher,
+            8.0 if width < 8.0 else (9.0 if width < 10.0 else 10.0),
+            font_weight=600,
+        )
+        publisher_content = dict(publisher.content)
+        publisher_content["direction"] = "vertical"
+        elements.append(replace(publisher, content=publisher_content))
     return tuple(elements), ()
 
 
@@ -344,7 +420,7 @@ def _publisher_back_matter(
                 Region.BACK,
                 label_rect,
                 f"ISBN-13 {isbn}",
-                8.0,
+                10.0,
                 align="left",
                 z_index=20,
             )
@@ -393,7 +469,7 @@ def _publisher_back_matter(
                 Region.BACK,
                 info_rect,
                 "\n".join(publisher_lines),
-                8.0,
+                10.0,
                 align="right",
                 z_index=20,
             )

@@ -6,7 +6,7 @@ from typing import Callable
 
 from PIL import Image
 
-from epub_a4_word.cover.fonts import resolve_font
+from epub_a4_word.cover.fonts import font_candidates, resolve_font
 from epub_a4_word.cover.geometry import calculate_layout
 from epub_a4_word.cover.models import (
     CoverElement,
@@ -23,6 +23,7 @@ from epub_a4_word.cover.render import (
     render_print_page,
     render_spread,
 )
+from epub_a4_word.cover.templates import apply_template, assign_publisher_logo
 
 
 def _pixel_rgb(image: Image.Image, x: int, y: int) -> tuple[int, int, int]:
@@ -68,6 +69,24 @@ def test_front_only_image_does_not_paint_back(
     assert _pixel_rgb(image, back_x, y) == (255, 255, 255)
     assert _pixel_rgb(image, front_x, y)[0] > 240
     assert _pixel_rgb(image, front_x, y)[1] < 20
+
+
+def test_publisher_logo_renders_on_back_in_front_only_mode(
+    sample_project: Callable[..., CoverProject], tmp_path: Path
+) -> None:
+    source = tmp_path / "publisher-logo.png"
+    Image.new("RGB", (40, 40), "red").save(source)
+    project = assign_publisher_logo(
+        apply_template(sample_project(), "publisher_back_matter"),
+        source,
+    )
+    logo = project.elements_by_id["back-publisher-logo"]
+
+    image = render_spread(project, dpi=100)
+    x = mm_to_px(logo.transform.x_mm + logo.transform.width_mm / 2.0, 100)
+    y = mm_to_px(logo.transform.y_mm + logo.transform.height_mm / 2.0, 100)
+
+    assert _pixel_rgb(image, x, y) == (255, 0, 0)
 
 
 def test_preview_caps_longest_edge(
@@ -162,6 +181,12 @@ def test_text_overflow_is_reported_in_preview(
 def test_font_fallback_returns_a_usable_font() -> None:
     font = resolve_font("missing-family", None, 18)
     assert font is not None
+
+
+def test_font_fallback_candidates_include_cjk_system_fonts() -> None:
+    candidates = tuple(str(path).replace("\\", "/") for path in font_candidates(None))
+    assert any(path.endswith("/Windows/Fonts/msjh.ttc") for path in candidates)
+    assert any(path.endswith("/system/fonts/NotoSansCJK-Regular.ttc") for path in candidates)
 
 
 def test_full_spread_image_mode_uses_bleed_rect_even_for_front_region(

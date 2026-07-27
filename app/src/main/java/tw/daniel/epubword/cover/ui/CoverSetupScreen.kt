@@ -34,6 +34,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import tw.daniel.epubword.cover.model.ImageMode
 import java.util.Locale
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+
+fun publisherLogoSearchUri(publisher: String): String {
+    val query = URLEncoder.encode("${publisher.trim()} logo".trim(), StandardCharsets.UTF_8)
+    val title = URLEncoder.encode("Special:MediaSearch", StandardCharsets.UTF_8)
+    return "https://commons.wikimedia.org/w/index.php?search=$query&title=$title&type=image"
+}
 
 data class CoverSetupCallbacks(
     val onChooseSource: () -> Unit = {},
@@ -46,6 +54,8 @@ data class CoverSetupCallbacks(
     val onBleed: (Double) -> Unit = {},
     val onImageMode: (ImageMode) -> Unit = {},
     val onTemplate: (String) -> Unit = {},
+    val onChoosePublisherLogo: () -> Unit = {},
+    val onSearchPublisherLogo: () -> Unit = {},
     val onCreateProject: () -> Unit = {},
 )
 
@@ -245,6 +255,14 @@ private fun AppearanceCard(state: CoverUiState, callbacks: CoverSetupCallbacks) 
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        if (state.templateId == "publisher_back_matter") {
+            OutlinedButton(onClick = callbacks.onSearchPublisherLogo, modifier = Modifier.fillMaxWidth()) {
+                Text("搜尋出版社 Logo")
+            }
+            OutlinedButton(onClick = callbacks.onChoosePublisherLogo, modifier = Modifier.fillMaxWidth()) {
+                Text("選擇出版社 Logo")
+            }
+        }
     }
 }
 
@@ -306,4 +324,5 @@ private val TEMPLATE_OPTIONS = listOf(
     "front_image_plain_back" to "正面圖片＋純色封底",
     "full_spread" to "跨頁滿版圖片",
     "top_bottom_blocks" to "上下色塊",
+    "publisher_back_matter" to "出版社式封底",
 )

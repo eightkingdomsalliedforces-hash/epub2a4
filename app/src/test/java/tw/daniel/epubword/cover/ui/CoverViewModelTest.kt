@@ -38,4 +38,12 @@ class CoverViewModelTest {
         assertTrue(ready.canCreateProject)
         assertFalse(ready.copy(status = CoverStatus.CREATING).canCreateProject)
     }
+
+    @Test
+    fun publisherLogoSearchTargetsWikimediaMediaSearch() {
+        val uri = publisherLogoSearchUri("台灣角川")
+        assertTrue(uri.startsWith("https://commons.wikimedia.org/w/index.php?"))
+        assertTrue(uri.contains("Special%3AMediaSearch"))
+        assertTrue(uri.contains("%E5%8F%B0%E7%81%A3%E8%A7%92%E5%B7%9D+logo"))
+    }
 }

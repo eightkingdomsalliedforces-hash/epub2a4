@@ -4,9 +4,11 @@ from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 import re
+from urllib.parse import urlencode
 from uuid import uuid4
 
-from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtCore import QRectF, Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -55,6 +57,13 @@ from epub_a4_word_desktop.settings.credentials import (
     SessionCredentialStore,
 )
 from epub_a4_word_desktop.settings.paths import RuntimePaths
+
+
+def publisher_logo_search_url(publisher: str) -> str:
+    query = f"{publisher.strip()} logo".strip()
+    return "https://commons.wikimedia.org/w/index.php?" + urlencode(
+        {"search": query, "title": "Special:MediaSearch", "type": "image"}
+    )
 
 
 class TemplatePanel(QGroupBox):
@@ -188,6 +197,8 @@ class CoverPage(QWidget):
         toolbar.addWidget(self.status_label)
 
         self.template_panel = TemplatePanel(self)
+        self.publisher_logo_button = QPushButton("手動選擇出版社 Logo", self)
+        self.publisher_logo_search_button = QPushButton("搜尋出版社 Logo", self)
         self.assets_panel = AssetsPanel(self.controller, self)
         self.layers_panel = LayersPanel(self)
         self.canvas = CoverCanvas(self)
@@ -206,6 +217,8 @@ class CoverPage(QWidget):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addWidget(self.template_panel)
+        left_layout.addWidget(self.publisher_logo_search_button)
+        left_layout.addWidget(self.publisher_logo_button)
         left_layout.addWidget(self.assets_panel)
         left_layout.addWidget(self.layers_panel, 1)
 
@@ -257,6 +270,8 @@ class CoverPage(QWidget):
         self.redo_button.clicked.connect(lambda _checked=False: self.controller.redo())
         self.setup_panel.create_requested.connect(self._create_project)
         self.template_panel.template_selected.connect(self._apply_template)
+        self.publisher_logo_button.clicked.connect(self._choose_publisher_logo)
+        self.publisher_logo_search_button.clicked.connect(self._search_publisher_logo)
         self.assets_panel.image_imported.connect(self._add_image)
         self.assets_panel.add_text_requested.connect(self._add_text)
         self.assets_panel.crop_requested.connect(self._crop_asset)
@@ -362,6 +377,32 @@ class CoverPage(QWidget):
             self.controller.apply_template(template_id)
         except Exception as exc:
             self._show_error(str(exc))
+
+    def _choose_publisher_logo(self) -> None:
+        if not self.controller.project_json:
+            self._show_error("請先建立封面專案。")
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "選擇出版社 Logo", "", "圖片 (*.png *.jpg *.jpeg *.webp)"
+        )
+        if not path:
+            return
+        try:
+            self.controller.assign_publisher_logo(path)
+            self.status_label.setText("已套用出版社 Logo。")
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _search_publisher_logo(self) -> None:
+        if not self.controller.project_json:
+            self._show_error("請先建立封面專案。")
+            return
+        publisher = loads_project(self.controller.project_json).metadata.publisher.strip()
+        if not publisher:
+            self._show_error("請先填寫出版社名稱。")
+            return
+        QDesktopServices.openUrl(QUrl(publisher_logo_search_url(publisher)))
+        self.status_label.setText("已開啟 Wikimedia Commons 出版社 Logo 搜尋；下載後可按「手動選擇出版社 Logo」。")
 
     def _add_image(self, path: str, region: Region) -> None:
         if not self.controller.project_json:
