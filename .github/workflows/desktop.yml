@@ -37,10 +37,20 @@ jobs:
       - name: Reconstruct and validate patch
         shell: bash
         run: |
-          set -euo pipefail
-          cat .github/patches/desktop-current.part* | tr -d '\n' | base64 -d | gzip -d > /tmp/desktop-current.patch
-          test "$(sha256sum /tmp/desktop-current.patch | cut -d' ' -f1)" = "1e025e167ceedba627c40317f9f2d0ee12e7c13a6616a42b7d1c86419a0a1e0a"
-          git apply --check /tmp/desktop-current.patch
+          set -u
+          ls -l .github/patches/desktop-current.part*
+          wc -c .github/patches/desktop-current.part*
+          cat .github/patches/desktop-current.part* | tr -d '\n' > /tmp/desktop-current.b64
+          echo "base64 characters: $(wc -c < /tmp/desktop-current.b64)"
+          base64 -d /tmp/desktop-current.b64 > /tmp/desktop-current.patch.gz || { echo "base64 decode failed"; exit 1; }
+          echo "gzip bytes: $(wc -c < /tmp/desktop-current.patch.gz)"
+          gzip -t /tmp/desktop-current.patch.gz || { echo "gzip validation failed"; exit 1; }
+          gzip -dc /tmp/desktop-current.patch.gz > /tmp/desktop-current.patch
+          actual_sha="$(sha256sum /tmp/desktop-current.patch | cut -d' ' -f1)"
+          echo "patch SHA256: ${actual_sha}"
+          echo "expected SHA256: 1e025e167ceedba627c40317f9f2d0ee12e7c13a6616a42b7d1c86419a0a1e0a"
+          test "${actual_sha}" = "1e025e167ceedba627c40317f9f2d0ee12e7c13a6616a42b7d1c86419a0a1e0a"
+          git apply --check /tmp/desktop-current.patch || { echo "git apply check failed"; exit 1; }
           git apply /tmp/desktop-current.patch
 
       - name: Install Linux Qt runtime library
