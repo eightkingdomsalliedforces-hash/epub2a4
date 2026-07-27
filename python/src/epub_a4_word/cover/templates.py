@@ -767,6 +767,16 @@ def refresh_template_metadata(
 
     generated = apply_template(candidate, canonical)
     old_by_id = project.elements_by_id
+    generated_by_id = generated.elements_by_id
+    old_heading = old_by_id.get("back-publisher-heading")
+    generated_heading = generated_by_id.get("back-publisher-heading")
+    heading_growth = 0.0
+    if old_heading is not None and generated_heading is not None:
+        heading_growth = max(
+            0.0,
+            generated_heading.transform.height_mm
+            - old_heading.transform.height_mm,
+        )
     generated_ids = {element.id for element in generated.elements}
     merged: list[CoverElement] = []
     for element in generated.elements:
@@ -780,10 +790,28 @@ def refresh_template_metadata(
         content = dict(element.content)
         content.pop("template_hidden", None)
         content.pop("template_saved_opacity", None)
+        transform = old.transform
+        if element.id == "back-publisher-heading":
+            transform = replace(
+                old.transform,
+                height_mm=max(
+                    old.transform.height_mm,
+                    element.transform.height_mm,
+                ),
+            )
+        elif element.id == "back-publisher-details":
+            transform = replace(
+                old.transform,
+                y_mm=old.transform.y_mm + heading_growth,
+                height_mm=max(
+                    old.transform.height_mm,
+                    element.transform.height_mm,
+                ),
+            )
         merged.append(
             replace(
                 element,
-                transform=old.transform,
+                transform=transform,
                 z_index=old.z_index,
                 opacity=opacity,
                 content=content,

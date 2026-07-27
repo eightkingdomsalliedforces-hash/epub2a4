@@ -65,3 +65,11 @@ def test_controller_embeds_selected_logo_and_refreshes_spine(tmp_path: Path) -> 
     assert Path(updated.metadata.publisher_logo.path).is_file()
     assert updated.metadata.publisher_logo.official_source is True
     assert updated.elements_by_id["spine-publisher-logo"].content["fit"] == "contain"
+
+    asset_id = controller.apply_manual_publisher_logo(source)
+    updated = loads_project(controller.project_json)
+
+    assert asset_id.startswith("publisher-logo-")
+    assert updated.metadata.publisher_logo is not None
+    assert updated.metadata.publisher_logo.manual_selection is True
+    assert Path(updated.metadata.publisher_logo.path).suffix == ".png"

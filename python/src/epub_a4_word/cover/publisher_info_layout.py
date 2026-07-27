@@ -136,9 +136,9 @@ def layout_publisher_info(
     max_width_mm: float,
     max_height_mm: float,
     measure: MeasureText | None = None,
-    heading_font_pt: float = 7.5,
-    details_font_pt: float = 6.5,
-    minimum_font_pt: float = 5.5,
+    heading_font_pt: float = 10.0,
+    details_font_pt: float = 9.0,
+    minimum_font_pt: float = 7.5,
     heading_gap_mm: float = 1.0,
 ) -> PublisherInfoLayout:
     if max_width_mm <= 0.0 or max_height_mm <= 0.0:

@@ -71,9 +71,9 @@ def test_publisher_template_separates_round_heading_and_details() -> None:
     assert ids["back-isbn-label"].content["font_size_pt"] == pytest.approx(7.0)
     assert ids["back-publisher-heading"].content["text"] == "台灣角川"
     assert ids["back-publisher-heading"].content["font_role"] == "publisher_heading"
-    assert ids["back-publisher-heading"].content["font_size_pt"] == pytest.approx(7.5)
+    assert ids["back-publisher-heading"].content["font_size_pt"] == pytest.approx(10.0)
     assert ids["back-publisher-details"].content["font_role"] == "publisher_details"
-    assert ids["back-publisher-details"].content["font_size_pt"] == pytest.approx(6.5)
+    assert ids["back-publisher-details"].content["font_size_pt"] == pytest.approx(9.0)
     assert ids["back-publisher-details"].content["text"] == (
         "定價：NT$110/HK$35\n香港代理：角川洲立出版"
     )
