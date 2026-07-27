@@ -66,6 +66,9 @@ data class CoverUiState(
     val exportDpi: Int = 300,
     val exportDirectoryRequestId: Long = 0L,
     val handledExportDirectoryRequestId: Long = 0L,
+    val wordPreviewPath: String? = null,
+    val wordPreviewRequestId: Long = 0L,
+    val handledWordPreviewRequestId: Long = 0L,
     val saveMessage: String? = null,
     val errorMessage: String? = null,
 ) {
@@ -94,4 +97,7 @@ data class CoverUiState(
         status == CoverStatus.READY_TO_SAVE &&
             !exportPdfPath.isNullOrBlank() &&
             !exportDocxPath.isNullOrBlank()
+
+    val hasPendingWordPreview: Boolean get() =
+        wordPreviewRequestId > handledWordPreviewRequestId && !wordPreviewPath.isNullOrBlank()
 }
