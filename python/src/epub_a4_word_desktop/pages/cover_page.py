@@ -403,10 +403,33 @@ class CoverPage(QWidget):
         self._pending_publisher_values = None
         if values is None or not self.controller.project_json:
             return
+        project = loads_project(self.controller.project_json)
+        previous_publisher = project.metadata.publisher.strip()
+        next_publisher = values.publisher.strip()
+        publisher_changed = bool(
+            previous_publisher
+            and next_publisher
+            and previous_publisher != next_publisher
+        )
+        search_replacement_logo = False
+        if publisher_changed:
+            search_replacement_logo = (
+                QMessageBox.question(
+                    self,
+                    "更換出版社",
+                    f"出版社已從「{previous_publisher}」改為「{next_publisher}」。是否一併搜尋替代 Logo？",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                == QMessageBox.StandardButton.Yes
+            )
         try:
             self.controller.update_metadata(values.as_settings())
         except Exception as exc:
             self._show_error(str(exc))
+            return
+        if search_replacement_logo:
+            self._search_publisher_logo(next_publisher)
 
     def _reset_publisher_template(self, _checked: bool = False) -> None:
         if not self.controller.project_json:

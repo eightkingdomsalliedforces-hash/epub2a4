@@ -1,67 +1,149 @@
-name: Apply and verify publisher change Logo search
+name: Desktop PySide6 tests
 
 on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/cross-platform-cover-tool
+    paths:
+      - "python/**"
+      - "desktop/**"
+      - "python-tests/**"
+      - "app/src/main/python/**"
+      - "scripts/**"
+      - "pyproject.toml"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "BUILDING.md"
+      - "BUILD_STATUS.md"
+      - ".github/workflows/desktop.yml"
   pull_request:
     branches:
       - main
     paths:
+      - "python/**"
+      - "desktop/**"
+      - "python-tests/**"
+      - "app/src/main/python/**"
+      - "scripts/**"
+      - "pyproject.toml"
+      - "README.md"
+      - "CHANGELOG.md"
+      - "BUILDING.md"
+      - "BUILD_STATUS.md"
       - ".github/workflows/desktop.yml"
-      - ".github/scripts/apply_publisher_change.py"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-and-verify:
-    runs-on: ubuntu-latest
+  desktop-tests:
+    name: ${{ matrix.os }} / Python 3.13
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+
     env:
       QT_QPA_PLATFORM: offscreen
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONPATH: python/src:app/src/main/python
+
     steps:
-      - name: Checkout source branch
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: fix/reference-back-cover-isbn-clarity
-          fetch-depth: 0
-      - name: Apply publisher change fix
-        run: |
-          python .github/scripts/apply_publisher_change.py
-          git diff --check
+
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Install dependencies
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Linux Qt runtime library
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install --yes libegl1
-          python -m pip install --upgrade pip setuptools wheel
-          python -m pip install -e ".[test]"
-          python -m pip install "PySide6==6.11.1" "pytest-qt>=4.4,<5" "keyring==25.7.0" "platformdirs==4.10.1"
-      - name: Verify publisher change behavior
-        run: python -m pytest desktop/tests/test_publisher_change_prompt.py -q --tb=short
-      - name: Run all shared tests
-        run: python -m pytest python-tests -q
-      - name: Run all desktop tests
-        run: python -m pytest desktop/tests -q
-      - name: Compile and verify structure
-        run: |
-          python -m compileall -q python/src app/src/main/python
-          python scripts/verify_project.py
-      - name: Commit verified fix and restore normal CI
+
+      - name: Upgrade packaging tools
+        run: python -m pip install --upgrade pip setuptools wheel
+
+      - name: Install shared project and test dependencies
+        run: python -m pip install -e ".[test]"
+
+      - name: Install desktop dependencies
+        run: >-
+          python -m pip install
+          "PySide6==6.11.1"
+          "pytest-qt>=4.4,<5"
+          "keyring==25.7.0"
+          "platformdirs==4.10.1"
+
+      - name: Verify shared and desktop dependencies
+        run: >-
+          python -c "import pypdf, PySide6, PySide6.QtWidgets, pytestqt, keyring, platformdirs;
+          print('pypdf', pypdf.__version__);
+          print('PySide6', PySide6.__version__);
+          print('platformdirs', platformdirs.__version__)"
+
+      - name: Run shared Python tests
+        run: python -m pytest python-tests -q --junitxml=core-test-results.xml
+
+      - name: Run desktop tests
+        run: python -m pytest desktop/tests -q --junitxml=desktop-test-results.xml
+
+      - name: Run desktop offscreen smoke
+        run: python scripts/desktop_smoke.py --offscreen
+
+      - name: Compile Python sources
+        run: python -m compileall -q python/src app/src/main/python
+
+      - name: Verify project structure
+        run: python scripts/verify_project.py
+
+      - name: Write desktop Part 3 test report
+        if: runner.os == 'Linux'
+        run: >-
+          python scripts/write_desktop_test_report.py
+          core-test-results.xml
+          desktop-test-results.xml
+          desktop-part3-test-results.md
+
+      - name: Package verified desktop Tasks 8–10 source
+        if: runner.os == 'Linux'
         shell: bash
         run: |
-          set -euxo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git show 43ce3f86d0d941ab5ed32b3a3b9ca8bfeabc52a3:.github/workflows/desktop.yml > .github/workflows/desktop.yml
-          git rm -f --ignore-unmatch .github/patches/publisher-change-search.patch
-          git rm -f --ignore-unmatch .github/scripts/apply_publisher_change.py
-          git add -A
-          git status --short
-          git commit -m "fix: search replacement logo when publisher changes"
-          git fetch origin fix/reference-back-cover-isbn-clarity
-          git rebase origin/fix/reference-back-cover-isbn-clarity
-          git push origin HEAD:fix/reference-back-cover-isbn-clarity
+          git archive --format=zip \
+            --output=epub2a4-desktop-pyside6-part3-tasks8-10.zip \
+            HEAD
+          sha256sum epub2a4-desktop-pyside6-part3-tasks8-10.zip \
+            > epub2a4-desktop-pyside6-part3-tasks8-10.zip.sha256
+          unzip -t epub2a4-desktop-pyside6-part3-tasks8-10.zip
+
+      - name: Upload verified desktop Part 3 source
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: epub2a4-desktop-pyside6-part3-source
+          path: |
+            epub2a4-desktop-pyside6-part3-tasks8-10.zip
+            epub2a4-desktop-pyside6-part3-tasks8-10.zip.sha256
+            desktop-part3-test-results.md
+          if-no-files-found: error
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-test-reports-${{ matrix.os }}
+          path: |
+            core-test-results.xml
+            desktop-test-results.xml
+          if-no-files-found: ignore
