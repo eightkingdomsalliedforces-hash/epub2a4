@@ -1,5 +1,6 @@
 name: Apply SVG logo compatibility
 
+# Triggered only while applying the verified cross-platform SVG patch.
 on:
   push:
     branches:
