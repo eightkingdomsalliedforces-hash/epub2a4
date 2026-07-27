@@ -19,6 +19,7 @@ from epub_a4_word.cover.project_io import dumps_project, loads_project
 from epub_a4_word_desktop.cover.controller import CoverController
 from epub_a4_word_desktop.cover.inspector import ElementInspector
 from epub_a4_word_desktop.cover.layers_panel import LayersPanel
+from epub_a4_word_desktop.cover.publisher_metadata_panel import PublisherMetadataPanel
 from epub_a4_word_desktop.cover.setup_panel import CoverSetupPanel
 from epub_a4_word_desktop.pages.cover_page import CoverPage
 
@@ -67,6 +68,33 @@ def test_source_browse_button_keeps_a_readable_width(qtbot) -> None:
     panel = CoverSetupPanel()
     qtbot.addWidget(panel)
     assert panel.browse_button.minimumWidth() >= 88
+
+
+def test_cover_page_uses_one_shared_publisher_metadata_panel(qtbot) -> None:
+    page = CoverPage()
+    qtbot.addWidget(page)
+
+    panels = page.findChildren(PublisherMetadataPanel)
+
+    assert len(panels) == 1
+    assert page.publisher_metadata_panel is page.setup_panel.publisher_metadata_panel
+
+
+def test_cover_page_keeps_source_browse_button_inside_right_viewport(qtbot) -> None:
+    page = CoverPage()
+    qtbot.addWidget(page)
+    page.resize(1200, 800)
+    page.show()
+    qtbot.wait(1)
+
+    button = page.setup_panel.browse_button
+    viewport = page.right_scroll.viewport()
+    top_left = button.mapTo(viewport, button.rect().topLeft())
+    bottom_right = button.mapTo(viewport, button.rect().bottomRight())
+
+    assert button.isVisible()
+    assert top_left.x() >= 0
+    assert bottom_right.x() < viewport.width()
 
 
 def test_paper_preset_updates_caliper_and_automatic_spine(qtbot) -> None:

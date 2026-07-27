@@ -9,7 +9,6 @@ from PySide6.QtCore import QSignalBlocker, Signal
 from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -126,7 +125,7 @@ class PublisherMetadataPanel(QGroupBox):
         self.logo_status_label = QLabel("尚未選擇 Logo", self)
         self.logo_status_label.setWordWrap(True)
         logo_row = QWidget(self)
-        logo_layout = QHBoxLayout(logo_row)
+        logo_layout = QVBoxLayout(logo_row)
         logo_layout.setContentsMargins(0, 0, 0, 0)
         logo_layout.addWidget(self.search_logo_button)
         logo_layout.addWidget(self.manual_logo_button)
