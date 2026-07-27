@@ -7,7 +7,7 @@ on:
     paths:
       - ".github/workflows/desktop.yml"
       - ".github/patches/svg-logo-compat.patch"
-      - ".github/patches/desktop-regression-fixes.patch"
+      - ".github/scripts/apply_desktop_compat.py"
 
 permissions:
   contents: write
@@ -26,121 +26,11 @@ jobs:
         with:
           ref: fix/reference-back-cover-isbn-clarity
           fetch-depth: 0
-      - name: Apply SVG compatibility patch
+      - name: Apply compatibility changes
         run: |
           git apply --check .github/patches/svg-logo-compat.patch
           git apply .github/patches/svg-logo-compat.patch
-      - name: Apply deterministic desktop compatibility edits
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          controller_path = Path("python/src/epub_a4_word_desktop/cover/controller.py")
-          controller = controller_path.read_text(encoding="utf-8")
-          old_controller = '''        project = self._require_project()
-          candidate = replace(project, metadata=replace(project.metadata, isbn=isbn))
-          active_template = str(candidate.background.get("active_template", ""))
-          if active_template == "publisher_back_matter":
-              generated_project = apply_cover_template(candidate, active_template)
-              generated = generated_project.elements_by_id
-              sync_ids = ("back-isbn-label", "back-isbn-code")
-              existing_ids = {element.id for element in candidate.elements}
-              updated: list[CoverElement] = []
-              for element in candidate.elements:
-                  generated_element = generated.get(element.id)
-                  if element.id in sync_ids and generated_element is not None:
-                      updated.append(
-                          replace(
-                              element,
-                              kind=generated_element.kind,
-                              region=generated_element.region,
-                              content=dict(generated_element.content),
-                          )
-                      )
-                  else:
-                      updated.append(element)
-              for element_id in sync_ids:
-                  if element_id not in existing_ids and element_id in generated:
-                      updated.append(generated[element_id])
-              candidate = replace(
-                  candidate,
-                  background=generated_project.background,
-                  elements=tuple(updated),
-              )
-          else:
-              updated = []
-              for element in candidate.elements:
-                  content = dict(element.content)
-                  if element.kind is ElementKind.BARCODE_PLACEHOLDER:
-                      content["isbn"] = isbn
-                      content["text"] = isbn
-                  elif element.id == "back-isbn-label":
-                      content["text"] = f"ISBN {isbn}"
-                  updated.append(replace(element, content=content))
-              candidate = replace(candidate, elements=tuple(updated))
-          self.replace_project(dumps_project(candidate), label="套用 ISBN")
-'''
-          new_controller = '''        project = self._require_project()
-          metadata = replace(project.metadata, isbn=isbn)
-          active_template = str(project.background.get("active_template", ""))
-          if active_template in {
-              "publisher_back_matter",
-              "publisher_back_matter_with_spine",
-          }:
-              candidate = refresh_template_metadata(project, metadata)
-          else:
-              candidate = replace(project, metadata=metadata)
-              updated = []
-              for element in candidate.elements:
-                  content = dict(element.content)
-                  if element.kind is ElementKind.BARCODE_PLACEHOLDER:
-                      content["isbn"] = isbn
-                      content["text"] = isbn
-                  elif element.id == "back-isbn-label":
-                      content["text"] = f"ISBN {isbn}"
-                  updated.append(replace(element, content=content))
-              candidate = replace(candidate, elements=tuple(updated))
-          self.replace_project(dumps_project(candidate), label="套用 ISBN")
-'''
-          if controller.count(old_controller) != 1:
-              raise SystemExit("controller apply_isbn replacement target was not unique")
-          controller_path.write_text(
-              controller.replace(old_controller, new_controller, 1),
-              encoding="utf-8",
-          )
-
-          replacements = {
-              Path("python/src/epub_a4_word_desktop/cover/setup_panel.py"): (
-                  '            "publisher_back_matter_with_spine",\n'
-                  '        )\n'
-                  '        self.create_button = QPushButton',
-                  '            "publisher_back_matter",\n'
-                  '        )\n'
-                  '        self.create_button = QPushButton',
-              ),
-              Path("python/src/epub_a4_word_desktop/cover/canvas.py"): (
-                  '        scene = self.scene()\n'
-                  '        scene.clear()\n'
-                  '        self.items_by_id.clear()\n'
-                  '        self.group_members_by_element.clear()\n',
-                  '        scene = self.scene()\n'
-                  '        self._syncing_group_selection = True\n'
-                  '        try:\n'
-                  '            self.items_by_id.clear()\n'
-                  '            self.group_members_by_element.clear()\n'
-                  '            scene.clear()\n'
-                  '        finally:\n'
-                  '            self._syncing_group_selection = False\n',
-              ),
-          }
-          for path, (old, new) in replacements.items():
-              text = path.read_text(encoding="utf-8")
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one replacement target, found {count}")
-              path.write_text(text.replace(old, new, 1), encoding="utf-8")
-          PY
+          python .github/scripts/apply_desktop_compat.py
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
@@ -185,6 +75,7 @@ jobs:
           git rm .github/patches/svg-logo-compat.patch
           git rm .github/patches/desktop-regression-fixes.patch
           git rm .github/workflows/apply-svg-logo-compat.yml
+          git rm .github/scripts/apply_desktop_compat.py
           git add -A
           git commit -m "fix: complete desktop publisher template and crop guides"
           git push origin HEAD:fix/reference-back-cover-isbn-clarity
