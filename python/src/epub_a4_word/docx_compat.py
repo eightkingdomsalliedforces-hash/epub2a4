@@ -28,13 +28,14 @@ def _template_exists(filename: str) -> bool:
 
 
 def install_story_template_fallbacks(*, force: bool = False) -> bool:
-    """Use inline header/footer XML when python-docx package data is absent.
+    """Use inline header/footer XML when package resources are not file paths.
 
-    Chaquopy can install the python-docx modules while omitting the standalone
-    ``docx/templates/default-header.xml`` and ``default-footer.xml`` resources.
-    Accessing ``section.header`` or ``section.footer`` then raises
-    ``FileNotFoundError``. The fallback keeps python-docx's normal behavior on
-    desktop and replaces only the missing resource loaders on affected builds.
+    Chaquopy stores python-docx inside an ``.imy`` archive. The XML resources
+    are present in that archive, but python-docx 1.1.2 opens them through a
+    normal path containing ``parts/../templates``. ``AssetFinder`` cannot open
+    that virtual path as a filesystem file, so accessing ``section.header`` or
+    ``section.footer`` raises ``FileNotFoundError``. Desktop installations keep
+    the normal loader; affected Android builds use the equivalent inline XML.
     """
 
     global _INSTALLED
