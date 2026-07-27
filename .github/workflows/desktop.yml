@@ -56,8 +56,30 @@ jobs:
       - name: Run all shared tests
         run: python -m pytest python-tests -q
 
-      - name: Run all desktop tests
-        run: python -m pytest desktop/tests -q
+      - name: Test publisher metadata and logo desktop UI
+        run: >-
+          python -m pytest
+          desktop/tests/test_publisher_metadata_panel.py
+          desktop/tests/test_publisher_logo_dialog.py
+          desktop/tests/test_publisher_logo_embedding.py
+          -q
+
+      - name: Test crop controls and layout preview
+        run: >-
+          python -m pytest
+          desktop/tests/test_converter_crop_controls.py
+          desktop/tests/test_layout_preview.py
+          -q
+
+      - name: Run remaining desktop regression tests
+        run: >-
+          python -m pytest desktop/tests -q
+          --ignore=desktop/tests/test_svg_logo.py
+          --ignore=desktop/tests/test_publisher_metadata_panel.py
+          --ignore=desktop/tests/test_publisher_logo_dialog.py
+          --ignore=desktop/tests/test_publisher_logo_embedding.py
+          --ignore=desktop/tests/test_converter_crop_controls.py
+          --ignore=desktop/tests/test_layout_preview.py
 
       - name: Compile and verify structure
         run: |
