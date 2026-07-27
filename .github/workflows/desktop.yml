@@ -85,7 +85,7 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -e ".[test]"
           python -m pip install "PySide6==6.11.1" "pytest-qt>=4.4,<5" "keyring==25.7.0" "platformdirs==4.10.1"
-      - name: Verify focused publisher, SVG, crop, and preview paths
+      - name: Verify SVG and new desktop feature paths
         run: >-
           python -m pytest
           python-tests/cover/test_publisher_logo_render.py
@@ -95,10 +95,13 @@ jobs:
           desktop/tests/test_publisher_logo_embedding.py
           desktop/tests/test_converter_crop_controls.py
           desktop/tests/test_layout_preview.py
-          desktop/tests/test_publisher_workflow.py
-          desktop/tests/test_user_reported_cover_regressions.py
-          desktop/tests/test_cover_canvas.py
           -q
+      - name: Verify publisher ISBN workflow compatibility
+        run: python -m pytest desktop/tests/test_publisher_workflow.py -q --tb=short
+      - name: Verify legacy template option compatibility
+        run: python -m pytest desktop/tests/test_user_reported_cover_regressions.py -q --tb=short
+      - name: Verify canvas reload lifetime
+        run: python -m pytest desktop/tests/test_cover_canvas.py -q --tb=short
       - name: Run all shared tests
         run: python -m pytest python-tests -q
       - name: Run all desktop tests
