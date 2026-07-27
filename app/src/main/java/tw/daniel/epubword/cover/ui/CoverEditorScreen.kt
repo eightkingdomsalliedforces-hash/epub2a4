@@ -38,6 +38,7 @@ data class CoverEditorCallbacks(
     val onSelectEmbeddedImage: (String) -> Unit = {},
     val onAddText: () -> Unit = {},
     val onToggleGuides: () -> Unit = {},
+    val onPreviewWord: () -> Unit = {},
     val onPrepareExport: (Int) -> Unit = {},
     val onRequestExportDirectory: () -> Unit = {},
     val onSelectElement: (String?) -> Unit = {},
@@ -106,6 +107,10 @@ fun CoverEditorScreen(
                         onClick = { if (selected != null) sheet = EditorSheet.INSPECTOR },
                         enabled = selected != null,
                     ) { Text("屬性") }
+                    TextButton(
+                        onClick = callbacks.onPreviewWord,
+                        enabled = state.canExport,
+                    ) { Text("Word 預覽") }
                     Button(
                         onClick = { showExportDialog = true },
                         enabled = state.canExport,
