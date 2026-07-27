@@ -20,6 +20,7 @@ enum class CoverStatus {
 
 enum class TrimPreset(val label: String, val widthMm: Double, val heightMm: Double) {
     A5("A5", 148.0, 210.0),
+    B6("B6", 128.0, 182.0),
     A6("A6", 105.0, 148.0),
     INCH_4X6("4 × 6 英吋", 101.6, 152.4),
 }
@@ -41,6 +42,17 @@ data class CoverUiState(
     val metadataDescription: String = "",
     val metadataIsbn: String = "",
     val metadataPublisher: String = "",
+    val metadataPrice: String = "",
+    val metadataPublicationPlace: String = "",
+    val metadataTranslator: String = "",
+    val metadataIsbnAddon: String = "",
+    val metadataPublisherId: String = "",
+    val metadataEnglishTitle: String = "",
+    val metadataVolumeNumber: String = "",
+    val metadataArcLabel: String = "",
+    val metadataSeriesName: String = "",
+    val metadataInternalBookCode: String = "",
+    val metadataSpineAccentColor: String = "#F15A24",
     val metadataLanguage: String = "",
     val trimPreset: TrimPreset = TrimPreset.A5,
     val pageCount: Int = 0,
@@ -66,6 +78,9 @@ data class CoverUiState(
     val exportDpi: Int = 300,
     val exportDirectoryRequestId: Long = 0L,
     val handledExportDirectoryRequestId: Long = 0L,
+    val wordPreviewPath: String? = null,
+    val wordPreviewRequestId: Long = 0L,
+    val handledWordPreviewRequestId: Long = 0L,
     val saveMessage: String? = null,
     val errorMessage: String? = null,
 ) {
@@ -83,8 +98,23 @@ data class CoverUiState(
     val effectiveSpineWidthMm: Double get() = manualSpineWidthMm ?: autoSpineWidthMm
     val selectedElement get() = project?.elements?.firstOrNull { it.id == selectedElementId }
 
+    val publisherTemplateSelected: Boolean get() =
+        templateId == PUBLISHER_BACK_MATTER_TEMPLATE_ID
+
+    val publisherTemplateIssue: String? get() = when {
+        !publisherTemplateSelected -> null
+        normalizedPublisherIsbn13(metadataIsbn).isBlank() -> "出版社式封底需要有效的 ISBN-13。"
+        metadataPublisher.isBlank() -> "出版社式封底需要出版社名稱。"
+        !validPublisherAddon(metadataIsbnAddon) -> "附加碼只能留空，或輸入 2／5 位數字。"
+        else -> null
+    }
+
     val canCreateProject: Boolean get() =
-        !sourcePath.isNullOrBlank() && pageCount > 0 && pageCountConfirmed && status == CoverStatus.SETUP
+        !sourcePath.isNullOrBlank() &&
+            pageCount > 0 &&
+            pageCountConfirmed &&
+            publisherTemplateIssue == null &&
+            status in setOf(CoverStatus.SETUP, CoverStatus.EDITING, CoverStatus.COMPLETED)
 
     val canExport: Boolean get() =
         project != null && projectJson.isNotBlank() && pageCountConfirmed &&
@@ -94,4 +124,7 @@ data class CoverUiState(
         status == CoverStatus.READY_TO_SAVE &&
             !exportPdfPath.isNullOrBlank() &&
             !exportDocxPath.isNullOrBlank()
+
+    val hasPendingWordPreview: Boolean get() =
+        wordPreviewRequestId > handledWordPreviewRequestId && !wordPreviewPath.isNullOrBlank()
 }

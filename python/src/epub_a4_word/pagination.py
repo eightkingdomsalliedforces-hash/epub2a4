@@ -12,6 +12,7 @@ from .text_metrics import paragraph_metrics, word_safety_points
 
 MarginMode = Literal["safe", "maximized", "borderless"]
 OutputMarkMode = Literal["normal", "crop_marks"]
+GuideRenderMode = Literal["vml", "drawingml"]
 PT_PER_CM = 72.0 / 2.54
 A4_WIDTH_CM = 21.0
 A4_HEIGHT_CM = 29.7
@@ -19,8 +20,10 @@ A5_WIDTH_CM = 14.8
 A5_HEIGHT_CM = 21.0
 B6_WIDTH_CM = 12.8
 B6_HEIGHT_CM = 18.2
-B6_ON_A5_HORIZONTAL_MARGIN_CM = 1.0
-B6_ON_A5_VERTICAL_MARGIN_CM = 1.4
+B6_ON_A5_LEFT_MARGIN_CM = 2.0
+B6_ON_A5_RIGHT_MARGIN_CM = 0.0
+B6_ON_A5_TOP_MARGIN_CM = 2.8
+B6_ON_A5_BOTTOM_MARGIN_CM = 0.0
 PHOTO_4X6_WIDTH_CM = 10.16
 PHOTO_4X6_HEIGHT_CM = 15.24
 A4_PAGE_PREFIX_HEIGHT_CM = 0.50
@@ -75,6 +78,7 @@ class LayoutSettings:
     grid_cols: int | None = None
     page_prefix_height_cm: float | None = None
     output_mark_mode: OutputMarkMode = "normal"
+    guide_render_mode: GuideRenderMode = "vml"
     page_margin_left_cm: float | None = None
     page_margin_right_cm: float | None = None
     page_margin_top_cm: float | None = None
@@ -100,6 +104,8 @@ def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
         raise ValueError(f"Unsupported margin mode: {settings.margin_mode}") from exc
     if settings.output_mark_mode not in {"normal", "crop_marks"}:
         raise ValueError(f"Unsupported output mark mode: {settings.output_mark_mode}")
+    if settings.guide_render_mode not in {"vml", "drawingml"}:
+        raise ValueError(f"Unsupported guide render mode: {settings.guide_render_mode}")
 
     if settings.imposition_mode in {"four_up", "signature16"}:
         default_paper_width = A4_WIDTH_CM
@@ -142,10 +148,10 @@ def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
 
     outer = preset.outer_margin_cm if settings.outer_margin_cm is None else settings.outer_margin_cm
     if exact_b6:
-        page_left = B6_ON_A5_HORIZONTAL_MARGIN_CM if settings.page_margin_left_cm is None else settings.page_margin_left_cm
-        page_right = B6_ON_A5_HORIZONTAL_MARGIN_CM if settings.page_margin_right_cm is None else settings.page_margin_right_cm
-        page_top = B6_ON_A5_VERTICAL_MARGIN_CM if settings.page_margin_top_cm is None else settings.page_margin_top_cm
-        page_bottom = B6_ON_A5_VERTICAL_MARGIN_CM if settings.page_margin_bottom_cm is None else settings.page_margin_bottom_cm
+        page_left = B6_ON_A5_LEFT_MARGIN_CM if settings.page_margin_left_cm is None else settings.page_margin_left_cm
+        page_right = B6_ON_A5_RIGHT_MARGIN_CM if settings.page_margin_right_cm is None else settings.page_margin_right_cm
+        page_top = B6_ON_A5_TOP_MARGIN_CM if settings.page_margin_top_cm is None else settings.page_margin_top_cm
+        page_bottom = B6_ON_A5_BOTTOM_MARGIN_CM if settings.page_margin_bottom_cm is None else settings.page_margin_bottom_cm
         cell_width = B6_WIDTH_CM if settings.cell_width_cm is None else settings.cell_width_cm
         cell_height = B6_HEIGHT_CM if settings.cell_height_cm is None else settings.cell_height_cm
     else:

@@ -14,7 +14,9 @@ class PreviewDebouncerTest {
         debouncer.schedule("first")
         delay(50)
         debouncer.schedule("second")
-        delay(180)
+        // Keep enough headroom for slower Windows/CI schedulers. The production
+        // delay is 150 ms; this assertion is about cancellation, not timer precision.
+        delay(350)
 
         assertEquals(listOf("second"), rendered)
         debouncer.cancel()

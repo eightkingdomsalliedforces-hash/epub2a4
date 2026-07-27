@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from epub_a4_word.cover.isbn import isbn13_from_isbn10
 from epub_a4_word.cover.project_io import loads_project
 from epub_a4_word.cover.search.models import (
     CandidateCategory,
@@ -45,6 +46,44 @@ _CATEGORY_LABELS = {
     CandidateCategory.REFERENCE_PHOTO: "實拍參考",
     CandidateCategory.UNKNOWN: "無法判定",
 }
+
+
+def candidate_isbn10(candidate: SearchCandidate) -> str:
+    return next(
+        (
+            value
+            for value in candidate.isbns
+            if len(value) == 10 and isbn13_from_isbn10(value) == candidate.isbn
+        ),
+        "",
+    )
+
+
+def candidate_isbn_summary(candidate: SearchCandidate) -> str:
+    if not candidate.isbn:
+        return ""
+    lines = [f"建議 ISBN-13：{candidate.isbn}"]
+    isbn10 = candidate_isbn10(candidate)
+    if isbn10:
+        lines.append(f"對應 ISBN-10：{isbn10}（同一版本對應碼）")
+    return "\n".join(lines)
+
+
+def candidate_edition_summary(candidate: SearchCandidate) -> str:
+    lines: list[str] = []
+    if candidate.publisher.strip():
+        lines.append(f"出版社：{candidate.publisher.strip()}")
+    if candidate.language.strip():
+        lines.append(f"語言：{candidate.language.strip()}")
+    if candidate.classification_reasons:
+        reasons = "、".join(
+            reason.strip()
+            for reason in candidate.classification_reasons
+            if reason.strip()
+        )
+        if reasons:
+            lines.append(f"判定：{reasons}")
+    return "\n".join(lines)
 
 
 class CandidateCard(QFrame):
@@ -89,13 +128,14 @@ class CandidateCard(QFrame):
             else "解析度未知"
         )
         resolution_label = QLabel(resolution, self)
-        isbn_lines = [
-            f"ISBN-{len(value)} {value}"
-            for value in candidate.isbns
-        ]
-        self.isbn_label = QLabel("\n".join(isbn_lines), self)
+        isbn_summary = candidate_isbn_summary(candidate)
+        self.isbn_label = QLabel(isbn_summary, self)
         self.isbn_label.setWordWrap(True)
-        self.isbn_label.setVisible(bool(isbn_lines))
+        self.isbn_label.setVisible(bool(isbn_summary))
+        edition_summary = candidate_edition_summary(candidate)
+        self.edition_label = QLabel(edition_summary, self)
+        self.edition_label.setWordWrap(True)
+        self.edition_label.setVisible(bool(edition_summary))
         rights = QLabel(
             candidate.rights.strip()
             or "授權狀態未確認；使用者需自行確認使用權",
@@ -116,6 +156,7 @@ class CandidateCard(QFrame):
         layout.addWidget(provider)
         layout.addWidget(resolution_label)
         layout.addWidget(self.isbn_label)
+        layout.addWidget(self.edition_label)
         layout.addWidget(rights)
         layout.addStretch(1)
         row = QHBoxLayout()
@@ -493,7 +534,6 @@ class CoverSearchPanel(QWidget):
         aliases = getattr(response, "resolved_aliases", ())
         pending = getattr(response, "pending_aliases", ())
         self._rebuild_alias_rows(pending)
-        isbns = getattr(response, "resolved_isbns", ())
         confirmed_text = "、".join(
             item.value
             for item in aliases
@@ -502,8 +542,8 @@ class CoverSearchPanel(QWidget):
         details = []
         if confirmed_text:
             details.append("可使用名稱：" + confirmed_text)
-        if isbns:
-            details.append("解析 ISBN：" + "、".join(isbns))
+        if self.candidates:
+            details.append(f"找到 {len(self.candidates)} 個候選版本")
         self.resolution_label.setText("；".join(details))
 
     def _clear_alias_rows(self) -> None:
@@ -604,6 +644,12 @@ class CoverSearchPanel(QWidget):
                 f"{_CATEGORY_LABELS[CandidateCategory(key)]}：{value.title or urlsplit(value.source_page).netloc}"
                 for key, value in self.selected.items()
             ]
+            recommended = next(
+                (candidate for candidate in self.selected.values() if candidate.isbn),
+                None,
+            )
+            if recommended is not None:
+                labels.append(candidate_isbn_summary(recommended))
             self.selection_label.setText("\n".join(labels))
         segmented = any(key in self.selected for key in ("front", "back", "spine"))
         composite = segmented or "full_spread" in self.selected

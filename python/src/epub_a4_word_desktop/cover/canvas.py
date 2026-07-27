@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QWidget,
 )
+from shiboken6 import isValid
 
 from epub_a4_word.cover.geometry import calculate_layout
 from epub_a4_word.cover.models import ElementKind
@@ -71,6 +72,8 @@ class CoverCanvas(QGraphicsView):
         self.items_by_id: dict[
             str, CoverBarcodeItem | CoverImageItem | CoverTextItem
         ] = {}
+        self.group_members_by_element: dict[str, tuple[str, ...]] = {}
+        self._syncing_group_selection = False
         self.guide_layer = GuideLayer(scene)
         self._paper_item = None
         self._preview_item: QGraphicsPixmapItem | None = None
@@ -86,8 +89,13 @@ class CoverCanvas(QGraphicsView):
         layout = calculate_layout(project)
         plan = build_print_plan(layout)
         scene = self.scene()
-        scene.clear()
-        self.items_by_id.clear()
+        self._syncing_group_selection = True
+        try:
+            self.items_by_id.clear()
+            self.group_members_by_element.clear()
+            scene.clear()
+        finally:
+            self._syncing_group_selection = False
         self.guide_layer = GuideLayer(scene)
         self._preview_item = None
         self.project_json = project_json
@@ -107,6 +115,16 @@ class CoverCanvas(QGraphicsView):
         self._paper_item.setPen(Qt.PenStyle.NoPen)
         self._paper_item.setZValue(-20_000.0)
         self._paper_item.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
+
+        groups: dict[str, list[str]] = {}
+        for element in project.elements:
+            group_id = element.content.get("group_id", "")
+            if isinstance(group_id, str) and group_id.strip():
+                groups.setdefault(group_id.strip(), []).append(element.id)
+        for member_ids in groups.values():
+            ordered = tuple(member_ids)
+            for member_id in ordered:
+                self.group_members_by_element[member_id] = ordered
 
         for element in sorted(project.elements, key=lambda item: item.z_index):
             item: CoverBarcodeItem | CoverImageItem | CoverTextItem | None
@@ -150,25 +168,50 @@ class CoverCanvas(QGraphicsView):
         self._preview_item = item
 
     def _selection_changed(self) -> None:
+        if self._syncing_group_selection:
+            return
         selected = [
             item
             for item in self.scene().selectedItems()
             if hasattr(item, "element_id")
         ]
         element_id = selected[0].element_id if selected else None
+        if element_id is not None:
+            member_ids = self.group_members_by_element.get(element_id, (element_id,))
+            if any(
+                (item := self.items_by_id.get(member_id)) is not None
+                and isValid(item)
+                and not item.isSelected()
+                for member_id in member_ids
+            ):
+                self._syncing_group_selection = True
+                try:
+                    for member_id in member_ids:
+                        item = self.items_by_id.get(member_id)
+                        if item is not None and isValid(item):
+                            item.setSelected(True)
+                finally:
+                    self._syncing_group_selection = False
         self.element_selected.emit(element_id)
 
     def select_element(self, element_id: str | None) -> None:
-        self.scene().clearSelection()
-        if element_id is None:
-            self.element_selected.emit(None)
-            return
+        self._syncing_group_selection = True
         try:
-            item = self.items_by_id[element_id]
-        except KeyError as exc:
-            raise KeyError(f"找不到畫布元素：{element_id}") from exc
-        item.setSelected(True)
-        self.centerOn(item)
+            self.scene().clearSelection()
+            if element_id is not None:
+                try:
+                    item = self.items_by_id[element_id]
+                except KeyError as exc:
+                    raise KeyError(f"找不到畫布元素：{element_id}") from exc
+                for member_id in self.group_members_by_element.get(
+                    element_id, (element_id,)
+                ):
+                    member = self.items_by_id.get(member_id)
+                    if member is not None:
+                        member.setSelected(True)
+                self.centerOn(item)
+        finally:
+            self._syncing_group_selection = False
         self.element_selected.emit(element_id)
 
     def _item_transform_committed(self, element_id: str, transform: dict) -> None:

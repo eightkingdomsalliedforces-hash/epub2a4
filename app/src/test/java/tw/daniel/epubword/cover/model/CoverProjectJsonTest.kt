@@ -27,6 +27,39 @@ class CoverProjectJsonTest {
     }
 
     @Test
+    fun preservesPublisherMetadataUsedBySharedTemplates() {
+        val fixture = JSONObject(javaClass.getResource("/cover-project-v1.json")!!.readText())
+        fixture.getJSONObject("metadata")
+            .put("price", "NT$110")
+            .put("publication_place", "台北")
+            .put("translator", "李彥樺")
+            .put("isbn_addon", "00110")
+            .put("publisher_id", "kadokawa-tw")
+            .put("english_title", "Welcome to the Classroom")
+            .put("volume_number", "2")
+            .put("arc_label", "二年級篇")
+            .put("series_name", "輕小說")
+            .put("internal_book_code", "CL0308-17")
+            .put("spine_accent_color", "#F15A24")
+
+        val restored = CoverProjectJson.decode(
+            CoverProjectJson.encode(CoverProjectJson.decode(fixture.toString())),
+        )
+
+        assertEquals("NT$110", restored.metadata.price)
+        assertEquals("台北", restored.metadata.publicationPlace)
+        assertEquals("李彥樺", restored.metadata.translator)
+        assertEquals("00110", restored.metadata.isbnAddon)
+        assertEquals("kadokawa-tw", restored.metadata.publisherId)
+        assertEquals("Welcome to the Classroom", restored.metadata.englishTitle)
+        assertEquals("2", restored.metadata.volumeNumber)
+        assertEquals("二年級篇", restored.metadata.arcLabel)
+        assertEquals("輕小說", restored.metadata.seriesName)
+        assertEquals("CL0308-17", restored.metadata.internalBookCode)
+        assertEquals("#F15A24", restored.metadata.spineAccentColor)
+    }
+
+    @Test
     fun rejectsUnknownSchemaAndDuplicateElementIds() {
         val fixture = JSONObject(javaClass.getResource("/cover-project-v1.json")!!.readText())
         fixture.put("schema_version", 2)

@@ -20,12 +20,13 @@ enum class OutputMode(val wireValue: String, val label: String, val fileSuffix: 
     SIGNATURE16("signature16", "A6 16 頁書帖", "A6_16頁書帖"),
     FOUR_UP("four_up", "A4 四格", "A4_四格"),
     A5("single_a5", "A5 一頁一張", "A5"),
+    B6_ON_A5("b6_on_a5", "B6 置於 A5 右下角", "B6_A5"),
     PHOTO_4X6("single_4x6", "4×6 英吋一頁一張", "4x6");
 
     companion object {
         fun allowedFor(kind: InputKind): List<OutputMode> = when (kind) {
-            InputKind.EPUB -> listOf(SIGNATURE16, FOUR_UP, A5, PHOTO_4X6)
-            InputKind.DOCX -> listOf(A5, PHOTO_4X6)
+            InputKind.EPUB -> listOf(SIGNATURE16, FOUR_UP, A5, B6_ON_A5, PHOTO_4X6)
+            InputKind.DOCX -> listOf(A5, B6_ON_A5, PHOTO_4X6)
         }
     }
 }
@@ -53,7 +54,11 @@ data class ConversionOptions(
         val mode = if (outputMode in allowed) outputMode else allowed.first()
         return copy(
             outputMode = mode,
-            cutGuides = cutGuides && mode in setOf(OutputMode.SIGNATURE16, OutputMode.FOUR_UP),
+            cutGuides = cutGuides && mode in setOf(
+                OutputMode.SIGNATURE16,
+                OutputMode.FOUR_UP,
+                OutputMode.B6_ON_A5,
+            ),
         )
     }
 
@@ -68,6 +73,9 @@ data class ConversionOptions(
             "paragraph_spacing_pt" to paragraphSpacingPt.jsonNumber(),
             "page_numbers" to pageNumbers.toString(),
             "cut_guides" to cutGuides.toString(),
+            "output_mark_mode" to (
+                if (outputMode == OutputMode.B6_ON_A5 && cutGuides) "crop_marks" else "normal"
+            ).jsonQuoted(),
             "content_only" to contentOnly.toString(),
         )
         return values.entries.joinToString(prefix = "{", postfix = "}") { (key, value) ->

@@ -3,19 +3,57 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QPixmap
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontDatabase,
+    QFontMetricsF,
+    QPainter,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsObject, QStyleOptionGraphicsItem, QWidget
 
-from epub_a4_word.cover.isbn import (
-    canonical_isbn13,
-    encode_ean13_modules,
-    encode_ean_addon_modules,
-)
+from epub_a4_word.cover.barcode_layout import BarcodeTextAnchor, build_barcode_layout
+from epub_a4_word.cover.isbn import canonical_isbn13
 from epub_a4_word.cover.models import CoverElement
+from epub_a4_word.cover.typography import font_candidates, points_to_mm
 
 
 def vertical_text_lines(text: str) -> tuple[str, ...]:
     return tuple(character for character in str(text) if character != "\n")
+
+
+def _qt_font_for_scene(
+    role: str,
+    scene_size: float,
+    requested: object = None,
+    weight: int = 400,
+) -> QFont:
+    candidates = font_candidates(role, requested)
+    try:
+        installed = {
+            family.casefold(): family for family in QFontDatabase.families()
+        }
+    except RuntimeError:
+        installed = {}
+    selected = next(
+        (
+            installed[name.casefold()]
+            for name in candidates
+            if name.casefold() in installed
+        ),
+        candidates[0],
+    )
+    font = QFont(selected)
+    if hasattr(font, "setFamilies"):
+        font.setFamilies(list(candidates))
+    font.setPixelSize(max(1, round(float(scene_size))))
+    try:
+        font.setWeight(QFont.Weight(int(weight)))
+    except (TypeError, ValueError):
+        font.setWeight(QFont.Weight.Normal)
+    return font
 
 
 class CoverElementItem(QGraphicsObject):
@@ -47,11 +85,20 @@ class CoverElementItem(QGraphicsObject):
         )
         self.setAcceptHoverEvents(True)
 
-    def boundingRect(self) -> QRectF:
+    def contentRect(self) -> QRectF:
         return QRectF(0.0, 0.0, self._width_mm, self._height_mm)
 
+    def boundingRect(self) -> QRectF:
+        half = self.HANDLE_SIZE_MM / 2.0
+        return self.contentRect().adjusted(
+            -half,
+            -(5.0 + half),
+            half,
+            half,
+        )
+
     def _corner_at(self, point: QPointF) -> str | None:
-        rect = self.boundingRect()
+        rect = self.contentRect()
         radius = self.HANDLE_SIZE_MM * 1.5
         corners = {
             "tl": rect.topLeft(),
@@ -154,7 +201,7 @@ class CoverElementItem(QGraphicsObject):
         painter.save()
         painter.setPen(QPen(QColor("#2563eb"), 0.0))
         painter.setBrush(QColor("white"))
-        rect = self.boundingRect()
+        rect = self.contentRect()
         half = self.HANDLE_SIZE_MM / 2.0
         for point in (rect.topLeft(), rect.topRight(), rect.bottomLeft(), rect.bottomRight()):
             painter.drawRect(
@@ -213,7 +260,7 @@ class CoverImageItem(CoverElementItem):
         widget: QWidget | None = None,
     ) -> None:
         del option, widget
-        target = self.boundingRect()
+        target = self.contentRect()
         if self._pixmap.isNull():
             painter.fillRect(target, QColor("#e5e7eb"))
             painter.setPen(QColor("#6b7280"))
@@ -258,6 +305,23 @@ class CoverBarcodeItem(CoverElementItem):
         super().__init__(element)
         self._content = dict(element.content)
 
+    @staticmethod
+    def _anchor_rect(target: QRectF, anchor: BarcodeTextAnchor) -> QRectF:
+        return QRectF(
+            target.left() + anchor.left * target.width(),
+            target.top() + anchor.top * target.height(),
+            max(0.1, (anchor.right - anchor.left) * target.width()),
+            max(0.1, (anchor.bottom - anchor.top) * target.height()),
+        )
+
+    @staticmethod
+    def _anchor_alignment(anchor: BarcodeTextAnchor) -> Qt.AlignmentFlag:
+        horizontal = {
+            "left": Qt.AlignmentFlag.AlignLeft,
+            "right": Qt.AlignmentFlag.AlignRight,
+        }.get(anchor.align, Qt.AlignmentFlag.AlignHCenter)
+        return horizontal | Qt.AlignmentFlag.AlignVCenter
+
     def paint(
         self,
         painter: QPainter,
@@ -265,59 +329,47 @@ class CoverBarcodeItem(CoverElementItem):
         widget: QWidget | None = None,
     ) -> None:
         del option, widget
-        target = self.boundingRect()
+        target = self.contentRect()
         isbn = canonical_isbn13(
             self._content.get("isbn", self._content.get("text", ""))
         )
         if isbn:
-            modules = encode_ean13_modules(isbn)
-            addon_modules = encode_ean_addon_modules(self._content.get("addon", ""))
-            quiet_modules = 9
-            separator_modules = 8 if addon_modules else 0
-            total_modules = (
-                quiet_modules * 2
-                + len(modules)
-                + separator_modules
-                + len(addon_modules)
-            )
-            module_width = target.width() / max(1, total_modules)
-            bar_height = target.height() * 0.78
-            x = target.left() + quiet_modules * module_width
+            layout = build_barcode_layout(isbn, self._content.get("addon", ""))
             painter.save()
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor("black"))
-            for bit in modules:
-                if bit == "1":
-                    painter.drawRect(QRectF(x, target.top(), module_width, bar_height))
-                x += module_width
-            if addon_modules:
-                x += separator_modules * module_width
-                addon_top = target.top() + bar_height * 0.12
-                for bit in addon_modules:
-                    if bit == "1":
-                        painter.drawRect(
-                            QRectF(
-                                x,
-                                addon_top,
-                                module_width,
-                                target.top() + bar_height - addon_top,
-                            )
-                        )
-                    x += module_width
-            font = QFont("Sans Serif")
-            font.setPointSizeF(max(3.0, min(10.0, target.height() * 0.14)))
-            painter.setFont(font)
+            for bar in layout.bars:
+                painter.drawRect(
+                    QRectF(
+                        target.left() + bar.x * target.width(),
+                        target.top() + bar.top * target.height(),
+                        max(0.08, bar.width * target.width()),
+                        max(0.08, (bar.bottom - bar.top) * target.height()),
+                    )
+                )
             painter.setPen(QColor("black"))
-            painter.drawText(
-                QRectF(
-                    target.left(),
-                    target.top() + bar_height,
-                    target.width(),
-                    target.height() - bar_height,
-                ),
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
-                " ".join((isbn[:3], isbn[3:])),
+            painter.setFont(
+                _qt_font_for_scene(
+                    "ocr",
+                    max(1.0, target.height() * 0.13),
+                    self._content.get(
+                        "font_families", self._content.get("font_family")
+                    ),
+                )
             )
+            anchors = [
+                layout.first_digit,
+                layout.left_digits,
+                layout.right_digits,
+            ]
+            if layout.addon_digits is not None:
+                anchors.append(layout.addon_digits)
+            for anchor in anchors:
+                painter.drawText(
+                    self._anchor_rect(target, anchor),
+                    self._anchor_alignment(anchor),
+                    anchor.text,
+                )
             painter.restore()
         self._paint_selection_handles(painter)
 
@@ -327,6 +379,22 @@ class CoverTextItem(CoverElementItem):
         super().__init__(element)
         self._content = dict(element.content)
 
+    def _font(self) -> QFont:
+        try:
+            scene_size = points_to_mm(
+                self._content.get("font_size_pt", 12.0)
+            )
+        except ValueError:
+            scene_size = points_to_mm(12.0)
+        return _qt_font_for_scene(
+            str(self._content.get("font_role", "default")),
+            scene_size,
+            self._content.get(
+                "font_families", self._content.get("font_family")
+            ),
+            int(self._content.get("font_weight", 400)),
+        )
+
     def paint(
         self,
         painter: QPainter,
@@ -335,33 +403,53 @@ class CoverTextItem(CoverElementItem):
     ) -> None:
         del option, widget
         painter.save()
-        font = QFont(str(self._content.get("font_family", "Sans Serif")))
-        font.setPointSizeF(float(self._content.get("font_size_pt", 18.0)))
-        font.setWeight(QFont.Weight(int(self._content.get("font_weight", 400))))
-        painter.setFont(font)
-        painter.setPen(QColor(str(self._content.get("color", "#111827"))))
-        alignment = {
+        painter.setFont(self._font())
+        painter.setPen(
+            QColor(str(self._content.get("color", "#111827")))
+        )
+        horizontal = {
             "left": Qt.AlignmentFlag.AlignLeft,
             "center": Qt.AlignmentFlag.AlignHCenter,
             "right": Qt.AlignmentFlag.AlignRight,
-        }.get(str(self._content.get("align", "left")), Qt.AlignmentFlag.AlignLeft)
+        }.get(
+            str(self._content.get("align", "left")),
+            Qt.AlignmentFlag.AlignLeft,
+        )
+        vertical = {
+            "top": Qt.AlignmentFlag.AlignTop,
+            "bottom": Qt.AlignmentFlag.AlignBottom,
+        }.get(
+            str(self._content.get("vertical_align", "center")),
+            Qt.AlignmentFlag.AlignVCenter,
+        )
         text = str(self._content.get("text", ""))
+        content_rect = self.contentRect()
         if str(self._content.get("direction", "horizontal")) == "vertical":
             lines = vertical_text_lines(text)
-            metrics = QFontMetricsF(font)
+            metrics = QFontMetricsF(self._font())
             line_height = max(1.0, metrics.height())
-            y = max(0.0, (self.boundingRect().height() - len(lines) * line_height) / 2.0)
+            y = max(
+                content_rect.top(),
+                content_rect.top()
+                + (content_rect.height() - len(lines) * line_height) / 2.0,
+            )
             for character in lines:
                 painter.drawText(
-                    QRectF(0.0, y, self.boundingRect().width(), line_height),
-                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                    QRectF(
+                        content_rect.left(),
+                        y,
+                        content_rect.width(),
+                        line_height,
+                    ),
+                    Qt.AlignmentFlag.AlignHCenter
+                    | Qt.AlignmentFlag.AlignVCenter,
                     character,
                 )
                 y += line_height
         else:
             painter.drawText(
-                self.boundingRect(),
-                alignment | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap,
+                content_rect,
+                horizontal | vertical | Qt.TextFlag.TextWordWrap,
                 text,
             )
         painter.restore()

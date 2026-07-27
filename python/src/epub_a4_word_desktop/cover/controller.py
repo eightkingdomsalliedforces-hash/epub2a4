@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -22,19 +23,23 @@ from epub_a4_word.cover.isbn import canonical_isbn13
 from epub_a4_word.cover.models import (
     CoverElement,
     CoverProject,
+    LogoAssetMetadata,
     ElementKind,
     ElementTransform,
     Region,
 )
 from epub_a4_word.cover.project_io import dumps_project, loads_project
+from epub_a4_word.cover.search.logo_download import DownloadedLogo, import_logo_file
+from epub_a4_word.cover.search.logo_models import LogoCandidate, LogoSourceCategory
 from epub_a4_word.cover.search.models import CandidateCategory
 from epub_a4_word.cover.templates import (
     apply_template as apply_cover_template,
-    assign_publisher_logo as assign_template_publisher_logo,
+    refresh_template_metadata,
 )
 
 from .commands import ReplaceProjectCommand
 from .models import patch_element
+from .svg_logo import rasterize_svg_logo
 
 
 class CoverService(Protocol):
@@ -189,41 +194,98 @@ class CoverController(QObject):
         candidate_json = self.service.apply_template(dumps_project(current), template_id)
         self.replace_project(candidate_json, label=f"套用模板：{template_id}")
 
+    def update_metadata(
+        self,
+        patch: Mapping[str, object],
+        *,
+        reset_layout: bool = False,
+    ) -> None:
+        project = self._require_project()
+        allowed = set(project.metadata.__dataclass_fields__)
+        unknown = sorted(set(patch) - allowed)
+        if unknown:
+            raise ValueError("不支援的封面資訊：" + "、".join(unknown))
+        metadata = replace(project.metadata, **dict(patch))
+        candidate = refresh_template_metadata(
+            project,
+            metadata,
+            reset_layout=reset_layout,
+        )
+        self.replace_project(
+            dumps_project(candidate),
+            label="重設出版社模板版面" if reset_layout else "更新出版社資訊",
+        )
+
+    def apply_publisher_logo(
+        self,
+        downloaded: DownloadedLogo,
+        candidate: LogoCandidate | None = None,
+        *,
+        manual_selection: bool = False,
+    ) -> str:
+        project = self._require_project()
+        assets_dir = (self.working_dir / "assets").resolve()
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        suffix = downloaded.path.suffix.casefold() or ".img"
+        asset_id = f"publisher-logo-{downloaded.sha256[:16]}"
+        destination = assets_dir / f"{asset_id}{suffix}"
+        if downloaded.path.resolve() != destination.resolve() and not destination.exists():
+            shutil.copyfile(downloaded.path, destination)
+        source_category = (
+            LogoSourceCategory.MANUAL.value
+            if manual_selection or candidate is None
+            else candidate.source_category.value
+        )
+        logo = LogoAssetMetadata(
+            asset_id=asset_id,
+            path=str(destination.resolve()),
+            source_url=(
+                "" if manual_selection or candidate is None else candidate.image_url
+            ),
+            source_category=source_category,
+            downloaded_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            image_format=downloaded.image_format,
+            width_px=downloaded.width_px,
+            height_px=downloaded.height_px,
+            license_text=(
+                "" if candidate is None else candidate.license_text
+            ),
+            official_source=(
+                False if candidate is None else candidate.official_source
+            ),
+            manual_selection=bool(manual_selection),
+        )
+        self.update_metadata({"publisher_logo": logo})
+        return asset_id
+
+    def apply_manual_publisher_logo(self, source_path: Path | str) -> str:
+        downloaded = import_logo_file(
+            source_path,
+            self.working_dir / "logo-imports",
+            svg_converter=rasterize_svg_logo,
+        )
+        return self.apply_publisher_logo(
+            downloaded,
+            manual_selection=True,
+        )
+
+    def clear_publisher_logo(self) -> None:
+        self.update_metadata({"publisher_logo": None})
+
     def apply_isbn(self, value: object) -> str:
         isbn = canonical_isbn13(value)
         if not isbn:
             raise ValueError("ISBN 必須是通過校驗的 ISBN-10 或 ISBN-13。")
         project = self._require_project()
-        candidate = replace(project, metadata=replace(project.metadata, isbn=isbn))
-        active_template = str(candidate.background.get("active_template", ""))
-        if active_template == "publisher_back_matter":
-            generated_project = apply_cover_template(candidate, active_template)
-            generated = generated_project.elements_by_id
-            sync_ids = ("back-isbn-label", "back-isbn-code")
-            existing_ids = {element.id for element in candidate.elements}
-            updated: list[CoverElement] = []
-            for element in candidate.elements:
-                generated_element = generated.get(element.id)
-                if element.id in sync_ids and generated_element is not None:
-                    updated.append(
-                        replace(
-                            element,
-                            kind=generated_element.kind,
-                            region=generated_element.region,
-                            content=dict(generated_element.content),
-                        )
-                    )
-                else:
-                    updated.append(element)
-            for element_id in sync_ids:
-                if element_id not in existing_ids and element_id in generated:
-                    updated.append(generated[element_id])
-            candidate = replace(
-                candidate,
-                background=generated_project.background,
-                elements=tuple(updated),
-            )
+        metadata = replace(project.metadata, isbn=isbn)
+        active_template = str(project.background.get("active_template", ""))
+        if active_template in {
+            "publisher_back_matter",
+            "publisher_back_matter_with_spine",
+        }:
+            candidate = refresh_template_metadata(project, metadata)
         else:
+            candidate = replace(project, metadata=metadata)
             updated = []
             for element in candidate.elements:
                 content = dict(element.content)
@@ -231,17 +293,156 @@ class CoverController(QObject):
                     content["isbn"] = isbn
                     content["text"] = isbn
                 elif element.id == "back-isbn-label":
-                    content["text"] = f"ISBN-13 {isbn}"
+                    content["text"] = f"ISBN {isbn}"
                 updated.append(replace(element, content=content))
             candidate = replace(candidate, elements=tuple(updated))
         self.replace_project(dumps_project(candidate), label="套用 ISBN")
         return isbn
 
+    @staticmethod
+    def _group_id(element: CoverElement) -> str:
+        value = element.content.get("group_id", "")
+        return str(value).strip() if isinstance(value, str) else ""
+
+    @classmethod
+    def _group_members_from_project(
+        cls,
+        project: CoverProject,
+        element_id: str,
+    ) -> tuple[CoverElement, ...]:
+        try:
+            target = project.elements_by_id[element_id]
+        except KeyError as exc:
+            raise KeyError(f"找不到封面元素：{element_id}") from exc
+        group_id = cls._group_id(target)
+        if not group_id:
+            return (target,)
+        return tuple(
+            element
+            for element in project.elements
+            if cls._group_id(element) == group_id
+        )
+
+    def group_members(self, element_id: str) -> tuple[CoverElement, ...]:
+        return self._group_members_from_project(self._require_project(), element_id)
+
+    @staticmethod
+    def _scaled_group_content(
+        content: Mapping[str, Any],
+        *,
+        font_scale: float,
+        vertical_scale: float,
+    ) -> dict[str, Any]:
+        updated = dict(content)
+        font_size = updated.get("font_size_pt")
+        if isinstance(font_size, (int, float)) and not isinstance(font_size, bool):
+            updated["font_size_pt"] = float(font_size) * font_scale
+        line_spacing_mm = updated.get("line_spacing_mm")
+        if isinstance(line_spacing_mm, (int, float)) and not isinstance(
+            line_spacing_mm, bool
+        ):
+            updated["line_spacing_mm"] = float(line_spacing_mm) * vertical_scale
+        return updated
+
+    @classmethod
+    def _patch_group_transform(
+        cls,
+        project: CoverProject,
+        element_id: str,
+        transform_patch: object,
+    ) -> CoverProject:
+        members = cls._group_members_from_project(project, element_id)
+        target = project.elements_by_id[element_id]
+        patched = patch_element(
+            project,
+            element_id,
+            {"transform": transform_patch},
+        ).elements_by_id[element_id]
+        old_transform = target.transform
+        new_transform = patched.transform
+        scale_x = new_transform.width_mm / old_transform.width_mm
+        scale_y = new_transform.height_mm / old_transform.height_mm
+        font_scale = min(scale_x, scale_y)
+        rotation_delta = new_transform.rotation_deg - old_transform.rotation_deg
+        member_ids = {member.id for member in members}
+        replacements: dict[str, CoverElement] = {}
+        for member in members:
+            if member.id == element_id:
+                member_transform = new_transform
+            else:
+                member_transform = ElementTransform(
+                    x_mm=new_transform.x_mm
+                    + (member.transform.x_mm - old_transform.x_mm) * scale_x,
+                    y_mm=new_transform.y_mm
+                    + (member.transform.y_mm - old_transform.y_mm) * scale_y,
+                    width_mm=member.transform.width_mm * scale_x,
+                    height_mm=member.transform.height_mm * scale_y,
+                    rotation_deg=member.transform.rotation_deg + rotation_delta,
+                )
+            replacements[member.id] = replace(
+                member,
+                transform=member_transform,
+                content=cls._scaled_group_content(
+                    member.content,
+                    font_scale=font_scale,
+                    vertical_scale=scale_y,
+                ),
+            )
+        return replace(
+            project,
+            elements=tuple(
+                replacements.get(element.id, element)
+                if element.id in member_ids
+                else element
+                for element in project.elements
+            ),
+        )
+
     def update_element(self, element_id: str, patch: Mapping[str, Any]) -> None:
-        candidate = patch_element(self._require_project(), element_id, patch)
+        project = self._require_project()
+        members = self._group_members_from_project(project, element_id)
+        is_group = len(members) > 1
+        patch_keys = set(patch)
+        if is_group and patch_keys == {"transform"}:
+            candidate = self._patch_group_transform(
+                project,
+                element_id,
+                patch["transform"],
+            )
+            label = "更新出版資訊群組"
+        elif is_group and patch_keys == {"opacity"}:
+            opacity = float(patch["opacity"])
+            member_ids = {member.id for member in members}
+            candidate = replace(
+                project,
+                elements=tuple(
+                    replace(element, opacity=opacity)
+                    if element.id in member_ids
+                    else element
+                    for element in project.elements
+                ),
+            )
+            label = "切換出版資訊群組顯示"
+        elif is_group and patch_keys == {"z_index"}:
+            target = project.elements_by_id[element_id]
+            delta = int(patch["z_index"]) - target.z_index
+            member_ids = {member.id for member in members}
+            candidate = replace(
+                project,
+                elements=tuple(
+                    replace(element, z_index=element.z_index + delta)
+                    if element.id in member_ids
+                    else element
+                    for element in project.elements
+                ),
+            )
+            label = "調整出版資訊群組圖層"
+        else:
+            candidate = patch_element(project, element_id, patch)
+            label = "更新封面元素"
         candidate_json = dumps_project(candidate)
         loads_project(candidate_json)
-        self.replace_project(candidate_json, label="更新封面元素")
+        self.replace_project(candidate_json, label=label)
 
     @staticmethod
     def _safe_asset_name(name: str) -> str:
@@ -266,9 +467,18 @@ class CoverController(QObject):
         return destination.resolve()
 
     @staticmethod
+    def _uses_publisher_logo_slot(project: CoverProject, region: Region) -> bool:
+        return (
+            region is Region.BACK
+            and str(project.background.get("active_template", ""))
+            in {"publisher_back_matter", "publisher_back_matter_with_spine"}
+            and isinstance(project.background.get("publisher_logo_slot"), Mapping)
+        )
+
+    @staticmethod
     def _target_rect(project: CoverProject, region: Region):
         layout = calculate_layout(project)
-        if region is Region.BACK and str(project.background.get("active_template", "")) == "publisher_back_matter":
+        if CoverController._uses_publisher_logo_slot(project, region):
             slot = project.background.get("publisher_logo_slot")
             if isinstance(slot, Mapping):
                 try:
@@ -317,7 +527,7 @@ class CoverController(QObject):
         )
         content: dict[str, Any] = {
             "path": str(copied),
-            "fit": "cover",
+            "fit": "contain" if self._uses_publisher_logo_slot(project, region) else "cover",
             "scale": selection.scale if selection else 1.0,
             "offset_x": selection.offset_x if selection else 0.0,
             "offset_y": selection.offset_y if selection else 0.0,
@@ -361,19 +571,30 @@ class CoverController(QObject):
         self.replace_project(dumps_project(candidate), label="加入本機圖片")
         return element.id
 
-    def assign_publisher_logo(self, source_path: Path | str) -> None:
-        project = self._require_project()
-        copied = self._copy_local_image(Path(source_path).expanduser().resolve())
-        candidate = assign_template_publisher_logo(project, copied)
-        self.replace_project(dumps_project(candidate), label="更新出版社 Logo")
+    @staticmethod
+    def _without_replaced_cover_images(
+        elements: list[CoverElement],
+        replacement_regions: set[Region],
+    ) -> list[CoverElement]:
+        replace_spread = Region.SPREAD in replacement_regions
+        return [
+            element
+            for element in elements
+            if not (
+                element.kind is ElementKind.IMAGE
+                and (
+                    replace_spread
+                    or element.region is Region.SPREAD
+                    or element.region in replacement_regions
+                )
+            )
+        ]
 
     def add_downloaded_images(
         self,
         selections: Mapping[CandidateCategory | str, CompositionSelection],
     ) -> tuple[str, ...]:
         project = self._require_project()
-        elements = list(project.elements)
-        highest_z = max((element.z_index for element in elements), default=0)
         added: list[str] = []
         order = (
             CandidateCategory.BACK,
@@ -381,6 +602,15 @@ class CoverController(QObject):
             CandidateCategory.FRONT,
         )
         normalized = {CandidateCategory(key): value for key, value in selections.items()}
+        replacement_regions = {
+            self._region_for_category(category)
+            for category in normalized
+            if category in order
+        }
+        elements = self._without_replaced_cover_images(
+            list(project.elements), replacement_regions
+        )
+        highest_z = max((element.z_index for element in elements), default=0)
         for category in order:
             selection = normalized.get(category)
             if selection is None:
@@ -405,7 +635,10 @@ class CoverController(QObject):
 
     def add_composed_spread(self, source_path: Path | str) -> str:
         project = self._require_project()
-        highest_z = max((element.z_index for element in project.elements), default=0)
+        retained = self._without_replaced_cover_images(
+            list(project.elements), {Region.SPREAD}
+        )
+        highest_z = max((element.z_index for element in retained), default=0)
         element = self._image_element(
             project,
             Path(source_path).expanduser().resolve(),
@@ -414,20 +647,23 @@ class CoverController(QObject):
             element_id=f"composed-spread-{uuid4().hex}",
         )
         self.replace_project(
-            dumps_project(replace(project, elements=project.elements + (element,))),
+            dumps_project(replace(project, elements=tuple(retained) + (element,))),
             label="套用合成完整書衣",
         )
         return element.id
 
     def remove_element(self, element_id: str) -> None:
         project = self._require_project()
-        if element_id not in project.elements_by_id:
-            raise KeyError(f"找不到封面元素：{element_id}")
+        members = self._group_members_from_project(project, element_id)
+        member_ids = {member.id for member in members}
         candidate = replace(
             project,
-            elements=tuple(item for item in project.elements if item.id != element_id),
+            elements=tuple(
+                item for item in project.elements if item.id not in member_ids
+            ),
         )
-        self.replace_project(dumps_project(candidate), label="刪除封面元素")
+        label = "刪除出版資訊群組" if len(members) > 1 else "刪除封面元素"
+        self.replace_project(dumps_project(candidate), label=label)
 
     def undo(self) -> None:
         self.undo_stack.undo()
@@ -448,9 +684,23 @@ class CoverController(QObject):
         generation = self._preview_generation
         preview_dir = self.working_dir / "previews"
         preview_dir.mkdir(parents=True, exist_ok=True)
+        project = self._require_project()
+        raster_project = replace(
+            project,
+            elements=tuple(
+                element
+                for element in project.elements
+                if element.kind
+                not in {
+                    ElementKind.IMAGE,
+                    ElementKind.TEXT,
+                    ElementKind.BARCODE_PLACEHOLDER,
+                }
+            ),
+        )
         worker = PreviewWorker(
             self.service,
-            self.project_json,
+            dumps_project(raster_project),
             preview_dir / f"preview-{generation}.png",
             generation,
         )

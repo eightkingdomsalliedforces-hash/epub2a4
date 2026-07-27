@@ -20,20 +20,20 @@ def _page() -> MiniPage:
     return page
 
 
-def test_b6_content_is_centered_on_physical_a5_page():
+def test_b6_content_is_anchored_to_a5_bottom_right():
     resolved = resolve_layout(LayoutSettings(imposition_mode="b6_on_a5"))
     assert resolved.paper_width_cm == pytest.approx(14.8)
     assert resolved.paper_height_cm == pytest.approx(21.0)
     assert resolved.cell_width_cm == pytest.approx(12.8)
     assert resolved.cell_height_cm == pytest.approx(18.2)
-    assert resolved.page_margin_left_cm == pytest.approx(1.0)
-    assert resolved.page_margin_right_cm == pytest.approx(1.0)
-    assert resolved.page_margin_top_cm == pytest.approx(1.4)
-    assert resolved.page_margin_bottom_cm == pytest.approx(1.4)
+    assert resolved.page_margin_left_cm == pytest.approx(2.0)
+    assert resolved.page_margin_right_cm == pytest.approx(0.0)
+    assert resolved.page_margin_top_cm == pytest.approx(2.8)
+    assert resolved.page_margin_bottom_cm == pytest.approx(0.0)
     assert build_imposition(3, "b6_on_a5").sides == ((1,), (2,), (3,))
 
 
-def test_crop_mark_mode_adds_eight_external_marks(tmp_path):
+def test_crop_mark_mode_adds_only_top_and_left_guides(tmp_path):
     normal = tmp_path / "normal.docx"
     marked = tmp_path / "marked.docx"
     for output, mark_mode in ((normal, "normal"), (marked, "crop_marks")):
@@ -62,4 +62,4 @@ def test_crop_mark_mode_adds_eight_external_marks(tmp_path):
             )
 
     assert header_xml(normal).count(b"<v:line") == 0
-    assert header_xml(marked).count(b"<v:line") == 8
+    assert header_xml(marked).count(b"<v:line") == 2

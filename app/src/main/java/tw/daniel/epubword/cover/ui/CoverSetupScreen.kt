@@ -33,11 +33,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import tw.daniel.epubword.cover.model.ImageMode
-import java.util.Locale
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.Locale
 
-fun publisherLogoSearchUri(publisher: String): String {
+internal fun publisherLogoSearchUri(publisher: String): String {
     val query = URLEncoder.encode("${publisher.trim()} logo".trim(), StandardCharsets.UTF_8)
     val title = URLEncoder.encode("Special:MediaSearch", StandardCharsets.UTF_8)
     return "https://commons.wikimedia.org/w/index.php?search=$query&title=$title&type=image"
@@ -54,6 +54,19 @@ data class CoverSetupCallbacks(
     val onBleed: (Double) -> Unit = {},
     val onImageMode: (ImageMode) -> Unit = {},
     val onTemplate: (String) -> Unit = {},
+    val onIsbn: (String) -> Unit = {},
+    val onIsbnAddon: (String) -> Unit = {},
+    val onPublisher: (String) -> Unit = {},
+    val onPrice: (String) -> Unit = {},
+    val onPublicationPlace: (String) -> Unit = {},
+    val onTranslator: (String) -> Unit = {},
+    val onPublisherId: (String) -> Unit = {},
+    val onEnglishTitle: (String) -> Unit = {},
+    val onVolumeNumber: (String) -> Unit = {},
+    val onArcLabel: (String) -> Unit = {},
+    val onSeriesName: (String) -> Unit = {},
+    val onInternalBookCode: (String) -> Unit = {},
+    val onSpineAccentColor: (String) -> Unit = {},
     val onChoosePublisherLogo: () -> Unit = {},
     val onSearchPublisherLogo: () -> Unit = {},
     val onCreateProject: () -> Unit = {},
@@ -78,6 +91,7 @@ fun CoverSetupScreen(
                 PageAndTrimCard(state, callbacks)
                 PaperAndSpineCard(state, callbacks)
                 AppearanceCard(state, callbacks)
+                if (state.publisherTemplateSelected) PublisherMetadataCard(state, callbacks)
                 CreateCard(state, callbacks)
             }
         } else {
@@ -102,6 +116,7 @@ fun CoverSetupScreen(
                 ) {
                     PageAndTrimCard(state, callbacks)
                     AppearanceCard(state, callbacks)
+                    if (state.publisherTemplateSelected) PublisherMetadataCard(state, callbacks)
                     CreateCard(state, callbacks)
                 }
             }
@@ -247,21 +262,141 @@ private fun AppearanceCard(state: CoverUiState, callbacks: CoverSetupCallbacks) 
                 Text(if (mode == ImageMode.FRONT_ONLY) "僅正面圖片" else "全展開圖片")
             }
         }
-        TEMPLATE_OPTIONS.forEach { (id, label) ->
+        COVER_TEMPLATE_OPTIONS.forEach { option ->
             FilterChip(
-                selected = state.templateId == id,
-                onClick = { callbacks.onTemplate(id) },
-                label = { Text(label) },
+                selected = state.templateId == option.id,
+                onClick = { callbacks.onTemplate(option.id) },
+                label = { Text(option.label) },
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        if (state.templateId == "publisher_back_matter") {
-            OutlinedButton(onClick = callbacks.onSearchPublisherLogo, modifier = Modifier.fillMaxWidth()) {
+    }
+}
+
+
+@Composable
+private fun PublisherMetadataCard(state: CoverUiState, callbacks: CoverSetupCallbacks) {
+    StepCard("出版社封底資料") {
+        Text(
+            "此模板不會猜測缺少的出版資料；請在建立封面前確認以下內容。",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedTextField(
+            value = state.metadataIsbn,
+            onValueChange = callbacks.onIsbn,
+            label = { Text("ISBN-13") },
+            supportingText = { Text("可輸入連字號，例如 978-475-752-157-5") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataIsbnAddon,
+            onValueChange = callbacks.onIsbnAddon,
+            label = { Text("條碼附加碼（選填，2 或 5 位）") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataPublisher,
+            onValueChange = callbacks.onPublisher,
+            label = { Text("出版社名稱") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataPrice,
+            onValueChange = callbacks.onPrice,
+            label = { Text("定價（選填）") },
+            supportingText = { Text("例如 NT$110/HK$35") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataPublicationPlace,
+            onValueChange = callbacks.onPublicationPlace,
+            label = { Text("出版地／代理資訊（選填）") },
+            supportingText = { Text("例如 香港代理：角川洲立出版") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataTranslator,
+            onValueChange = callbacks.onTranslator,
+            label = { Text("譯者（選填）") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataPublisherId,
+            onValueChange = callbacks.onPublisherId,
+            label = { Text("出版社識別／代號") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataEnglishTitle,
+            onValueChange = callbacks.onEnglishTitle,
+            label = { Text("英文書名／副標題") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataVolumeNumber,
+            onValueChange = callbacks.onVolumeNumber,
+            label = { Text("集數／冊數") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataArcLabel,
+            onValueChange = callbacks.onArcLabel,
+            label = { Text("卷別／篇章") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataSeriesName,
+            onValueChange = callbacks.onSeriesName,
+            label = { Text("系列名稱") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataInternalBookCode,
+            onValueChange = callbacks.onInternalBookCode,
+            label = { Text("內部書號") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataSpineAccentColor,
+            onValueChange = callbacks.onSpineAccentColor,
+            label = { Text("書脊強調色（例如 #F15A24）") },
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = callbacks.onSearchPublisherLogo,
+                enabled = !state.isBusy,
+                modifier = Modifier.weight(1f),
+            ) {
                 Text("搜尋出版社 Logo")
             }
-            OutlinedButton(onClick = callbacks.onChoosePublisherLogo, modifier = Modifier.fillMaxWidth()) {
-                Text("選擇出版社 Logo")
+            OutlinedButton(
+                onClick = callbacks.onChoosePublisherLogo,
+                enabled = !state.isBusy,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("手動選擇 Logo")
             }
+        }
+        state.publisherTemplateIssue?.let {
+            Text(it, color = MaterialTheme.colorScheme.error)
         }
     }
 }
@@ -276,7 +411,13 @@ private fun CreateCard(state: CoverUiState, callbacks: CoverSetupCallbacks) {
             enabled = state.canCreateProject,
             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         ) {
-            Text(if (state.isBusy) "處理中…" else "建立封面")
+            Text(
+                when {
+                    state.isBusy -> "處理中…"
+                    state.project != null -> "重新建立封面"
+                    else -> "建立封面"
+                },
+            )
         }
     }
 }
@@ -318,11 +459,3 @@ fun parsePositiveDouble(text: String, field: String): Result<Double> = runCatchi
 private fun Double.oneDecimal(): String = String.format(Locale.US, "%.1f", this)
 private fun Double.twoDecimals(): String = String.format(Locale.US, "%.2f", this)
 private fun Double.clean(): String = if (this % 1.0 == 0.0) toInt().toString() else oneDecimal()
-
-private val TEMPLATE_OPTIONS = listOf(
-    "minimal_text" to "極簡文字",
-    "front_image_plain_back" to "正面圖片＋純色封底",
-    "full_spread" to "跨頁滿版圖片",
-    "top_bottom_blocks" to "上下色塊",
-    "publisher_back_matter" to "出版社式封底",
-)
