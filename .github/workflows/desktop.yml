@@ -25,52 +25,31 @@ jobs:
         with:
           ref: fix/reference-back-cover-isbn-clarity
           fetch-depth: 0
-
       - name: Apply SVG compatibility patch
-        shell: bash
         run: |
           git apply --check .github/patches/svg-logo-compat.patch
           git apply .github/patches/svg-logo-compat.patch
-
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-
       - name: Install dependencies
-        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install --yes libegl1
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -e ".[test]"
           python -m pip install "PySide6==6.11.1" "pytest-qt>=4.4,<5" "keyring==25.7.0" "platformdirs==4.10.1"
-
       - name: Verify SVG compatibility paths
-        run: >-
-          python -m pytest
-          python-tests/cover/test_publisher_logo_render.py
-          desktop/tests/test_svg_logo.py
-          -q
-
+        run: python -m pytest python-tests/cover/test_publisher_logo_render.py desktop/tests/test_svg_logo.py -q
       - name: Run all shared tests
         run: python -m pytest python-tests -q
-
       - name: Test publisher metadata and logo desktop UI
-        run: >-
-          python -m pytest
-          desktop/tests/test_publisher_metadata_panel.py
-          desktop/tests/test_publisher_logo_dialog.py
-          desktop/tests/test_publisher_logo_embedding.py
-          -q
-
-      - name: Test crop controls and layout preview
-        run: >-
-          python -m pytest
-          desktop/tests/test_converter_crop_controls.py
-          desktop/tests/test_layout_preview.py
-          -q
-
+        run: python -m pytest desktop/tests/test_publisher_metadata_panel.py desktop/tests/test_publisher_logo_dialog.py desktop/tests/test_publisher_logo_embedding.py -q
+      - name: Test converter crop controls
+        run: python -m pytest desktop/tests/test_converter_crop_controls.py -q
+      - name: Test shared-geometry layout preview
+        run: python -m pytest desktop/tests/test_layout_preview.py -q
       - name: Run remaining desktop regression tests
         run: >-
           python -m pytest desktop/tests -q
@@ -80,14 +59,11 @@ jobs:
           --ignore=desktop/tests/test_publisher_logo_embedding.py
           --ignore=desktop/tests/test_converter_crop_controls.py
           --ignore=desktop/tests/test_layout_preview.py
-
       - name: Compile and verify structure
         run: |
           python -m compileall -q python/src app/src/main/python
           python scripts/verify_project.py
-
       - name: Commit verified implementation and restore normal CI
-        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
