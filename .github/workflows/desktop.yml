@@ -44,7 +44,7 @@ jobs:
           gzip -t /tmp/desktop-current.patch.gz
           gzip -dc /tmp/desktop-current.patch.gz > /tmp/desktop-current.patch
           actual_sha="$(sha256sum /tmp/desktop-current.patch | cut -d' ' -f1)"
-          test "${actual_sha}" = "1e025e167ceedba627c40317f9f2d0ee12e7c13a6616a42b7d1c86419a0a1e0a"
+          test "${actual_sha}" = "99bd5758b8ee664f129cd363367f8d962fa006da4ae9fc8570628f99e833f797"
           git apply --check /tmp/desktop-current.patch
           git apply /tmp/desktop-current.patch
 
