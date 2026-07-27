@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from PIL import Image
 import pytest
 
 from epub_a4_word.cover.geometry import calculate_layout
-from epub_a4_word.cover.models import CoverMetadata
+from epub_a4_word.cover.models import CoverMetadata, LogoAssetMetadata
 from epub_a4_word.cover.templates import apply_template
 
 
@@ -152,3 +153,39 @@ def test_reported_603_spine_text_is_readable_and_bounded(sample_project) -> None
         assert transform.x_mm + transform.width_mm <= spine.right_mm
         assert transform.y_mm >= spine.y_mm
         assert transform.y_mm + transform.height_mm <= spine.bottom_mm
+
+
+def test_reported_603_spine_logo_is_large_centered_and_bounded(
+    sample_project,
+    tmp_path,
+) -> None:
+    logo_path = tmp_path / "publisher.png"
+    Image.new("RGBA", (300, 120), "navy").save(logo_path)
+    project = replace(
+        sample_project(
+            page_count=133,
+            paper_caliper_mm=0.09,
+            manual_spine_width_mm=None,
+        ),
+        metadata=replace(
+            sample_project().metadata,
+            publisher="台灣角川",
+            publisher_logo=LogoAssetMetadata(
+                asset_id="publisher-logo",
+                path=str(logo_path),
+            ),
+        ),
+    )
+    result = apply_template(project, "publisher_back_matter_with_spine")
+    spine = calculate_layout(result).spine_rect
+    logo = result.elements_by_id["spine-publisher-logo"].transform
+
+    assert logo.width_mm == pytest.approx(spine.width_mm * 0.90)
+    assert logo.height_mm <= 18.0
+    assert logo.x_mm == pytest.approx(
+        spine.x_mm + (spine.width_mm - logo.width_mm) / 2.0
+    )
+    assert logo.x_mm >= spine.x_mm
+    assert logo.x_mm + logo.width_mm <= spine.right_mm
+    assert logo.y_mm >= spine.y_mm
+    assert logo.y_mm + logo.height_mm <= spine.bottom_mm
