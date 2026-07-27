@@ -602,12 +602,13 @@ def _publisher_spine_elements(
         )
     logo = project.metadata.publisher_logo
     if logo is not None and logo.path and Path(logo.path).is_file():
-        logo_width = layout.spine_rect.width_mm * 0.70
+        logo_width = layout.spine_rect.width_mm * 0.90
+        logo_height = min(18.0, layout.spine_safe_rect.height_mm * 0.10)
         logo_rect = RectMm(
             layout.spine_rect.x_mm + (layout.spine_rect.width_mm - logo_width) / 2.0,
             layout.spine_safe_rect.y_mm,
             logo_width,
-            min(14.0, layout.spine_safe_rect.height_mm * 0.10),
+            logo_height,
         )
         elements.append(
             CoverElement(

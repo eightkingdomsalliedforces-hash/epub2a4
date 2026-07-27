@@ -9,6 +9,8 @@ from .project_io import CoverValidationError, validate_project
 
 DEFAULT_SAFE_INSET_MM = 5.0
 SPINE_FOLD_SAFE_INSET_MM = 3.0
+SPINE_CONTENT_MAX_INSET_MM = 1.0
+SPINE_CONTENT_INSET_RATIO = 0.12
 
 
 class CoverLayoutError(ValueError):
@@ -94,16 +96,10 @@ class CoverLayout:
 
 
 def _spine_safe_rect(spine: RectMm) -> RectMm:
-    # Use the specified 3 mm fold clearance whenever the spine is wide enough.
-    # Narrow spines cannot physically provide 3 mm on both sides, so retain a
-    # small positive box for the template rules which explicitly handle them.
-    if spine.width_mm > 2.0 * SPINE_FOLD_SAFE_INSET_MM:
-        horizontal_inset = SPINE_FOLD_SAFE_INSET_MM
-    else:
-        horizontal_inset = min(
-            SPINE_FOLD_SAFE_INSET_MM,
-            max(0.0, (spine.width_mm - 0.2) / 2.0),
-        )
+    horizontal_inset = min(
+        SPINE_CONTENT_MAX_INSET_MM,
+        spine.width_mm * SPINE_CONTENT_INSET_RATIO,
+    )
     return spine.inset(
         horizontal_inset,
         DEFAULT_SAFE_INSET_MM,
