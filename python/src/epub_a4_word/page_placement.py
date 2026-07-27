@@ -59,8 +59,8 @@ def build_page_placement(settings: LayoutSettings) -> PagePlacement:
     ):
         guides.extend(
             (
-                CropGuide(0.0, content_y, content_x, content_y, "crop"),
-                CropGuide(content_x, 0.0, content_x, content_y, "crop"),
+                CropGuide(0.0, content_y, paper_width, content_y, "crop"),
+                CropGuide(content_x, 0.0, content_x, paper_height, "crop"),
             )
         )
     elif (
