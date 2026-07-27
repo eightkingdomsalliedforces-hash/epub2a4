@@ -8,6 +8,7 @@ from epub_a4_word.cover.render import render_spread
 from epub_a4_word.cover.templates import apply_template
 
 
+# This regression test also verifies platforms without a native CairoSVG runtime.
 def test_combined_template_renders_safe_svg_publisher_logo(sample_project, tmp_path: Path) -> None:
     logo = tmp_path / "logo.svg"
     logo.write_text(
