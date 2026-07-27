@@ -104,3 +104,9 @@ replace_once(
     '        finally:\n'
     '            self._syncing_group_selection = False\n',
 )
+
+replace_once(
+    Path("desktop/tests/test_publisher_workflow.py"),
+    "def test_publisher_logo_image_uses_contain_without_cropping(tmp_path: Path) -> None:\n",
+    "def test_publisher_logo_image_uses_contain_without_cropping(qtbot, tmp_path: Path) -> None:\n",
+)
