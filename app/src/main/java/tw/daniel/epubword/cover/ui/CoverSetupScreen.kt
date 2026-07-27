@@ -306,4 +306,5 @@ private val TEMPLATE_OPTIONS = listOf(
     "front_image_plain_back" to "正面圖片＋純色封底",
     "full_spread" to "跨頁滿版圖片",
     "top_bottom_blocks" to "上下色塊",
+    "publisher_back_matter" to "出版社式封底",
 )
