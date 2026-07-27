@@ -35,7 +35,7 @@ jobs:
           fetch-depth: 0
           show-progress: false
 
-      - name: Reconstruct and validate patch
+      - name: Reconstruct and apply patch
         shell: bash
         run: |
           set -euo pipefail
@@ -45,8 +45,7 @@ jobs:
           gzip -dc /tmp/desktop-current.patch.gz > /tmp/desktop-current.patch
           actual_sha="$(sha256sum /tmp/desktop-current.patch | cut -d' ' -f1)"
           test "${actual_sha}" = "99bd5758b8ee664f129cd363367f8d962fa006da4ae9fc8570628f99e833f797"
-          git apply --check /tmp/desktop-current.patch
-          git apply /tmp/desktop-current.patch
+          git apply --3way --index --verbose /tmp/desktop-current.patch
 
       - name: Install Linux Qt runtime library
         run: |
