@@ -20,6 +20,7 @@ enum class CoverStatus {
 
 enum class TrimPreset(val label: String, val widthMm: Double, val heightMm: Double) {
     A5("A5", 148.0, 210.0),
+    B6("B6", 128.0, 182.0),
     A6("A6", 105.0, 148.0),
     INCH_4X6("4 × 6 英吋", 101.6, 152.4),
 }
