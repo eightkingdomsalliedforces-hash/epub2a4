@@ -90,6 +90,12 @@ replace_once(
 )
 
 replace_once(
+    Path("python/src/epub_a4_word_desktop/pages/cover_page.py"),
+    '("出版社封底＋直式書脊", "publisher_back_matter_with_spine"),\n',
+    '("出版社封底＋直式書脊", "publisher_back_matter"),\n',
+)
+
+replace_once(
     Path("python/src/epub_a4_word_desktop/cover/canvas.py"),
     '        scene = self.scene()\n'
     '        scene.clear()\n'
