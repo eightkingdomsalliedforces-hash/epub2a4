@@ -49,10 +49,7 @@ from epub_a4_word_desktop.cover.inspector import ElementInspector
 from epub_a4_word_desktop.cover.layers_panel import LayersPanel
 from epub_a4_word_desktop.cover.project_files import open_project_bundle, save_project_bundle
 from epub_a4_word_desktop.cover.publisher_logo_dialog import PublisherLogoDialog
-from epub_a4_word_desktop.cover.publisher_metadata_panel import (
-    PublisherMetadataPanel,
-    PublisherMetadataValues,
-)
+from epub_a4_word_desktop.cover.publisher_metadata_panel import PublisherMetadataValues
 from epub_a4_word_desktop.cover.search_controller import SearchController, SharedSearchFacade
 from epub_a4_word_desktop.cover.search_panel import CoverSearchPanel
 from epub_a4_word_desktop.cover.setup_panel import CoverSetupPanel, CoverSetupValues
@@ -202,7 +199,7 @@ class CoverPage(QWidget):
         self.canvas = CoverCanvas(self)
         self.inspector = ElementInspector(self)
         self.setup_panel = CoverSetupPanel(self)
-        self.publisher_metadata_panel = PublisherMetadataPanel(self)
+        self.publisher_metadata_panel = self.setup_panel.publisher_metadata_panel
         self.publisher_metadata_panel.setEnabled(False)
         self.reset_publisher_template_button = QPushButton("重設模板版面", self)
         self.reset_publisher_template_button.setEnabled(False)
@@ -240,7 +237,6 @@ class CoverPage(QWidget):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.addWidget(self.setup_panel)
-        right_layout.addWidget(self.publisher_metadata_panel)
         right_layout.addWidget(self.reset_publisher_template_button)
         right_layout.addWidget(self.inspector, 1)
         right_layout.addWidget(self.export_panel)
@@ -253,6 +249,7 @@ class CoverPage(QWidget):
 
         self.right_scroll = QScrollArea(self)
         self.right_scroll.setWidgetResizable(True)
+        self.right_scroll.setMinimumWidth(330)
         self.right_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.right_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.right_scroll.setWidget(right)
@@ -261,6 +258,7 @@ class CoverPage(QWidget):
         self.splitter.addWidget(self.left_scroll)
         self.splitter.addWidget(self.center_tabs)
         self.splitter.addWidget(self.right_scroll)
+        self.splitter.setCollapsible(2, False)
         self.splitter.setStretchFactor(0, 0)
         self.splitter.setStretchFactor(1, 1)
         self.splitter.setStretchFactor(2, 0)

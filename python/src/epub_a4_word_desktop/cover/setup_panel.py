@@ -110,6 +110,11 @@ class CoverSetupPanel(QWidget):
         self.setObjectName("cover-setup-panel")
         self.source_edit = QLineEdit(self)
         self.source_edit.setPlaceholderText("選擇 EPUB、DOCX 或 PDF")
+        self.source_edit.setMinimumWidth(0)
+        self.source_edit.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         self.browse_button = QPushButton("瀏覽…", self)
         self.browse_button.setMinimumWidth(88)
         self.browse_button.setSizePolicy(
