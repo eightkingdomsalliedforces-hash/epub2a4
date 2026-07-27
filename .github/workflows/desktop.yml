@@ -53,8 +53,22 @@ jobs:
           desktop/tests/test_converter_crop_controls.py
           desktop/tests/test_layout_preview.py
           -q
-      - name: Verify publisher ISBN workflow compatibility
-        run: python -m pytest desktop/tests/test_publisher_workflow.py -q --tb=short
+      - name: Verify ISBN creation from ISBN-13
+        run: python -m pytest desktop/tests/test_publisher_workflow.py::test_controller_apply_isbn_updates_metadata_and_template_barcode -q --tb=short
+      - name: Verify ISBN-10 conversion
+        run: python -m pytest desktop/tests/test_publisher_workflow.py::test_controller_converts_isbn10_to_ean13_for_barcode -q --tb=short
+      - name: Verify moved barcode geometry
+        run: python -m pytest desktop/tests/test_publisher_workflow.py::test_controller_isbn_sync_preserves_moved_barcode_geometry -q --tb=short
+      - name: Verify publisher logo slot
+        run: python -m pytest desktop/tests/test_publisher_workflow.py::test_publisher_logo_image_uses_contain_without_cropping -q --tb=short
+      - name: Verify publisher canvas and inspector paths
+        run: >-
+          python -m pytest
+          desktop/tests/test_publisher_workflow.py::test_canvas_creates_interactive_barcode_item
+          desktop/tests/test_publisher_workflow.py::test_inspector_exposes_scale_slider_and_transform_shortcuts
+          desktop/tests/test_publisher_workflow.py::test_candidate_card_explains_recommended_and_corresponding_isbn
+          desktop/tests/test_publisher_workflow.py::test_unrelated_isbn10_is_not_labelled_as_same_edition
+          -q --tb=short
       - name: Verify legacy template option compatibility
         run: python -m pytest desktop/tests/test_user_reported_cover_regressions.py -q --tb=short
       - name: Verify canvas reload lifetime
