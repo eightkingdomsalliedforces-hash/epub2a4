@@ -4,49 +4,88 @@ from PySide6.QtCore import QLineF, QRectF, Qt
 from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import QWidget
 
+from epub_a4_word.page_placement import PagePlacement, build_page_placement
+from epub_a4_word.pagination import LayoutSettings, resolve_layout
 
-class B6OnA5Preview(QWidget):
-    """Informational preview of centered B6 content on an A5 sheet."""
+
+class LayoutPreview(QWidget):
+    """Preview paper, content rectangle, and shared crop/fold geometry."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._show_crop_marks = False
+        self._settings = resolve_layout(LayoutSettings(imposition_mode="signature16"))
+        self._placement = build_page_placement(self._settings)
         self.setMinimumHeight(190)
-        self.setToolTip("A5 紙張 148 × 210 mm；中央 B6 內容區 128 × 182 mm")
 
-    def set_crop_marks(self, enabled: bool) -> None:
-        self._show_crop_marks = bool(enabled)
+    @property
+    def placement(self) -> PagePlacement:
+        return self._placement
+
+    @property
+    def finished_edge_message(self) -> str:
+        if self._settings.imposition_mode in {"single_a5", "single_4x6"}:
+            return "紙張邊緣即成品邊"
+        return ""
+
+    def set_settings(self, settings: LayoutSettings) -> None:
+        self._settings = resolve_layout(settings)
+        self._placement = build_page_placement(self._settings)
+        self.setToolTip(self._tooltip_text())
         self.update()
+
+    def _tooltip_text(self) -> str:
+        placement = self._placement
+        text = (
+            f"紙張 {placement.paper_width_mm:g} × {placement.paper_height_mm:g} mm；"
+            f"內容 {placement.content_width_mm:g} × {placement.content_height_mm:g} mm"
+        )
+        return f"{text}；{self.finished_edge_message}" if self.finished_edge_message else text
 
     def paintEvent(self, event) -> None:
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        available = self.rect().adjusted(12, 12, -12, -12)
-        scale = min(available.width() / 148.0, available.height() / 210.0)
-        width = 148.0 * scale
-        height = 210.0 * scale
+        available = self.rect().adjusted(12, 12, -12, -28)
+        placement = self._placement
+        scale = min(
+            available.width() / placement.paper_width_mm,
+            available.height() / placement.paper_height_mm,
+        )
+        width = placement.paper_width_mm * scale
+        height = placement.paper_height_mm * scale
         left = available.center().x() - width / 2
         top = available.center().y() - height / 2
         page = QRectF(left, top, width, height)
-        trim = QRectF(
-            left + 10.0 * scale,
-            top + 14.0 * scale,
-            128.0 * scale,
-            182.0 * scale,
+        content = QRectF(
+            left + placement.content_x_mm * scale,
+            top + placement.content_y_mm * scale,
+            placement.content_width_mm * scale,
+            placement.content_height_mm * scale,
         )
         painter.fillRect(page, self.palette().base())
         painter.setPen(QPen(self.palette().text().color(), 1.0))
         painter.drawRect(page)
-        painter.setPen(QPen(self.palette().highlight().color(), 1.5, Qt.PenStyle.DashLine))
-        painter.drawRect(trim)
-        if self._show_crop_marks:
-            painter.setPen(QPen(self.palette().text().color(), 1.0))
-            length = 5.0 * scale
-            gap = 2.0 * scale
-            for x in (trim.left(), trim.right()):
-                painter.drawLine(QLineF(x, trim.top() - gap - length, x, trim.top() - gap))
-                painter.drawLine(QLineF(x, trim.bottom() + gap, x, trim.bottom() + gap + length))
-            for y in (trim.top(), trim.bottom()):
-                painter.drawLine(QLineF(trim.left() - gap - length, y, trim.left() - gap, y))
-                painter.drawLine(QLineF(trim.right() + gap, y, trim.right() + gap + length, y))
+        painter.setPen(QPen(self.palette().highlight().color(), 1.25, Qt.PenStyle.DashLine))
+        painter.drawRect(content)
+        for guide in placement.guides:
+            style = Qt.PenStyle.DashLine if guide.role == "fold" else Qt.PenStyle.SolidLine
+            painter.setPen(QPen(self.palette().text().color(), 1.0, style))
+            painter.drawLine(
+                QLineF(
+                    left + guide.x1_mm * scale,
+                    top + guide.y1_mm * scale,
+                    left + guide.x2_mm * scale,
+                    top + guide.y2_mm * scale,
+                )
+            )
+        if self.finished_edge_message:
+            painter.setPen(self.palette().text().color())
+            painter.drawText(
+                self.rect().adjusted(8, self.height() - 24, -8, -4),
+                Qt.AlignmentFlag.AlignCenter,
+                self.finished_edge_message,
+            )
+
+
+# Backward-compatible import name used by older tests and integrations.
+B6OnA5Preview = LayoutPreview

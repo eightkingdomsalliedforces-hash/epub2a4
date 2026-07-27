@@ -100,6 +100,17 @@ object CoverProjectJson {
             "description",
             "isbn",
             "publisher",
+            "price",
+            "publication_place",
+            "translator",
+            "isbn_addon",
+            "publisher_id",
+            "english_title",
+            "volume_number",
+            "arc_label",
+            "series_name",
+            "internal_book_code",
+            "spine_accent_color",
             "language",
             "page_count_is_estimate",
             "embedded_images",
@@ -112,6 +123,17 @@ object CoverProjectJson {
             description = optionalString(value, "description", ""),
             isbn = optionalString(value, "isbn", ""),
             publisher = optionalString(value, "publisher", ""),
+            price = optionalString(value, "price", ""),
+            publicationPlace = optionalString(value, "publication_place", ""),
+            translator = optionalString(value, "translator", ""),
+            isbnAddon = optionalString(value, "isbn_addon", ""),
+            publisherId = optionalString(value, "publisher_id", ""),
+            englishTitle = optionalString(value, "english_title", ""),
+            volumeNumber = optionalString(value, "volume_number", ""),
+            arcLabel = optionalString(value, "arc_label", ""),
+            seriesName = optionalString(value, "series_name", ""),
+            internalBookCode = optionalString(value, "internal_book_code", ""),
+            spineAccentColor = optionalString(value, "spine_accent_color", "#F15A24"),
             language = optionalString(value, "language", ""),
             pageCountIsEstimate = optionalBoolean(value, "page_count_is_estimate", false),
             embeddedImages = buildList {
@@ -215,6 +237,17 @@ object CoverProjectJson {
         .put("description", value.description)
         .put("isbn", value.isbn)
         .put("publisher", value.publisher)
+        .put("price", value.price)
+        .put("publication_place", value.publicationPlace)
+        .put("translator", value.translator)
+        .put("isbn_addon", value.isbnAddon)
+        .put("publisher_id", value.publisherId)
+        .put("english_title", value.englishTitle)
+        .put("volume_number", value.volumeNumber)
+        .put("arc_label", value.arcLabel)
+        .put("series_name", value.seriesName)
+        .put("internal_book_code", value.internalBookCode)
+        .put("spine_accent_color", value.spineAccentColor)
         .put("language", value.language)
         .put("page_count_is_estimate", value.pageCountIsEstimate)
         .put("embedded_images", JSONArray().also { array ->

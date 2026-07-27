@@ -26,9 +26,13 @@ def test_probe_lists_android_supported_modes():
     result = android_bridge.probe()
 
     assert result["bridge_version"] == "1.0"
-    assert result["python_core_version"] == "0.6.0"
+    assert result["python_core_version"] == "0.6.1"
     assert result["supported_inputs"] == ["epub", "docx"]
-    assert result["supported_modes"]["docx"] == ["single_a5", "single_4x6"]
+    assert result["supported_modes"]["docx"] == [
+        "single_a5",
+        "b6_on_a5",
+        "single_4x6",
+    ]
 
 
 def test_convert_file_builds_settings_for_epub(monkeypatch, tmp_path: Path):

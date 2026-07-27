@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
+from PySide6.QtNetwork import QNetworkAccessManager
 
 from epub_a4_word.cover.models import (
     CoverElement,
@@ -23,8 +24,7 @@ from epub_a4_word_desktop.cover.canvas import CoverCanvas
 from epub_a4_word_desktop.cover.controller import CoverController
 from epub_a4_word_desktop.cover.inspector import ElementInspector
 from epub_a4_word_desktop.cover.items import CoverBarcodeItem
-from epub_a4_word_desktop.cover.search_panel import CandidateCard
-from epub_a4_word_desktop.pages.cover_page import publisher_logo_search_url
+from epub_a4_word_desktop.cover.search_panel import CandidateCard, candidate_isbn_summary
 
 
 def _project(tmp_path: Path) -> CoverProject:
@@ -66,6 +66,25 @@ def _publisher_project(tmp_path: Path, isbn: str = "9780306406157") -> CoverProj
     )
 
 
+def _candidate(*, isbns: tuple[str, ...] = ("0306406152", "9780306406157")) -> SearchCandidate:
+    return SearchCandidate(
+        provider="google_books",
+        candidate_id="book",
+        query_kind=SearchKind.FRONT,
+        proposed_category=CandidateCategory.FRONT,
+        title="Example Volume 1",
+        author="Author",
+        isbn="9780306406157",
+        isbns=isbns,
+        publisher="Publisher",
+        language="zh-TW",
+        classification_reasons=("書名與卷數相符",),
+        preview_url="https://example.test/preview.jpg",
+        image_url="https://example.test/image.jpg",
+        source_page="https://example.test/book",
+    )
+
+
 def test_controller_apply_isbn_updates_metadata_and_template_barcode(tmp_path: Path) -> None:
     controller = CoverController(working_dir=tmp_path, auto_preview=False)
     project = apply_template(_project(tmp_path), "publisher_back_matter")
@@ -76,23 +95,7 @@ def test_controller_apply_isbn_updates_metadata_and_template_barcode(tmp_path: P
     updated = loads_project(controller.project_json)
     assert updated.metadata.isbn == "9780306406157"
     assert updated.elements_by_id["back-isbn-code"].content["isbn"] == "9780306406157"
-    assert updated.elements_by_id["back-isbn-label"].content["text"] == "ISBN-13 9780306406157"
-
-
-def test_controller_assign_publisher_logo_replaces_existing_logo(qtbot, tmp_path: Path) -> None:
-    first = tmp_path / "first.png"
-    second = tmp_path / "second.png"
-    QPixmap(12, 12).save(str(first))
-    QPixmap(16, 16).save(str(second))
-    controller = CoverController(working_dir=tmp_path, auto_preview=False)
-    controller.replace_project(dumps_project(_publisher_project(tmp_path)), clear_history=True)
-
-    controller.assign_publisher_logo(first)
-    controller.assign_publisher_logo(second)
-
-    logos = [item for item in loads_project(controller.project_json).elements if item.id == "back-publisher-logo"]
-    assert len(logos) == 1
-    assert Path(str(logos[0].content["path"])).is_file()
+    assert updated.elements_by_id["back-isbn-label"].content["text"] == "ISBN 978-030-640-615-7"
 
 
 def test_controller_converts_isbn10_to_ean13_for_barcode(tmp_path: Path) -> None:
@@ -130,6 +133,25 @@ def test_controller_isbn_sync_preserves_moved_barcode_geometry(tmp_path: Path) -
     assert updated.elements_by_id["back-isbn-code"].content["isbn"] == "9783161484100"
 
 
+def test_publisher_logo_image_uses_contain_without_cropping(qtbot, tmp_path: Path) -> None:
+    controller = CoverController(working_dir=tmp_path, auto_preview=False)
+    project = _publisher_project(tmp_path)
+    controller.replace_project(dumps_project(project), clear_history=True)
+    source = tmp_path / "publisher-logo.png"
+    QPixmap(240, 120).save(str(source))
+
+    element_id = controller.add_local_image(source, Region.BACK)
+
+    updated = loads_project(controller.project_json)
+    element = updated.elements_by_id[element_id]
+    slot = updated.background["publisher_logo_slot"]
+    assert element.content["fit"] == "contain"
+    assert element.transform.x_mm == slot["x_mm"]
+    assert element.transform.y_mm == slot["y_mm"]
+    assert element.transform.width_mm == slot["width_mm"]
+    assert element.transform.height_mm == slot["height_mm"]
+
+
 def test_canvas_creates_interactive_barcode_item(qtbot, tmp_path: Path) -> None:
     canvas = CoverCanvas()
     qtbot.addWidget(canvas)
@@ -163,30 +185,23 @@ def test_inspector_exposes_scale_slider_and_transform_shortcuts(qtbot, tmp_path:
     assert center_signal.args == ["image", {"content": {"offset_x": 0.0, "offset_y": 0.0}}]
 
 
-def test_candidate_card_displays_all_valid_isbns(qtbot) -> None:
-    from PySide6.QtNetwork import QNetworkAccessManager
-
-    candidate = SearchCandidate(
-        provider="google_books",
-        candidate_id="book",
-        query_kind=SearchKind.FRONT,
-        proposed_category=CandidateCategory.FRONT,
-        title="Example Volume 1",
-        author="Author",
-        isbn="9780306406157",
-        isbns=("0306406152", "9780306406157"),
-        preview_url="https://example.test/preview.jpg",
-        image_url="https://example.test/image.jpg",
-        source_page="https://example.test/book",
-    )
-    card = CandidateCard(candidate, QNetworkAccessManager())
+def test_candidate_card_explains_recommended_and_corresponding_isbn(qtbot) -> None:
+    card = CandidateCard(_candidate(), QNetworkAccessManager())
     qtbot.addWidget(card)
 
-    assert "ISBN-10 0306406152" in card.isbn_label.text()
-    assert "ISBN-13 9780306406157" in card.isbn_label.text()
+    text = card.isbn_label.text()
+    assert "建議 ISBN-13：9780306406157" in text
+    assert "對應 ISBN-10：0306406152（同一版本對應碼）" in text
+    assert text.count("建議 ISBN-13") == 1
+    assert "ISBN-10 0306406152\nISBN-13" not in text
+    edition = card.edition_label.text()
+    assert "出版社：Publisher" in edition
+    assert "語言：zh-TW" in edition
+    assert "判定：書名與卷數相符" in edition
 
 
-def test_publisher_logo_search_uses_wikimedia_media_search() -> None:
-    url = publisher_logo_search_url("台灣角川")
-    assert url.startswith("https://commons.wikimedia.org/w/index.php?")
-    assert "search=%E5%8F%B0%E7%81%A3%E8%A7%92%E5%B7%9D+logo" in url
+def test_unrelated_isbn10_is_not_labelled_as_same_edition() -> None:
+    summary = candidate_isbn_summary(_candidate(isbns=("0131103628", "9780306406157")))
+
+    assert summary == "建議 ISBN-13：9780306406157"
+    assert "同一版本對應碼" not in summary

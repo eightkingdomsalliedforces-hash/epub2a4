@@ -50,6 +50,19 @@ _ALLOWED_SETTINGS = {
     "show_assembly_marks",
     "cover_image_path",
     "image_mode",
+    "isbn",
+    "publisher",
+    "price",
+    "publication_place",
+    "translator",
+    "isbn_addon",
+    "publisher_id",
+    "english_title",
+    "volume_number",
+    "arc_label",
+    "series_name",
+    "internal_book_code",
+    "spine_accent_color",
     "confirmed_back_cover_asset_id",
 }
 
@@ -309,7 +322,34 @@ def new_project(source_path: str, settings_json: str) -> str:
     assets_dir = working_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
     page_count, estimated = _resolve_page_count(inspection, settings, source)
-    metadata = replace(inspection.metadata, page_count_is_estimate=estimated)
+    def metadata_text(key: str, fallback: str) -> str:
+        if key not in settings or settings[key] is None:
+            return fallback
+        return str(settings[key]).strip()
+
+    metadata = replace(
+        inspection.metadata,
+        isbn=metadata_text("isbn", inspection.metadata.isbn),
+        publisher=metadata_text("publisher", inspection.metadata.publisher),
+        price=metadata_text("price", inspection.metadata.price),
+        publication_place=metadata_text(
+            "publication_place", inspection.metadata.publication_place
+        ),
+        translator=metadata_text("translator", inspection.metadata.translator),
+        isbn_addon=metadata_text("isbn_addon", inspection.metadata.isbn_addon),
+        publisher_id=metadata_text("publisher_id", inspection.metadata.publisher_id),
+        english_title=metadata_text("english_title", inspection.metadata.english_title),
+        volume_number=metadata_text("volume_number", inspection.metadata.volume_number),
+        arc_label=metadata_text("arc_label", inspection.metadata.arc_label),
+        series_name=metadata_text("series_name", inspection.metadata.series_name),
+        internal_book_code=metadata_text(
+            "internal_book_code", inspection.metadata.internal_book_code
+        ),
+        spine_accent_color=metadata_text(
+            "spine_accent_color", inspection.metadata.spine_accent_color
+        ) or "#F15A24",
+        page_count_is_estimate=estimated,
+    )
     image_mode_value = settings.get("image_mode", ImageMode.FRONT_ONLY.value)
     try:
         image_mode = ImageMode(str(image_mode_value))

@@ -183,7 +183,11 @@ fun ConverterScreen(
                     enabled = !state.isBusy,
                     onCheckedChange = onPageNumbers,
                 )
-                val guidesRelevant = state.options.outputMode in setOf(OutputMode.SIGNATURE16, OutputMode.FOUR_UP)
+                val guidesRelevant = state.options.outputMode in setOf(
+                    OutputMode.SIGNATURE16,
+                    OutputMode.FOUR_UP,
+                    OutputMode.B6_ON_A5,
+                )
                 SettingCheck(
                     label = "顯示裁切／折線",
                     checked = state.options.cutGuides,
