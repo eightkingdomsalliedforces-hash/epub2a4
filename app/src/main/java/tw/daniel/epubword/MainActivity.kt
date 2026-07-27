@@ -1,13 +1,19 @@
 package tw.daniel.epubword
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import tw.daniel.epubword.cover.ui.CoverEditorCallbacks
@@ -16,6 +22,7 @@ import tw.daniel.epubword.cover.ui.CoverViewModel
 import tw.daniel.epubword.ui.AppRoot
 import tw.daniel.epubword.ui.ConversionViewModel
 import tw.daniel.epubword.ui.theme.EpubWordTheme
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,6 +33,7 @@ class MainActivity : ComponentActivity() {
                 val conversionState by conversionViewModel.uiState.collectAsStateWithLifecycle()
                 val coverViewModel: CoverViewModel = viewModel()
                 val coverState by coverViewModel.uiState.collectAsStateWithLifecycle()
+                var coverWordPreviewRequested by remember { mutableStateOf(false) }
 
                 val inputLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.OpenDocument(),
@@ -71,6 +79,7 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(
                     coverState.exportDirectoryRequestId,
                     coverState.handledExportDirectoryRequestId,
+                    coverState.exportDocxPath,
                 ) {
                     if (
                         coverState.exportDirectoryRequestId >
@@ -79,8 +88,47 @@ class MainActivity : ComponentActivity() {
                     ) {
                         val requestId = coverState.exportDirectoryRequestId
                         coverViewModel.markExportDirectoryRequestHandled(requestId)
-                        coverDirectoryLauncher.launch(null)
+                        val previewPath = coverState.exportDocxPath
+                        if (coverWordPreviewRequested && !previewPath.isNullOrBlank()) {
+                            coverWordPreviewRequested = false
+                            try {
+                                val previewFile = File(previewPath)
+                                require(previewFile.isFile && previewFile.length() > 0L) {
+                                    "找不到 Word 預覽檔。"
+                                }
+                                val uri = FileProvider.getUriForFile(
+                                    this@MainActivity,
+                                    "$packageName.fileprovider",
+                                    previewFile,
+                                )
+                                val previewIntent = Intent(Intent.ACTION_VIEW)
+                                    .setDataAndType(uri, DOCX_MIME)
+                                    .addFlags(
+                                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                            Intent.FLAG_ACTIVITY_NEW_TASK,
+                                    )
+                                startActivity(Intent.createChooser(previewIntent, "Word 預覽"))
+                            } catch (failure: ActivityNotFoundException) {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "未安裝可開啟 DOCX 的 Word、WPS 或文件檢視器。",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            } catch (failure: Throwable) {
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    failure.message ?: "無法開啟 Word 預覽。",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        } else {
+                            coverDirectoryLauncher.launch(null)
+                        }
                     }
+                }
+
+                LaunchedEffect(coverState.errorMessage) {
+                    if (coverState.errorMessage != null) coverWordPreviewRequested = false
                 }
 
                 AppRoot(
@@ -129,6 +177,10 @@ class MainActivity : ComponentActivity() {
                         onSelectEmbeddedImage = coverViewModel::selectEmbeddedImage,
                         onAddText = coverViewModel::addText,
                         onToggleGuides = coverViewModel::toggleGuides,
+                        onPreviewWord = {
+                            coverWordPreviewRequested = true
+                            coverViewModel.prepareExport(coverState.exportDpi)
+                        },
                         onPrepareExport = coverViewModel::prepareExport,
                         onRequestExportDirectory = coverViewModel::requestExportDirectoryAgain,
                         onSelectElement = coverViewModel::selectElement,
