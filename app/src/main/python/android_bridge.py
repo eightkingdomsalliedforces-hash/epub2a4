@@ -14,6 +14,7 @@ from typing import Any
 
 from epub_a4_word import __version__ as CORE_VERSION
 from epub_a4_word.converter import convert_input
+from epub_a4_word.docx_compat import install_story_template_fallbacks
 from epub_a4_word.pagination import LayoutSettings
 from epub_a4_word.cover import service as cover_service
 
@@ -36,6 +37,15 @@ _SETTING_FIELDS = {
     "output_mark_mode",
     "content_only",
 }
+
+
+def _install_android_docx_compat() -> bool:
+    """Force the inline story templates at the Android/Chaquopy boundary."""
+
+    return install_story_template_fallbacks(force=True)
+
+
+_install_android_docx_compat()
 
 
 class ConversionCancelled(RuntimeError):
