@@ -100,6 +100,10 @@ object CoverProjectJson {
             "description",
             "isbn",
             "publisher",
+            "price",
+            "publication_place",
+            "translator",
+            "isbn_addon",
             "language",
             "page_count_is_estimate",
             "embedded_images",
@@ -112,6 +116,10 @@ object CoverProjectJson {
             description = optionalString(value, "description", ""),
             isbn = optionalString(value, "isbn", ""),
             publisher = optionalString(value, "publisher", ""),
+            price = optionalString(value, "price", ""),
+            publicationPlace = optionalString(value, "publication_place", ""),
+            translator = optionalString(value, "translator", ""),
+            isbnAddon = optionalString(value, "isbn_addon", ""),
             language = optionalString(value, "language", ""),
             pageCountIsEstimate = optionalBoolean(value, "page_count_is_estimate", false),
             embeddedImages = buildList {
@@ -215,6 +223,10 @@ object CoverProjectJson {
         .put("description", value.description)
         .put("isbn", value.isbn)
         .put("publisher", value.publisher)
+        .put("price", value.price)
+        .put("publication_place", value.publicationPlace)
+        .put("translator", value.translator)
+        .put("isbn_addon", value.isbnAddon)
         .put("language", value.language)
         .put("page_count_is_estimate", value.pageCountIsEstimate)
         .put("embedded_images", JSONArray().also { array ->
