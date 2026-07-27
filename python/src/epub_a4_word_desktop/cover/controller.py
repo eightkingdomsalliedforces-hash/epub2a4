@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import replace
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -22,13 +23,19 @@ from epub_a4_word.cover.isbn import canonical_isbn13
 from epub_a4_word.cover.models import (
     CoverElement,
     CoverProject,
+    LogoAssetMetadata,
     ElementKind,
     ElementTransform,
     Region,
 )
 from epub_a4_word.cover.project_io import dumps_project, loads_project
+from epub_a4_word.cover.search.logo_download import DownloadedLogo, import_logo_file
+from epub_a4_word.cover.search.logo_models import LogoCandidate, LogoSourceCategory
 from epub_a4_word.cover.search.models import CandidateCategory
-from epub_a4_word.cover.templates import apply_template as apply_cover_template
+from epub_a4_word.cover.templates import (
+    apply_template as apply_cover_template,
+    refresh_template_metadata,
+)
 
 from .commands import ReplaceProjectCommand
 from .models import patch_element
@@ -185,6 +192,83 @@ class CoverController(QObject):
         current = self._require_project()
         candidate_json = self.service.apply_template(dumps_project(current), template_id)
         self.replace_project(candidate_json, label=f"套用模板：{template_id}")
+
+    def update_metadata(
+        self,
+        patch: Mapping[str, object],
+        *,
+        reset_layout: bool = False,
+    ) -> None:
+        project = self._require_project()
+        allowed = set(project.metadata.__dataclass_fields__)
+        unknown = sorted(set(patch) - allowed)
+        if unknown:
+            raise ValueError("不支援的封面資訊：" + "、".join(unknown))
+        metadata = replace(project.metadata, **dict(patch))
+        candidate = refresh_template_metadata(
+            project,
+            metadata,
+            reset_layout=reset_layout,
+        )
+        self.replace_project(
+            dumps_project(candidate),
+            label="重設出版社模板版面" if reset_layout else "更新出版社資訊",
+        )
+
+    def apply_publisher_logo(
+        self,
+        downloaded: DownloadedLogo,
+        candidate: LogoCandidate | None = None,
+        *,
+        manual_selection: bool = False,
+    ) -> str:
+        project = self._require_project()
+        assets_dir = (self.working_dir / "assets").resolve()
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        suffix = downloaded.path.suffix.casefold() or ".img"
+        asset_id = f"publisher-logo-{downloaded.sha256[:16]}"
+        destination = assets_dir / f"{asset_id}{suffix}"
+        if downloaded.path.resolve() != destination.resolve() and not destination.exists():
+            shutil.copyfile(downloaded.path, destination)
+        source_category = (
+            LogoSourceCategory.MANUAL.value
+            if manual_selection or candidate is None
+            else candidate.source_category.value
+        )
+        logo = LogoAssetMetadata(
+            asset_id=asset_id,
+            path=str(destination.resolve()),
+            source_url=(
+                "" if manual_selection or candidate is None else candidate.image_url
+            ),
+            source_category=source_category,
+            downloaded_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            image_format=downloaded.image_format,
+            width_px=downloaded.width_px,
+            height_px=downloaded.height_px,
+            license_text=(
+                "" if candidate is None else candidate.license_text
+            ),
+            official_source=(
+                False if candidate is None else candidate.official_source
+            ),
+            manual_selection=bool(manual_selection),
+        )
+        self.update_metadata({"publisher_logo": logo})
+        return asset_id
+
+    def apply_manual_publisher_logo(self, source_path: Path | str) -> str:
+        downloaded = import_logo_file(
+            source_path,
+            self.working_dir / "logo-imports",
+        )
+        return self.apply_publisher_logo(
+            downloaded,
+            manual_selection=True,
+        )
+
+    def clear_publisher_logo(self) -> None:
+        self.update_metadata({"publisher_logo": None})
 
     def apply_isbn(self, value: object) -> str:
         isbn = canonical_isbn13(value)
@@ -406,7 +490,7 @@ class CoverController(QObject):
         return (
             region is Region.BACK
             and str(project.background.get("active_template", ""))
-            == "publisher_back_matter"
+            in {"publisher_back_matter", "publisher_back_matter_with_spine"}
             and isinstance(project.background.get("publisher_logo_slot"), Mapping)
         )
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from io import BytesIO
 import math
 from pathlib import Path
 from typing import Any, Iterable
@@ -22,6 +23,7 @@ from .geometry import CoverLayout, RectMm, calculate_layout
 from .models import CoverElement, CoverProject, ElementKind, ImageMode, Region
 from .print_plan import PrintMark, PrintPage
 from .typography import font_candidates
+from .search.logo_download import _validate_svg
 
 
 @dataclass(frozen=True)
@@ -216,8 +218,23 @@ def _prepare_image(element: CoverElement, size: tuple[int, int]) -> Image.Image:
     path_value = element.content.get("path")
     if not isinstance(path_value, str) or not Path(path_value).is_file():
         raise CoverRenderError(f"元素 {element.id} 的圖片不存在：{path_value}")
-    with Image.open(path_value) as opened:
-        source = opened.convert("RGBA")
+    source_path = Path(path_value)
+    if source_path.suffix.casefold() == ".svg":
+        data = source_path.read_bytes()
+        _validate_svg(data)
+        try:
+            import cairosvg
+        except ImportError as exc:
+            raise CoverRenderError("缺少 SVG 轉換元件，無法顯示出版社 Logo。") from exc
+        try:
+            png = cairosvg.svg2png(bytestring=data, unsafe=False)
+            with Image.open(BytesIO(png)) as opened:
+                source = opened.convert("RGBA")
+        except Exception as exc:
+            raise CoverRenderError(f"無法轉換 SVG Logo：{source_path}") from exc
+    else:
+        with Image.open(source_path) as opened:
+            source = opened.convert("RGBA")
     crop = element.content.get("crop")
     if crop is None and any(
         key in element.content

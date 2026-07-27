@@ -21,7 +21,7 @@ def _relative_transform(transform, safe) -> tuple[float, float, float, float]:
 
 def test_publisher_template_catalog_entry_is_available() -> None:
     summaries = {item.id: item for item in list_templates()}
-    assert summaries["publisher_back_matter"].name == "出版社式封底"
+    assert summaries["publisher_back_matter_with_spine"].name == "出版社封底＋直式書脊"
 
 
 def test_publisher_template_creates_only_non_empty_editable_fields(
@@ -43,7 +43,7 @@ def test_publisher_template_creates_only_non_empty_editable_fields(
     result = apply_template(project, "publisher_back_matter")
 
     assert result.background["color"] == "#ffffff"
-    assert result.background["active_template"] == "publisher_back_matter"
+    assert result.background["active_template"] == "publisher_back_matter_with_spine"
     assert set(result.background["publisher_logo_slot"]) == {
         "x_mm",
         "y_mm",

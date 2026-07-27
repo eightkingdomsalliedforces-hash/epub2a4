@@ -56,6 +56,13 @@ _ALLOWED_SETTINGS = {
     "publication_place",
     "translator",
     "isbn_addon",
+    "publisher_id",
+    "english_title",
+    "volume_number",
+    "arc_label",
+    "series_name",
+    "internal_book_code",
+    "spine_accent_color",
     "confirmed_back_cover_asset_id",
 }
 
@@ -330,6 +337,17 @@ def new_project(source_path: str, settings_json: str) -> str:
         ),
         translator=metadata_text("translator", inspection.metadata.translator),
         isbn_addon=metadata_text("isbn_addon", inspection.metadata.isbn_addon),
+        publisher_id=metadata_text("publisher_id", inspection.metadata.publisher_id),
+        english_title=metadata_text("english_title", inspection.metadata.english_title),
+        volume_number=metadata_text("volume_number", inspection.metadata.volume_number),
+        arc_label=metadata_text("arc_label", inspection.metadata.arc_label),
+        series_name=metadata_text("series_name", inspection.metadata.series_name),
+        internal_book_code=metadata_text(
+            "internal_book_code", inspection.metadata.internal_book_code
+        ),
+        spine_accent_color=metadata_text(
+            "spine_accent_color", inspection.metadata.spine_accent_color
+        ) or "#F15A24",
         page_count_is_estimate=estimated,
     )
     image_mode_value = settings.get("image_mode", ImageMode.FRONT_ONLY.value)

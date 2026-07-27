@@ -12,6 +12,7 @@ from .text_metrics import paragraph_metrics, word_safety_points
 
 MarginMode = Literal["safe", "maximized", "borderless"]
 OutputMarkMode = Literal["normal", "crop_marks"]
+GuideRenderMode = Literal["vml", "drawingml"]
 PT_PER_CM = 72.0 / 2.54
 A4_WIDTH_CM = 21.0
 A4_HEIGHT_CM = 29.7
@@ -77,6 +78,7 @@ class LayoutSettings:
     grid_cols: int | None = None
     page_prefix_height_cm: float | None = None
     output_mark_mode: OutputMarkMode = "normal"
+    guide_render_mode: GuideRenderMode = "vml"
     page_margin_left_cm: float | None = None
     page_margin_right_cm: float | None = None
     page_margin_top_cm: float | None = None
@@ -102,6 +104,8 @@ def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
         raise ValueError(f"Unsupported margin mode: {settings.margin_mode}") from exc
     if settings.output_mark_mode not in {"normal", "crop_marks"}:
         raise ValueError(f"Unsupported output mark mode: {settings.output_mark_mode}")
+    if settings.guide_render_mode not in {"vml", "drawingml"}:
+        raise ValueError(f"Unsupported guide render mode: {settings.guide_render_mode}")
 
     if settings.imposition_mode in {"four_up", "signature16"}:
         default_paper_width = A4_WIDTH_CM

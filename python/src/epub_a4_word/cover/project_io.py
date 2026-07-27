@@ -15,6 +15,7 @@ from .models import (
     ElementTransform,
     ExportSettings,
     ImageMode,
+    LogoAssetMetadata,
     Region,
     TrimSize,
 )
@@ -117,10 +118,19 @@ def _validate_metadata(metadata: CoverMetadata) -> None:
         "publication_place",
         "translator",
         "isbn_addon",
+        "publisher_id",
+        "english_title",
+        "volume_number",
+        "arc_label",
+        "series_name",
+        "internal_book_code",
+        "spine_accent_color",
         "language",
     ):
         if not isinstance(getattr(metadata, name), str):
             raise CoverValidationError(f"metadata.{name} 必須是字串。")
+    if metadata.publisher_logo is not None:
+        _validate_logo_metadata(metadata.publisher_logo)
     if not isinstance(metadata.page_count_is_estimate, bool):
         raise CoverValidationError("metadata.page_count_is_estimate 必須是布林值。")
     if not isinstance(metadata.embedded_images, tuple):
@@ -128,6 +138,29 @@ def _validate_metadata(metadata: CoverMetadata) -> None:
     for index, item in enumerate(metadata.embedded_images):
         _validate_json_mapping(item, f"metadata.embedded_images[{index}]")
 
+
+
+def _validate_logo_metadata(logo: LogoAssetMetadata) -> None:
+    if not isinstance(logo, LogoAssetMetadata):
+        raise CoverValidationError("metadata.publisher_logo 型別無效。")
+    for name in (
+        "asset_id",
+        "path",
+        "source_url",
+        "source_category",
+        "downloaded_at",
+        "image_format",
+        "license_text",
+    ):
+        if not isinstance(getattr(logo, name), str):
+            raise CoverValidationError(f"metadata.publisher_logo.{name} 必須是字串。")
+    for name in ("width_px", "height_px"):
+        value = getattr(logo, name)
+        if not _is_int(value) or value < 0:
+            raise CoverValidationError(f"metadata.publisher_logo.{name} 必須是非負整數。")
+    for name in ("official_source", "manual_selection"):
+        if not isinstance(getattr(logo, name), bool):
+            raise CoverValidationError(f"metadata.publisher_logo.{name} 必須是布林值。")
 
 def _validate_export_settings(settings: ExportSettings) -> None:
     if not isinstance(settings, ExportSettings):
@@ -210,6 +243,14 @@ def _metadata_from_dict(raw: Any) -> CoverMetadata:
         "publication_place",
         "translator",
         "isbn_addon",
+        "publisher_id",
+        "english_title",
+        "volume_number",
+        "arc_label",
+        "series_name",
+        "internal_book_code",
+        "spine_accent_color",
+        "publisher_logo",
         "language",
         "page_count_is_estimate",
         "embedded_images",
@@ -228,6 +269,19 @@ def _metadata_from_dict(raw: Any) -> CoverMetadata:
         ),
         translator=_string(data.get("translator", ""), "metadata.translator"),
         isbn_addon=_string(data.get("isbn_addon", ""), "metadata.isbn_addon"),
+        publisher_id=_string(data.get("publisher_id", ""), "metadata.publisher_id"),
+        english_title=_string(data.get("english_title", ""), "metadata.english_title"),
+        volume_number=_string(data.get("volume_number", ""), "metadata.volume_number"),
+        arc_label=_string(data.get("arc_label", ""), "metadata.arc_label"),
+        series_name=_string(data.get("series_name", ""), "metadata.series_name"),
+        internal_book_code=_string(
+            data.get("internal_book_code", ""), "metadata.internal_book_code"
+        ),
+        spine_accent_color=_string(
+            data.get("spine_accent_color", "#F15A24"),
+            "metadata.spine_accent_color",
+        ),
+        publisher_logo=_logo_metadata_from_dict(data.get("publisher_logo")),
         language=_string(data.get("language", ""), "metadata.language"),
         page_count_is_estimate=_boolean(
             data.get("page_count_is_estimate", False), "metadata.page_count_is_estimate"
@@ -235,6 +289,58 @@ def _metadata_from_dict(raw: Any) -> CoverMetadata:
         embedded_images=tuple(
             _plain_dict(item, f"metadata.embedded_images[{index}]")
             for index, item in enumerate(images)
+        ),
+    )
+
+
+def _logo_metadata_from_dict(raw: Any) -> LogoAssetMetadata | None:
+    if raw is None:
+        return None
+    data = _mapping(raw, "metadata.publisher_logo")
+    allowed = {
+        "asset_id",
+        "path",
+        "source_url",
+        "source_category",
+        "downloaded_at",
+        "image_format",
+        "width_px",
+        "height_px",
+        "license_text",
+        "official_source",
+        "manual_selection",
+    }
+    _keys(data, required=set(), optional=allowed, label="metadata.publisher_logo")
+    return LogoAssetMetadata(
+        asset_id=_string(data.get("asset_id", ""), "metadata.publisher_logo.asset_id"),
+        path=_string(data.get("path", ""), "metadata.publisher_logo.path"),
+        source_url=_string(
+            data.get("source_url", ""), "metadata.publisher_logo.source_url"
+        ),
+        source_category=_string(
+            data.get("source_category", ""),
+            "metadata.publisher_logo.source_category",
+        ),
+        downloaded_at=_string(
+            data.get("downloaded_at", ""), "metadata.publisher_logo.downloaded_at"
+        ),
+        image_format=_string(
+            data.get("image_format", ""), "metadata.publisher_logo.image_format"
+        ),
+        width_px=_integer(data.get("width_px", 0), "metadata.publisher_logo.width_px"),
+        height_px=_integer(
+            data.get("height_px", 0), "metadata.publisher_logo.height_px"
+        ),
+        license_text=_string(
+            data.get("license_text", ""), "metadata.publisher_logo.license_text"
+        ),
+        official_source=_boolean(
+            data.get("official_source", False),
+            "metadata.publisher_logo.official_source",
+        ),
+        manual_selection=_boolean(
+            data.get("manual_selection", False),
+            "metadata.publisher_logo.manual_selection",
         ),
     )
 

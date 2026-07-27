@@ -295,6 +295,7 @@ def write_docx(
         placement.guides,
         paper_width_mm=placement.paper_width_mm,
         paper_height_mm=placement.paper_height_mm,
+        render_mode=settings.guide_render_mode,
     )
 
     warnings: list[str] = []

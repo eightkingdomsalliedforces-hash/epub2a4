@@ -33,6 +33,21 @@ class TrimSize:
 
 
 @dataclass(frozen=True)
+class LogoAssetMetadata:
+    asset_id: str = ""
+    path: str = ""
+    source_url: str = ""
+    source_category: str = ""
+    downloaded_at: str = ""
+    image_format: str = ""
+    width_px: int = 0
+    height_px: int = 0
+    license_text: str = ""
+    official_source: bool = False
+    manual_selection: bool = False
+
+
+@dataclass(frozen=True)
 class CoverMetadata:
     title: str = ""
     author: str = ""
@@ -43,6 +58,14 @@ class CoverMetadata:
     publication_place: str = ""
     translator: str = ""
     isbn_addon: str = ""
+    publisher_id: str = ""
+    english_title: str = ""
+    volume_number: str = ""
+    arc_label: str = ""
+    series_name: str = ""
+    internal_book_code: str = ""
+    spine_accent_color: str = "#F15A24"
+    publisher_logo: LogoAssetMetadata | None = None
     language: str = ""
     page_count_is_estimate: bool = False
     embedded_images: tuple[dict[str, Any], ...] = ()

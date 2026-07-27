@@ -9,6 +9,8 @@ from .docx_compat import install_story_template_fallbacks
 from .page_placement import CropGuide
 
 PT_PER_MM = 72.0 / 25.4
+EMU_PER_MM = 36000
+EMU_PER_PT = 12700
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,43 @@ def _line_xml(identifier: int, guide: CropGuide, stroke_pt: float) -> str:
     )
 
 
+def _drawing_line_xml(identifier: int, guide: CropGuide, stroke_pt: float) -> str:
+    x = round(min(guide.x1_mm, guide.x2_mm) * EMU_PER_MM)
+    y = round(min(guide.y1_mm, guide.y2_mm) * EMU_PER_MM)
+    cx = max(1, round(abs(guide.x2_mm - guide.x1_mm) * EMU_PER_MM))
+    cy = max(1, round(abs(guide.y2_mm - guide.y1_mm) * EMU_PER_MM))
+    flip_h = ' flipH="1"' if guide.x2_mm < guide.x1_mm else ""
+    flip_v = ' flipV="1"' if guide.y2_mm < guide.y1_mm else ""
+    dash = '<a:prstDash val="dash" />' if guide.role == "fold" else ""
+    stroke_emu = max(1, round(float(stroke_pt) * EMU_PER_PT))
+    name = f"epub2a4-{guide.role}-guide-{identifier}"
+    return (
+        '<w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+        'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+        'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">'
+        '<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" '
+        'relativeHeight="251659264" behindDoc="0" locked="1" layoutInCell="1" allowOverlap="1">'
+        '<wp:simplePos x="0" y="0" />'
+        f'<wp:positionH relativeFrom="page"><wp:posOffset>{x}</wp:posOffset></wp:positionH>'
+        f'<wp:positionV relativeFrom="page"><wp:posOffset>{y}</wp:posOffset></wp:positionV>'
+        f'<wp:extent cx="{cx}" cy="{cy}" />'
+        '<wp:effectExtent l="0" t="0" r="0" b="0" />'
+        '<wp:wrapNone />'
+        f'<wp:docPr id="{1000 + identifier}" name="{name}" />'
+        '<wp:cNvGraphicFramePr />'
+        '<a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">'
+        '<wps:wsp><wps:cNvSpPr /><wps:spPr>'
+        f'<a:xfrm{flip_h}{flip_v}><a:off x="0" y="0" /><a:ext cx="{cx}" cy="{cy}" /></a:xfrm>'
+        '<a:prstGeom prst="line"><a:avLst /></a:prstGeom>'
+        f'<a:ln w="{stroke_emu}"><a:solidFill><a:srgbClr val="000000" /></a:solidFill>{dash}'
+        '<a:headEnd type="none" w="med" len="med" /><a:tailEnd type="none" w="med" len="med" />'
+        '</a:ln></wps:spPr><wps:bodyPr /></wps:wsp>'
+        '</a:graphicData></a:graphic>'
+        '</wp:anchor></w:drawing>'
+    )
+
+
 def add_page_guides(
     section,
     guides: Sequence[CropGuide],
@@ -59,11 +98,14 @@ def add_page_guides(
     paper_width_mm: float,
     paper_height_mm: float,
     stroke_pt: float = 0.35,
+    render_mode: str = "vml",
 ) -> None:
     """Draw page-relative crop or fold guides in the repeating header."""
 
     if stroke_pt <= 0.0:
         raise ValueError("導線寬度必須大於 0。")
+    if render_mode not in {"vml", "drawingml"}:
+        raise ValueError("導線渲染模式必須是 vml 或 drawingml。")
     for guide in guides:
         if guide.role not in {"crop", "fold"}:
             raise ValueError(f"未知導線角色：{guide.role}")
@@ -87,7 +129,12 @@ def add_page_guides(
     paragraph.paragraph_format.line_spacing = 1
     for index, guide in enumerate(guides, start=1):
         run = paragraph.add_run()
-        run._r.append(parse_xml(_line_xml(index, guide, stroke_pt)))
+        xml = (
+            _drawing_line_xml(index, guide, stroke_pt)
+            if render_mode == "drawingml"
+            else _line_xml(index, guide, stroke_pt)
+        )
+        run._r.append(parse_xml(xml))
 
 
 def add_crop_marks(
