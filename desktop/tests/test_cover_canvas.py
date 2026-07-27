@@ -19,7 +19,7 @@ from epub_a4_word.cover.models import (
 )
 from epub_a4_word.cover.project_io import dumps_project, loads_project
 from epub_a4_word_desktop.cover.canvas import CoverCanvas
-from epub_a4_word_desktop.cover.items import CoverImageItem, CoverTextItem
+from epub_a4_word_desktop.cover.items import CoverImageItem, CoverTextItem, vertical_text_lines
 
 
 def _project_json(tmp_path: Path) -> str:
@@ -149,3 +149,7 @@ def test_zoom_is_view_only_and_clamped(qtbot, tmp_path: Path) -> None:
     canvas.set_zoom(0.001)
     assert canvas.transform().m11() == pytest.approx(pixels_per_mm * 0.10)
     assert canvas.project_json == project_json
+
+
+def test_vertical_text_lines_put_one_cjk_character_on_each_line() -> None:
+    assert vertical_text_lines("台灣\n角川") == ("台", "灣", "角", "川")

@@ -374,6 +374,34 @@ def _render_horizontal_text(
     return canvas, overflow
 
 
+def _render_vertical_text(
+    size: tuple[int, int],
+    element: CoverElement,
+) -> tuple[Image.Image, bool]:
+    canvas = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(canvas)
+    content = element.content
+    dpi = int(content.get("_render_dpi", 300))
+    font_size_pt = float(content.get("font_size_pt", 12.0))
+    font = resolve_font(
+        str(content.get("font_family", "sans-serif")),
+        content.get("font_path") if isinstance(content.get("font_path"), str) else None,
+        max(1, round(font_size_pt / 72.0 * dpi)),
+    )
+    color = _parse_color(content.get("color", "#111111"), "#111111")
+    characters = [character for character in str(content.get("text", "")) if character != "\n"]
+    cell = max(1, draw.textbbox((0, 0), "國", font=font)[3])
+    overflow = len(characters) * cell > size[1]
+    visible = characters[: max(1, size[1] // cell)]
+    x = max(0, (size[0] - cell) // 2)
+    y = max(0, (size[1] - len(visible) * cell) // 2)
+    for character in visible:
+        width = _text_width(draw, character, font)
+        draw.text((x + max(0, (cell - width) // 2), y), character, font=font, fill=color)
+        y += cell
+    return canvas, overflow
+
+
 def _prepare_text(
     element: CoverElement,
     size: tuple[int, int],
@@ -391,6 +419,8 @@ def _prepare_text(
         content=content,
     )
     rotation = float(element.transform.rotation_deg)
+    if str(content.get("direction", "horizontal")) == "vertical":
+        return _render_vertical_text(size, local_element)
     normalized = rotation % 360.0
     if math.isclose(normalized, 90.0, abs_tol=1e-9) or math.isclose(
         normalized, 270.0, abs_tol=1e-9
@@ -487,7 +517,9 @@ def _clip_layer(
 def _element_clip(project: CoverProject, layout: CoverLayout, element: CoverElement) -> RectMm | None:
     element_rect = _transform_rect(element)
     if element.kind is ElementKind.IMAGE:
-        if project.image_mode is ImageMode.FRONT_ONLY:
+        if bool(element.content.get("clip_to_region", False)):
+            mode_rect = _region_rect(layout, element.region)
+        elif project.image_mode is ImageMode.FRONT_ONLY:
             mode_rect = layout.front_rect
         elif project.image_mode is ImageMode.SEPARATE_COVERS:
             mode_rect = _region_rect(layout, element.region)

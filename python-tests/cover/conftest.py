@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+import time
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 import pytest
@@ -61,7 +62,14 @@ def _replace_zip_member(path: Path, member: str, data: bytes) -> None:
         for item in source.infolist():
             payload = data if item.filename == member else source.read(item.filename)
             target.writestr(item, payload)
-    replacement.replace(path)
+    for attempt in range(5):
+        try:
+            replacement.replace(path)
+            break
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def _build_docx(path: Path, *, pages: str = "12") -> None:

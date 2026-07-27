@@ -249,6 +249,15 @@ class CoverViewModel @JvmOverloads constructor(
         }
     }
 
+    fun assignPublisherLogo(uri: Uri) {
+        val current = _uiState.value.projectJson.takeIf(String::isNotBlank) ?: return
+        viewModelScope.launch {
+            runCatching { withContext(Dispatchers.IO) {
+                gateway.assignPublisherLogo(current, repository.stageLocalImage(uri))
+            } }.onSuccess { commitProject(CoverProjectJson.decode(it)) }.onFailure(::showError)
+        }
+    }
+
     fun selectEmbeddedImage(assetId: String) {
         val projectJson = _uiState.value.projectJson.takeIf(String::isNotBlank) ?: return
         viewModelScope.launch {

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsObject, QStyleOptionGraphicsItem, QWidget
 
 from epub_a4_word.cover.isbn import (
@@ -12,6 +12,10 @@ from epub_a4_word.cover.isbn import (
     encode_ean_addon_modules,
 )
 from epub_a4_word.cover.models import CoverElement
+
+
+def vertical_text_lines(text: str) -> tuple[str, ...]:
+    return tuple(character for character in str(text) if character != "\n")
 
 
 class CoverElementItem(QGraphicsObject):
@@ -341,10 +345,24 @@ class CoverTextItem(CoverElementItem):
             "center": Qt.AlignmentFlag.AlignHCenter,
             "right": Qt.AlignmentFlag.AlignRight,
         }.get(str(self._content.get("align", "left")), Qt.AlignmentFlag.AlignLeft)
-        painter.drawText(
-            self.boundingRect(),
-            alignment | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap,
-            str(self._content.get("text", "")),
-        )
+        text = str(self._content.get("text", ""))
+        if str(self._content.get("direction", "horizontal")) == "vertical":
+            lines = vertical_text_lines(text)
+            metrics = QFontMetricsF(font)
+            line_height = max(1.0, metrics.height())
+            y = max(0.0, (self.boundingRect().height() - len(lines) * line_height) / 2.0)
+            for character in lines:
+                painter.drawText(
+                    QRectF(0.0, y, self.boundingRect().width(), line_height),
+                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter,
+                    character,
+                )
+                y += line_height
+        else:
+            painter.drawText(
+                self.boundingRect(),
+                alignment | Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextWordWrap,
+                text,
+            )
         painter.restore()
         self._paint_selection_handles(painter)

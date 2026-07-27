@@ -29,6 +29,9 @@ class PythonCoverGateway(
     fun applyTemplate(projectJson: String, templateId: String): String = executor.run {
         module().callAttr(BRIDGE_FUNCTIONS[2], projectJson, templateId).toString()
     }
+    fun assignPublisherLogo(projectJson: String, image: File): String = executor.run {
+        module().callAttr(BRIDGE_FUNCTIONS[5], projectJson, image.absolutePath).toString()
+    }
 
     fun extractEmbeddedAsset(projectJson: String, assetId: String): JSONObject = executor.run {
         JSONObject(
@@ -93,6 +96,7 @@ class PythonCoverGateway(
             "cover_apply_template_json",
             "cover_render_preview_json",
             "cover_export_json",
+            "cover_assign_publisher_logo_json",
         )
         const val EXTRACT_EMBEDDED_ASSET_FUNCTION = "cover_extract_embedded_asset_json"
     }

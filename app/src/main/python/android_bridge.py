@@ -179,6 +179,10 @@ def cover_apply_template_json(project_json: str, template_id: str) -> str:
     return cover_service.apply_template(project_json, template_id)
 
 
+def cover_assign_publisher_logo_json(project_json: str, image_path: str) -> str:
+    return cover_service.assign_publisher_logo(project_json, image_path)
+
+
 def cover_extract_embedded_asset_json(project_json: str, asset_id: str) -> str:
     return json.dumps(
         cover_service.extract_embedded_asset(project_json, asset_id),

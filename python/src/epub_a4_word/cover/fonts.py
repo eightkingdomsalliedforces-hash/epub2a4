@@ -6,6 +6,21 @@ from pathlib import Path
 from PIL import ImageFont
 
 
+def font_candidates(font_path: str | None) -> tuple[Path, ...]:
+    values = (
+        font_path,
+        os.environ.get("EPUB2A4_DEFAULT_FONT"),
+        r"C:\Windows\Fonts\msjh.ttc",
+        r"C:\Windows\Fonts\mingliu.ttc",
+        "/system/fonts/NotoSansCJK-Regular.ttc",
+        "/system/fonts/NotoSansCJKtc-Regular.otf",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-TC.otf",
+    )
+    return tuple(Path(value) for value in values if value)
+
+
 def resolve_font(
     font_family: str,
     font_path: str | None,
@@ -15,9 +30,8 @@ def resolve_font(
 
     del font_family  # Family names are advisory; only explicit local paths are portable.
     normalized_size = max(1, int(size_px))
-    candidates = (font_path, os.environ.get("EPUB2A4_DEFAULT_FONT"))
-    for candidate in candidates:
-        if candidate and Path(candidate).is_file():
+    for candidate in font_candidates(font_path):
+        if candidate.is_file():
             try:
                 return ImageFont.truetype(candidate, normalized_size)
             except OSError:

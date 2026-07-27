@@ -24,6 +24,7 @@ from epub_a4_word_desktop.cover.controller import CoverController
 from epub_a4_word_desktop.cover.inspector import ElementInspector
 from epub_a4_word_desktop.cover.items import CoverBarcodeItem
 from epub_a4_word_desktop.cover.search_panel import CandidateCard
+from epub_a4_word_desktop.pages.cover_page import publisher_logo_search_url
 
 
 def _project(tmp_path: Path) -> CoverProject:
@@ -76,6 +77,22 @@ def test_controller_apply_isbn_updates_metadata_and_template_barcode(tmp_path: P
     assert updated.metadata.isbn == "9780306406157"
     assert updated.elements_by_id["back-isbn-code"].content["isbn"] == "9780306406157"
     assert updated.elements_by_id["back-isbn-label"].content["text"] == "ISBN-13 9780306406157"
+
+
+def test_controller_assign_publisher_logo_replaces_existing_logo(qtbot, tmp_path: Path) -> None:
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    QPixmap(12, 12).save(str(first))
+    QPixmap(16, 16).save(str(second))
+    controller = CoverController(working_dir=tmp_path, auto_preview=False)
+    controller.replace_project(dumps_project(_publisher_project(tmp_path)), clear_history=True)
+
+    controller.assign_publisher_logo(first)
+    controller.assign_publisher_logo(second)
+
+    logos = [item for item in loads_project(controller.project_json).elements if item.id == "back-publisher-logo"]
+    assert len(logos) == 1
+    assert Path(str(logos[0].content["path"])).is_file()
 
 
 def test_controller_converts_isbn10_to_ean13_for_barcode(tmp_path: Path) -> None:
@@ -167,3 +184,9 @@ def test_candidate_card_displays_all_valid_isbns(qtbot) -> None:
 
     assert "ISBN-10 0306406152" in card.isbn_label.text()
     assert "ISBN-13 9780306406157" in card.isbn_label.text()
+
+
+def test_publisher_logo_search_uses_wikimedia_media_search() -> None:
+    url = publisher_logo_search_url("台灣角川")
+    assert url.startswith("https://commons.wikimedia.org/w/index.php?")
+    assert "search=%E5%8F%B0%E7%81%A3%E8%A7%92%E5%B7%9D+logo" in url

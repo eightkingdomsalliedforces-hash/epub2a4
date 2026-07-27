@@ -63,6 +63,12 @@ def test_page_count_must_be_confirmed_before_create(qtbot, tmp_path: Path) -> No
     assert panel.create_button.isEnabled()
 
 
+def test_source_browse_button_keeps_a_readable_width(qtbot) -> None:
+    panel = CoverSetupPanel()
+    qtbot.addWidget(panel)
+    assert panel.browse_button.minimumWidth() >= 88
+
+
 def test_paper_preset_updates_caliper_and_automatic_spine(qtbot) -> None:
     panel = CoverSetupPanel()
     qtbot.addWidget(panel)

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -82,6 +83,11 @@ class CoverSetupPanel(QWidget):
         self.source_edit = QLineEdit(self)
         self.source_edit.setPlaceholderText("選擇 EPUB、DOCX 或 PDF")
         self.browse_button = QPushButton("瀏覽…", self)
+        self.browse_button.setMinimumWidth(88)
+        self.browse_button.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Preferred,
+        )
         source_row = QWidget(self)
         source_layout = QHBoxLayout(source_row)
         source_layout.setContentsMargins(0, 0, 0, 0)

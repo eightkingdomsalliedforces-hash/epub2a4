@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONPATH: python/src;app/src/main/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -e ".[test,desktop,portable]"
+      - run: python -m pytest python-tests/cover/test_publisher_back_template.py desktop/tests/test_publisher_workflow.py -q
+      - run: python -m PyInstaller --clean --noconfirm packaging/windows/EPUB2A4.spec
+      - shell: pwsh
+        run: |
+          New-Item -ItemType File -Path "dist/EPUB2A4-Windows-Portable-x64/portable.flag" -Force | Out-Null
+          python scripts/verify_windows_portable.py dist/EPUB2A4-Windows-Portable-x64
+          Compress-Archive -Path dist/EPUB2A4-Windows-Portable-x64 -DestinationPath EPUB2A4-Windows-Portable-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: EPUB2A4-Windows-Portable-x64.zip
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-36" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+        env:
+          CHAQUOPY_PYTHON: python3.13
+      - run: cp app/build/outputs/apk/debug/app-debug.apk EPUB2A4-Android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: EPUB2A4-Android.apk
+  release:
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows
+      - run: sha256sum EPUB2A4-Android.apk EPUB2A4-Windows-Portable-x64.zip > SHA256SUMS.txt
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            EPUB2A4-Android.apk
+            EPUB2A4-Windows-Portable-x64.zip
+            SHA256SUMS.txt

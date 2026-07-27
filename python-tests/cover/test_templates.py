@@ -100,14 +100,41 @@ def test_spine_under_two_mm_omits_text_and_adds_warning_without_mutating_input(
     assert "warnings" not in project.background
 
 
-def test_spine_under_four_mm_uses_six_point_title_and_omits_author(
+def test_spine_under_four_mm_keeps_primary_title_readable_and_omits_author(
     sample_project: Callable[..., CoverProject],
 ) -> None:
     result = apply_template(
         sample_project(manual_spine_width_mm=3.0), "minimal_text"
     )
-    assert result.elements_by_id["spine-title"].content["font_size_pt"] == 6.0
+    title = result.elements_by_id["spine-title"]
+    assert title.content["font_size_pt"] == 8.0
+    assert title.content["direction"] == "vertical"
     assert "spine-author" not in result.elements_by_id
+
+
+def test_readable_spine_places_publisher_at_the_bottom(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    result = apply_template(sample_project(manual_spine_width_mm=8.0), "minimal_text")
+    publisher = result.elements_by_id["spine-publisher"]
+    title = result.elements_by_id["spine-title"]
+    author = result.elements_by_id["spine-author"]
+    assert title.content["font_size_pt"] >= 12.0
+    assert author.content["font_size_pt"] >= 9.0
+    assert publisher.content["font_size_pt"] >= 9.0
+    assert publisher.content["direction"] == "vertical"
+    assert publisher.content["text"] == result.metadata.publisher
+    assert publisher.transform.y_mm > title.transform.y_mm + title.transform.height_mm
+
+
+def test_wide_spine_uses_reference_sized_vertical_type(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    result = apply_template(sample_project(manual_spine_width_mm=11.0), "minimal_text")
+
+    assert result.elements_by_id["spine-title"].content["font_size_pt"] >= 14.0
+    assert result.elements_by_id["spine-author"].content["font_size_pt"] >= 10.0
+    assert result.elements_by_id["spine-publisher"].content["font_size_pt"] >= 10.0
 
 
 def test_unknown_template_is_rejected(sample_project: Callable[..., CoverProject]) -> None:
