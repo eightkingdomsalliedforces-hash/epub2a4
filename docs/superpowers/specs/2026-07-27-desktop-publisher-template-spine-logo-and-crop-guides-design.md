@@ -37,7 +37,7 @@ No image is generated, redrawn, or stylistically transformed. Publisher logos ar
 
 ### 4.1 Architecture
 
-Create one reusable desktop widget, provisionally named `PublisherMetadataPanel`. Both the cover setup page and the cover editor use this same component. Validation, normalization, labels, and serialization are implemented once.
+Create one reusable desktop widget named `PublisherMetadataPanel`. Both the cover setup page and the cover editor use this same component. Validation, normalization, labels, and serialization are implemented once.
 
 ### 4.2 Fields
 
@@ -80,7 +80,7 @@ Validation errors are shown next to the relevant field. Invalid values are not c
 ### 4.5 Editor behaviour
 
 - The same panel is available in the editor side panel.
-- Changes are debounced for approximately 300 ms before updating the project and preview.
+- Changes are debounced for exactly 300 ms before updating the project and preview.
 - Updating metadata only regenerates template-managed content.
 - User-created elements are untouched.
 - Metadata remains stored when another template is active and becomes visible again when the publisher template is reapplied.
@@ -89,7 +89,7 @@ Validation errors are shown next to the relevant field. Invalid values are not c
 
 ### 5.1 Template identity
 
-Introduce or rename the template to a clear combined identity such as:
+The combined template ID is:
 
 `publisher_back_matter_with_spine`
 
@@ -97,11 +97,11 @@ The UI label is:
 
 `出版社封底＋直式書脊`
 
-The existing publisher back-cover-only identifier remains readable for backward compatibility and may map to the combined implementation when the project includes a spine region.
+The existing `publisher_back_matter` identifier remains a backward-compatible alias. Loading or applying that alias produces the same combined back-cover-and-spine template and saves the canonical active template ID as `publisher_back_matter_with_spine`.
 
 ### 5.2 Back-cover block
 
-The back-cover layout continues to provide:
+The back-cover layout provides:
 
 - ISBN label
 - EAN-13 barcode
@@ -151,7 +151,7 @@ When metadata changes:
 
 - Existing template-managed elements retain their current transform, opacity, z-order, and grouping.
 - Text and image content are replaced in place.
-- Elements which become empty are hidden or removed according to the template rule.
+- Elements which become empty are hidden according to the template rule; their geometry remains available if the field later becomes non-empty.
 - Newly needed elements are inserted at their default location relative to the current group anchor.
 - Only the explicit `重設模板版面` action restores all template geometry to defaults.
 
@@ -212,7 +212,7 @@ Each candidate shows:
 - licence or usage information when available
 - explicit `授權資訊未知` when no reliable licence data is available
 
-The first page displays no more than approximately 20 candidates.
+The initial candidate list displays at most 20 unique results. A `載入更多` action may request another page of up to 20 unique results.
 
 ### 7.3 Ranking
 
@@ -238,7 +238,9 @@ Small images, photographs, screenshots, duplicate results, and weak name matches
 
 ### 7.5 Download security
 
-- Enforce timeouts, redirect limits, and a maximum download size.
+- Connection timeout is 10 seconds and total download timeout is 30 seconds.
+- At most five redirects are followed.
+- A single downloaded logo is limited to 10 MiB before decoding.
 - Validate the actual file signature and decoded dimensions.
 - Reject unsupported or corrupt content.
 - SVG is parsed safely; scripts, external resource loads, and active content are prohibited.
@@ -311,11 +313,11 @@ When the paper is the finished size, no internal guides are emitted. The UI disp
 
 ### 8.5 Compatibility mode
 
-Some readers may not render VML lines consistently. Add an optional advanced output mode:
+Some readers may not render VML lines consistently. Add an advanced checkbox:
 
 `高相容裁切線`
 
-This uses a page-content or border-based representation rather than header VML. The default remains the existing header-layer method where it is known to work. The compatibility mode must preserve the same coordinates and line roles.
+When disabled, guides use the existing header-layer VML renderer. When enabled, guides are emitted as page-anchored DrawingML line shapes in the repeating header. Both renderers consume the identical `CropGuide` coordinates and roles. The DrawingML path must not fall back to table borders or recalculate placement.
 
 ## 9. Persistence and backward compatibility
 
@@ -330,7 +332,7 @@ Extend project metadata with optional fields for:
 - spine accent colour
 - selected logo metadata
 
-All new fields have empty or null defaults. Existing schema-v1 projects load without migration failure. Existing projects with the older publisher template remain editable.
+All new fields have empty or null defaults. Existing schema-v1 projects load without migration failure. Existing projects with the older publisher template remain editable through the alias defined in section 5.1.
 
 ## 10. Error handling
 
@@ -366,7 +368,8 @@ All new fields have empty or null defaults. Existing schema-v1 projects load wit
 - source-category labelling
 - official-source verification
 - ranking and duplicate suppression
-- download size and timeout handling
+- pagination in groups of at most 20 candidates
+- download size, redirect, and timeout handling
 - file-signature validation
 - safe SVG rejection tests
 - cache reuse and offline reopen
@@ -380,9 +383,9 @@ All new fields have empty or null defaults. Existing schema-v1 projects load wit
 - four-up crop lines
 - signature crop/fold roles
 - guide-off behaviour
+- VML and DrawingML renderer parity
 - DOCX XML inspection
 - LibreOffice render verification
-- high-compatibility guide path
 
 ### 11.5 Platform regression
 
@@ -396,7 +399,7 @@ Run shared Python tests and desktop PySide6 tests on Windows, macOS, and Linux. 
 4. Add the three-breakpoint vertical spine template and combined template ID.
 5. Add publisher directory, logo candidate models, search adapters, candidate dialog, secure downloader, cache, and project embedding.
 6. Unify desktop crop/fold controls with shared geometry and add preview parity.
-7. Add the optional high-compatibility guide renderer.
+7. Add the DrawingML high-compatibility guide renderer.
 8. Run full shared, desktop, render, and packaging verification.
 
 ## 13. Acceptance criteria
@@ -409,5 +412,6 @@ The work is accepted when:
 - metadata edits do not reset manual template geometry;
 - desktop preview and DOCX show the same crop/fold guides;
 - B6-on-A5 shows two full cutting lines at `x=20 mm` and `y=28 mm` when enabled;
+- both VML and DrawingML guide renderers preserve the same coordinates and line roles;
 - all specified tests and platform checks pass;
 - no generated images or bundled commercial fonts are introduced.
