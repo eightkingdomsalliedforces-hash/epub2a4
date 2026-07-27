@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
+import os
 from typing import Final
 
 from docx.parts import hdrftr
@@ -22,37 +22,50 @@ _FOOTER_XML: Final = (
 _INSTALLED = False
 
 
-def _template_exists(filename: str) -> bool:
-    module_path = Path(str(hdrftr.__file__))
-    return (module_path.parent.parent / "templates" / filename).is_file()
+def _python_docx_template_path(filename: str) -> str:
+    """Return the exact path python-docx 1.1.x attempts to open."""
+
+    return os.path.join(
+        os.path.split(str(hdrftr.__file__))[0],
+        "..",
+        "templates",
+        filename,
+    )
+
+
+def _template_loader_works(filename: str) -> bool:
+    """Test the real python-docx loader path rather than an equivalent path.
+
+    Chaquopy can report the normalized archive member as present while failing
+    to open python-docx's literal ``parts/../templates`` AssetFinder path.
+    """
+
+    try:
+        with open(_python_docx_template_path(filename), "rb") as stream:
+            stream.read(1)
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
 
 
 def install_story_template_fallbacks(*, force: bool = False) -> bool:
-    """Use inline header/footer XML when package resources are not file paths.
-
-    Chaquopy stores python-docx inside an ``.imy`` archive. The XML resources
-    are present in that archive, but python-docx 1.1.2 opens them through a
-    normal path containing ``parts/../templates``. ``AssetFinder`` cannot open
-    that virtual path as a filesystem file, so accessing ``section.header`` or
-    ``section.footer`` raises ``FileNotFoundError``. Desktop installations keep
-    the normal loader; affected Android builds use the equivalent inline XML.
-    """
+    """Use inline header/footer XML when python-docx cannot open its templates."""
 
     global _INSTALLED
     if _INSTALLED and not force:
         return False
 
     changed = False
-    if force or not _template_exists("default-header.xml"):
+    if force or not _template_loader_works("default-header.xml"):
         HeaderPart._default_header_xml = classmethod(lambda cls: _HEADER_XML)
         changed = True
-    if force or not _template_exists("default-footer.xml"):
+    if force or not _template_loader_works("default-footer.xml"):
         FooterPart._default_footer_xml = classmethod(lambda cls: _FOOTER_XML)
         changed = True
     _INSTALLED = True
     return changed
 
 
-# ``docx_writer`` imports this module before Android dispatches EPUB or DOCX
-# conversion. Installing here also protects the direct Word reflow path.
+# Install before Android dispatches EPUB or DOCX conversion. Desktop builds keep
+# python-docx's original loader whenever the exact filesystem access succeeds.
 install_story_template_fallbacks()
