@@ -480,13 +480,23 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
         and not element.id.startswith("template-")
     )
     standard_elements = _standard_panel_elements(project, layout)
+    has_front_image = any(
+        element.kind is ElementKind.IMAGE
+        and element.region in {Region.FRONT, Region.SPREAD}
+        and isinstance(element.content.get("path"), str)
+        and bool(str(element.content.get("path", "")).strip())
+        for element in retained
+    )
     if canonical_template_id == "front_image_plain_back":
         standard_elements = tuple(
             element for element in standard_elements if element.region is Region.BACK
         )
     elif canonical_template_id == "publisher_back_matter":
         standard_elements = tuple(
-            element for element in standard_elements if element.region is not Region.BACK
+            element
+            for element in standard_elements
+            if element.region is not Region.BACK
+            and not (has_front_image and element.region is Region.FRONT)
         )
     elif canonical_template_id in {"source_cover_only", "full_spread"}:
         standard_elements = ()

@@ -43,7 +43,9 @@ _FILE_ALIASES: dict[str, tuple[str, ...]] = {
     "notosanscjktc": ("notosanscjk", "notosanstc"),
     "notosanstc": ("notosanstc", "notosanscjk"),
     "sansserif": ("dejavusans", "liberationsans"),
-    "monospace": ("dejavusansmono", "liberationmono"),
+    "monospace": ("robotomono", "dejavusansmono", "liberationmono"),
+    "robotomono": ("robotomono",),
+    "roboto": ("roboto",),
 }
 
 
@@ -56,6 +58,16 @@ def _font_directories() -> tuple[Path, ...]:
     configured = os.environ.get("EPUB2A4_FONT_DIRS", "")
     if configured:
         values.extend(Path(item).expanduser() for item in configured.split(os.pathsep) if item)
+    android_roots = (
+        os.environ.get("ANDROID_ROOT"),
+        os.environ.get("ANDROID_PRODUCT_ROOT"),
+        os.environ.get("ANDROID_SYSTEM_EXT_ROOT"),
+        "/system",
+        "/product",
+        "/system/product",
+        "/system_ext",
+    )
+    values.extend(Path(root).expanduser() / "fonts" for root in android_roots if root)
     if sys.platform.startswith("win"):
         windir = Path(os.environ.get("WINDIR", "C:/Windows"))
         values.append(windir / "Fonts")

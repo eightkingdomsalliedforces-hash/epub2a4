@@ -157,3 +157,40 @@ def test_publisher_template_hides_missing_fields_without_placeholders(
     assert "back-publisher-heading" not in result.elements_by_id
     assert "back-publisher-details" not in result.elements_by_id
     assert all("ISBN" not in str(element.content.get("text", "")) for element in result.elements)
+
+
+def test_publisher_template_does_not_overlay_front_text_on_source_cover(
+    sample_project: Callable[..., CoverProject],
+    tmp_path,
+) -> None:
+    from PIL import Image
+    from epub_a4_word.cover.models import CoverElement, ElementTransform
+
+    project = sample_project(trim=(128.0, 182.0), page_count=160)
+    layout = calculate_layout(project)
+    cover_path = tmp_path / "source-front.png"
+    Image.new("RGB", (600, 900), "white").save(cover_path)
+    project = replace(
+        project,
+        elements=(
+            CoverElement(
+                id="source-cover-image",
+                kind=ElementKind.IMAGE,
+                region=Region.FRONT,
+                transform=ElementTransform(
+                    layout.front_rect.x_mm,
+                    layout.front_rect.y_mm,
+                    layout.front_rect.width_mm,
+                    layout.front_rect.height_mm,
+                ),
+                z_index=-15,
+                content={"path": str(cover_path), "fit": "cover"},
+            ),
+        ),
+    )
+
+    result = apply_template(project, "publisher_back_matter")
+
+    assert "front-title" not in result.elements_by_id
+    assert "front-author" not in result.elements_by_id
+    assert "source-cover-image" in result.elements_by_id

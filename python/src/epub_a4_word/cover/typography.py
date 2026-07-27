@@ -86,7 +86,12 @@ def font_candidates(role: str, requested: object = None) -> tuple[str, ...]:
         normalized_role,
         _FONT_ROLE_CANDIDATES["default"],
     )
-    ordered = _requested_names(requested) + defaults
+    requested_names = _requested_names(requested)
+    generic_names = {"sans-serif", "sans serif", "serif", "monospace"}
+    if requested_names and all(name.casefold() in generic_names for name in requested_names):
+        ordered = defaults + requested_names
+    else:
+        ordered = requested_names + defaults
     result: list[str] = []
     seen: set[str] = set()
     for name in ordered:

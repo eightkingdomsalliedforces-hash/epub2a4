@@ -30,4 +30,42 @@ class AndroidCoverCapabilitiesRegressionTest {
             },
         )
     }
+
+    @Test
+    fun publisherTemplateRequiresAValidIsbnAndPublisher() {
+        val base = CoverUiState(
+            status = CoverStatus.SETUP,
+            sourcePath = "/tmp/book.epub",
+            pageCount = 160,
+            pageCountConfirmed = true,
+            templateId = PUBLISHER_BACK_MATTER_TEMPLATE_ID,
+        )
+
+        assertTrue(base.publisherTemplateIssue != null)
+        assertTrue(!base.canCreateProject)
+
+        val ready = base.copy(
+            metadataIsbn = "978-475-752-157-5",
+            metadataPublisher = "台灣角川",
+            metadataIsbnAddon = "50110",
+        )
+        assertEquals(null, ready.publisherTemplateIssue)
+        assertTrue(ready.canCreateProject)
+        assertEquals("9784757521575", normalizedPublisherIsbn13(ready.metadataIsbn))
+    }
+
+    @Test
+    fun setupCanRebuildAnExistingCoverAfterMetadataCorrection() {
+        val state = CoverUiState(
+            status = CoverStatus.EDITING,
+            sourcePath = "/tmp/book.epub",
+            pageCount = 160,
+            pageCountConfirmed = true,
+            templateId = PUBLISHER_BACK_MATTER_TEMPLATE_ID,
+            metadataIsbn = "9784757521575",
+            metadataPublisher = "台灣角川",
+        )
+
+        assertTrue(state.canCreateProject)
+    }
 }

@@ -42,6 +42,10 @@ data class CoverUiState(
     val metadataDescription: String = "",
     val metadataIsbn: String = "",
     val metadataPublisher: String = "",
+    val metadataPrice: String = "",
+    val metadataPublicationPlace: String = "",
+    val metadataTranslator: String = "",
+    val metadataIsbnAddon: String = "",
     val metadataLanguage: String = "",
     val trimPreset: TrimPreset = TrimPreset.A5,
     val pageCount: Int = 0,
@@ -87,8 +91,23 @@ data class CoverUiState(
     val effectiveSpineWidthMm: Double get() = manualSpineWidthMm ?: autoSpineWidthMm
     val selectedElement get() = project?.elements?.firstOrNull { it.id == selectedElementId }
 
+    val publisherTemplateSelected: Boolean get() =
+        templateId == PUBLISHER_BACK_MATTER_TEMPLATE_ID
+
+    val publisherTemplateIssue: String? get() = when {
+        !publisherTemplateSelected -> null
+        normalizedPublisherIsbn13(metadataIsbn).isBlank() -> "出版社式封底需要有效的 ISBN-13。"
+        metadataPublisher.isBlank() -> "出版社式封底需要出版社名稱。"
+        !validPublisherAddon(metadataIsbnAddon) -> "附加碼只能留空，或輸入 2／5 位數字。"
+        else -> null
+    }
+
     val canCreateProject: Boolean get() =
-        !sourcePath.isNullOrBlank() && pageCount > 0 && pageCountConfirmed && status == CoverStatus.SETUP
+        !sourcePath.isNullOrBlank() &&
+            pageCount > 0 &&
+            pageCountConfirmed &&
+            publisherTemplateIssue == null &&
+            status in setOf(CoverStatus.SETUP, CoverStatus.EDITING, CoverStatus.COMPLETED)
 
     val canExport: Boolean get() =
         project != null && projectJson.isNotBlank() && pageCountConfirmed &&

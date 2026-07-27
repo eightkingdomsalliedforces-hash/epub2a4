@@ -167,6 +167,12 @@ class MainActivity : ComponentActivity() {
                         onBleed = coverViewModel::setBleed,
                         onImageMode = coverViewModel::setImageMode,
                         onTemplate = coverViewModel::setTemplate,
+                        onIsbn = coverViewModel::setMetadataIsbn,
+                        onIsbnAddon = coverViewModel::setMetadataIsbnAddon,
+                        onPublisher = coverViewModel::setMetadataPublisher,
+                        onPrice = coverViewModel::setMetadataPrice,
+                        onPublicationPlace = coverViewModel::setMetadataPublicationPlace,
+                        onTranslator = coverViewModel::setMetadataTranslator,
                         onCreateProject = coverViewModel::createProject,
                     ),
                     coverEditorCallbacks = CoverEditorCallbacks(

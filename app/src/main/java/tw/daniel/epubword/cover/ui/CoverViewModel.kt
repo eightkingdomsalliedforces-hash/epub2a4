@@ -66,6 +66,10 @@ class CoverViewModel @JvmOverloads constructor(
                         metadataDescription = metadata.optString("description"),
                         metadataIsbn = metadata.optString("isbn"),
                         metadataPublisher = metadata.optString("publisher"),
+                        metadataPrice = metadata.optString("price"),
+                        metadataPublicationPlace = metadata.optString("publication_place"),
+                        metadataTranslator = metadata.optString("translator"),
+                        metadataIsbnAddon = metadata.optString("isbn_addon"),
                         metadataLanguage = metadata.optString("language"),
                         pageCount = inspectedPages.pageCount,
                         pageCountEstimated = inspectedPages.estimated,
@@ -110,6 +114,10 @@ class CoverViewModel @JvmOverloads constructor(
                         metadataDescription = metadata.optString("description"),
                         metadataIsbn = metadata.optString("isbn"),
                         metadataPublisher = metadata.optString("publisher"),
+                        metadataPrice = metadata.optString("price"),
+                        metadataPublicationPlace = metadata.optString("publication_place"),
+                        metadataTranslator = metadata.optString("translator"),
+                        metadataIsbnAddon = metadata.optString("isbn_addon"),
                         metadataLanguage = metadata.optString("language"),
                         trimPreset = trimPresetFor(handoff.trimSize),
                         pageCount = handoff.pageCount,
@@ -157,7 +165,23 @@ class CoverViewModel @JvmOverloads constructor(
         }
     }
     fun setImageMode(value: ImageMode) = _uiState.update { it.copy(imageMode = value) }
-    fun setTemplate(value: String) = _uiState.update { it.copy(templateId = value) }
+    fun setTemplate(value: String) = _uiState.update { it.copy(templateId = value, errorMessage = null) }
+    fun setMetadataIsbn(value: String) = _uiState.update { it.copy(metadataIsbn = value, errorMessage = null) }
+    fun setMetadataIsbnAddon(value: String) = _uiState.update {
+        it.copy(metadataIsbnAddon = value.filter(Char::isDigit).take(5), errorMessage = null)
+    }
+    fun setMetadataPublisher(value: String) = _uiState.update {
+        it.copy(metadataPublisher = value, errorMessage = null)
+    }
+    fun setMetadataPrice(value: String) = _uiState.update {
+        it.copy(metadataPrice = value, errorMessage = null)
+    }
+    fun setMetadataPublicationPlace(value: String) = _uiState.update {
+        it.copy(metadataPublicationPlace = value, errorMessage = null)
+    }
+    fun setMetadataTranslator(value: String) = _uiState.update {
+        it.copy(metadataTranslator = value, errorMessage = null)
+    }
     fun setExportDpi(value: Int) {
         _uiState.update { it.copy(exportDpi = normalizeCoverExportDpi(value)) }
     }
@@ -166,7 +190,12 @@ class CoverViewModel @JvmOverloads constructor(
         val state = _uiState.value
         val staged = stagedSource
         if (staged == null || !state.canCreateProject) {
-            _uiState.update { it.copy(errorMessage = "請選擇來源並確認正文頁數。") }
+            _uiState.update {
+                it.copy(
+                    errorMessage = state.publisherTemplateIssue
+                        ?: "請選擇來源並確認正文頁數。",
+                )
+            }
             return
         }
         viewModelScope.launch {
@@ -183,6 +212,12 @@ class CoverViewModel @JvmOverloads constructor(
                         .put("bleed_mm", state.bleedMm)
                         .put("overlap_mm", 5.0)
                         .put("image_mode", state.imageMode.wire)
+                        .put("isbn", state.metadataIsbn.trim())
+                        .put("isbn_addon", state.metadataIsbnAddon.trim())
+                        .put("publisher", state.metadataPublisher.trim())
+                        .put("price", state.metadataPrice.trim())
+                        .put("publication_place", state.metadataPublicationPlace.trim())
+                        .put("translator", state.metadataTranslator.trim())
                     val created = gateway.newProject(staged.localFile, settings)
                     gateway.applyTemplate(created, state.templateId)
                 }
@@ -208,7 +243,15 @@ class CoverViewModel @JvmOverloads constructor(
     fun toggleGuides() = _uiState.update { it.copy(guidesVisible = !it.guidesVisible) }
 
     fun applyTemplate(templateId: String) {
-        val currentJson = _uiState.value.projectJson.takeIf(String::isNotBlank) ?: return
+        val state = _uiState.value
+        if (templateId == PUBLISHER_BACK_MATTER_TEMPLATE_ID) {
+            val issue = state.copy(templateId = templateId).publisherTemplateIssue
+            if (issue != null) {
+                _uiState.update { it.copy(errorMessage = issue) }
+                return
+            }
+        }
+        val currentJson = state.projectJson.takeIf(String::isNotBlank) ?: return
         viewModelScope.launch {
             runCatching { withContext(Dispatchers.IO) { gateway.applyTemplate(currentJson, templateId) } }
                 .onSuccess {
@@ -432,6 +475,12 @@ class CoverViewModel @JvmOverloads constructor(
                 status = CoverStatus.EDITING,
                 project = project,
                 projectJson = projectJson,
+                metadataIsbn = project.metadata.isbn,
+                metadataPublisher = project.metadata.publisher,
+                metadataPrice = project.metadata.price,
+                metadataPublicationPlace = project.metadata.publicationPlace,
+                metadataTranslator = project.metadata.translator,
+                metadataIsbnAddon = project.metadata.isbnAddon,
                 selectedElementId = if (clearSelection) null else selectId,
                 guides = project.editorGuides(),
                 canUndo = undoHistory.isNotEmpty(),

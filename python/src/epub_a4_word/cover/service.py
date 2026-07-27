@@ -50,7 +50,12 @@ _ALLOWED_SETTINGS = {
     "show_assembly_marks",
     "cover_image_path",
     "image_mode",
+    "isbn",
+    "publisher",
+    "price",
+    "publication_place",
     "translator",
+    "isbn_addon",
     "confirmed_back_cover_asset_id",
 }
 
@@ -310,10 +315,21 @@ def new_project(source_path: str, settings_json: str) -> str:
     assets_dir = working_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
     page_count, estimated = _resolve_page_count(inspection, settings, source)
-    translator = str(settings.get("translator", "")).strip()
+    def metadata_text(key: str, fallback: str) -> str:
+        if key not in settings or settings[key] is None:
+            return fallback
+        return str(settings[key]).strip()
+
     metadata = replace(
         inspection.metadata,
-        translator=translator or inspection.metadata.translator,
+        isbn=metadata_text("isbn", inspection.metadata.isbn),
+        publisher=metadata_text("publisher", inspection.metadata.publisher),
+        price=metadata_text("price", inspection.metadata.price),
+        publication_place=metadata_text(
+            "publication_place", inspection.metadata.publication_place
+        ),
+        translator=metadata_text("translator", inspection.metadata.translator),
+        isbn_addon=metadata_text("isbn_addon", inspection.metadata.isbn_addon),
         page_count_is_estimate=estimated,
     )
     image_mode_value = settings.get("image_mode", ImageMode.FRONT_ONLY.value)
