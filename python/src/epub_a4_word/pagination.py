@@ -255,6 +255,17 @@ def _chars_per_line(block: TextBlock, settings: LayoutSettings) -> float:
     return max(4.0, settings.content_width_pt / (_font_for(block, settings) * 1.07))
 
 
+def _vertical_chars_per_column(
+    block: TextBlock,
+    settings: LayoutSettings,
+) -> float:
+    assert settings.content_height_pt is not None
+    return max(
+        1.0,
+        settings.content_height_pt / (_font_for(block, settings) * 1.07),
+    )
+
+
 def _metrics_for(block: TextBlock, settings: LayoutSettings):
     font_pt = _font_for(block, settings)
     spacing = (
@@ -266,7 +277,11 @@ def _metrics_for(block: TextBlock, settings: LayoutSettings):
 
 
 def _estimated_line_count(block: TextBlock, settings: LayoutSettings) -> int:
-    per_line = _chars_per_line(block, settings)
+    per_line = (
+        _vertical_chars_per_column(block, settings)
+        if settings.writing_mode == "taiwan_vertical"
+        else _chars_per_line(block, settings)
+    )
     lines = 0
     for logical_line in block.text.split("\n"):
         weight = sum(_char_weight(char) for char in logical_line)
@@ -280,8 +295,30 @@ def _line_height_for(block: TextBlock, settings: LayoutSettings) -> float:
     return _metrics_for(block, settings).line_height_pt
 
 
+def _page_capacity_points(settings: LayoutSettings) -> float:
+    if settings.writing_mode == "taiwan_vertical":
+        assert settings.content_width_pt is not None
+        return settings.content_width_pt
+    assert settings.content_height_pt is not None
+    return settings.content_height_pt
+
+
+def _validate_vertical_capacity(
+    block: TextBlock,
+    settings: LayoutSettings,
+) -> None:
+    if settings.writing_mode != "taiwan_vertical":
+        return
+    assert settings.content_width_pt is not None
+    assert settings.content_height_pt is not None
+    font_pt = _font_for(block, settings)
+    if settings.content_height_pt < font_pt or settings.content_width_pt < font_pt:
+        raise ValueError("直排版面過小，無法安全放置一個字元。")
+
+
 def measure_text(block: TextBlock, settings: LayoutSettings) -> float:
     settings = resolve_layout(settings)
+    _validate_vertical_capacity(block, settings)
     metrics = _metrics_for(block, settings)
     return (
         _estimated_line_count(block, settings) * metrics.line_height_pt
@@ -291,12 +328,20 @@ def measure_text(block: TextBlock, settings: LayoutSettings) -> float:
 
 def measure_image(block: ImageBlock, settings: LayoutSettings, image_sizes: Mapping[str, tuple[int, int]]) -> float:
     settings = resolve_layout(settings)
-    assert settings.max_image_width_pt is not None and settings.max_image_height_pt is not None and settings.content_height_pt is not None
+    assert settings.max_image_width_pt is not None and settings.max_image_height_pt is not None
+    assert settings.content_width_pt is not None and settings.content_height_pt is not None
     width_px, height_px = image_sizes.get(block.resource_path, (1, 1))
     if width_px <= 0 or height_px <= 0: width_px, height_px = (1, 1)
     rendered_width = settings.max_image_width_pt
     rendered_height = rendered_width * height_px / width_px
-    if rendered_height > settings.max_image_height_pt: rendered_height = settings.max_image_height_pt
+    if rendered_height > settings.max_image_height_pt:
+        rendered_height = settings.max_image_height_pt
+        rendered_width = rendered_height * width_px / height_px
+    if settings.writing_mode == "taiwan_vertical":
+        return min(
+            settings.content_width_pt,
+            rendered_width + settings.paragraph_spacing_pt,
+        )
     return min(settings.content_height_pt, rendered_height + settings.paragraph_spacing_pt)
 
 
@@ -318,7 +363,12 @@ def _find_split_index(block: TextBlock, available_points: float, settings: Layou
     metrics = _metrics_for(block, settings)
     usable = max(0.0, available_points - metrics.spacing_after_pt)
     max_lines = max(1, int(usable // metrics.line_height_pt))
-    target_weight = max_lines * _chars_per_line(block, settings)
+    chars_per_flow_unit = (
+        _vertical_chars_per_column(block, settings)
+        if settings.writing_mode == "taiwan_vertical"
+        else _chars_per_line(block, settings)
+    )
+    target_weight = max_lines * chars_per_flow_unit
     if block.style == "body": target_weight = max(1.0, target_weight - settings.first_line_indent_chars)
     weight = 0.0; best_break = 0; preferred_break = 0; preferred_chars = set("。！？；：.!?;:\n")
     for index, char in enumerate(block.text, start=1):
@@ -363,7 +413,7 @@ def _assign_logical_page_numbers(pages: list[MiniPage]) -> None:
 
 def paginate(blocks: Iterable[ContentBlock], settings: LayoutSettings, image_sizes: Mapping[str, tuple[int, int]]) -> list[MiniPage]:
     settings = resolve_layout(settings)
-    assert settings.content_height_pt is not None
+    capacity = _page_capacity_points(settings)
     pages: list[MiniPage] = []; current = MiniPage()
     def flush() -> None:
         nonlocal current
@@ -375,25 +425,29 @@ def paginate(blocks: Iterable[ContentBlock], settings: LayoutSettings, image_siz
         if isinstance(block, PageBreakBlock): flush(); continue
         if getattr(block, "page_break_before", False) and current.blocks: flush()
         if isinstance(block, ImageBlock):
-            height = measure_image(block, settings, image_sizes)
-            if current.blocks and current.used_points + height > settings.content_height_pt: flush()
-            current.blocks.append(block); current.used_points += height
-            if current.used_points >= settings.content_height_pt - 0.01: flush()
+            occupied = measure_image(block, settings, image_sizes)
+            if current.blocks and current.used_points + occupied > capacity: flush()
+            current.blocks.append(block); current.used_points += occupied
+            if current.used_points >= capacity - 0.01: flush()
             continue
-        height = measure_text(block, settings)
-        remaining = settings.content_height_pt - current.used_points
-        if height <= remaining + 0.01:
-            current.blocks.append(block); current.used_points += height; continue
+        occupied = measure_text(block, settings)
+        remaining = capacity - current.used_points
+        if occupied <= remaining + 0.01:
+            current.blocks.append(block); current.used_points += occupied; continue
         if current.blocks and remaining < _line_height_for(block, settings) * 2:
             flush(); queue.insert(0, block); continue
-        first, remainder = split_text_block(block, max(remaining, settings.content_height_pt if not current.blocks else remaining), settings)
+        first, remainder = split_text_block(
+            block,
+            max(remaining, capacity if not current.blocks else remaining),
+            settings,
+        )
         first_height = measure_text(first, settings)
-        while first_height > max(remaining, settings.content_height_pt if not current.blocks else remaining) + 0.01 and len(first.text) > 1:
+        while first_height > max(remaining, capacity if not current.blocks else remaining) + 0.01 and len(first.text) > 1:
             left_runs, right_runs = _split_runs_at(first.runs, len(first.text) - 1)
             moved = right_runs + (remainder.runs if remainder else ())
             first = TextBlock(left_runs, style=block.style, page_break_before=block.page_break_before)
             remainder = TextBlock(moved, style=block.style)
             first_height = measure_text(first, settings)
-        current.blocks.append(first); current.used_points += min(first_height, settings.content_height_pt); flush()
+        current.blocks.append(first); current.used_points += min(first_height, capacity); flush()
         if remainder and remainder.text: queue.insert(0, remainder)
     flush(); _assign_logical_page_numbers(pages); return pages
