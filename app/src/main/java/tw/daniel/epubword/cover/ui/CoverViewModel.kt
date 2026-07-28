@@ -28,6 +28,47 @@ import java.io.File
 import java.util.UUID
 import kotlin.math.max
 
+internal fun buildCoverCreationSettings(
+    state: CoverUiState,
+    workingDirectory: String,
+): JSONObject = JSONObject()
+    .put("working_dir", workingDirectory)
+    .put("trim_width_mm", state.trimPreset.widthMm)
+    .put("trim_height_mm", state.trimPreset.heightMm)
+    .put("page_count", state.pageCount)
+    .put("paper_caliper_mm", state.paperCaliperMm)
+    .put("manual_spine_width_mm", state.manualSpineWidthMm ?: JSONObject.NULL)
+    .put("bleed_mm", state.bleedMm)
+    .put("overlap_mm", 5.0)
+    .put("show_crop_marks", state.showCropMarks)
+    .put("show_assembly_marks", true)
+    .put("image_mode", state.imageMode.wire)
+    .put("isbn", state.metadataIsbn.trim())
+    .put("isbn_addon", state.metadataIsbnAddon.trim())
+    .put("publisher", state.metadataPublisher.trim())
+    .put("price", state.metadataPrice.trim())
+    .put("publication_place", state.metadataPublicationPlace.trim())
+    .put("translator", state.metadataTranslator.trim())
+    .put("publisher_id", state.metadataPublisherId.trim())
+    .put("english_title", state.metadataEnglishTitle.trim())
+    .put("volume_number", state.metadataVolumeNumber.trim())
+    .put("arc_label", state.metadataArcLabel.trim())
+    .put("series_name", state.metadataSeriesName.trim())
+    .put("internal_book_code", state.metadataInternalBookCode.trim())
+    .put("spine_accent_color", state.metadataSpineAccentColor.trim())
+    .put("back_vertical_copy", state.metadataBackVerticalCopy.trim())
+    .put("back_highlight_copy", state.metadataBackHighlightCopy.trim())
+    .put("spine_style", state.metadataSpineStyle)
+    .put("accent_color_mode", state.metadataAccentColorMode)
+    .put("extracted_accent_color", state.metadataExtractedAccentColor)
+
+internal fun withShowCropMarks(
+    project: CoverProject,
+    enabled: Boolean,
+): CoverProject = project.copy(
+    exportSettings = project.exportSettings.copy(showCropMarks = enabled),
+)
+
 class CoverViewModel @JvmOverloads constructor(
     application: Application,
     private val repository: CoverDocumentRepository = CoverDocumentRepository(application),
@@ -77,6 +118,14 @@ class CoverViewModel @JvmOverloads constructor(
                         metadataSeriesName = metadata.optString("series_name"),
                         metadataInternalBookCode = metadata.optString("internal_book_code"),
                         metadataSpineAccentColor = metadata.optString("spine_accent_color", "#F15A24"),
+                        metadataBackVerticalCopy = metadata.optString(
+                            "back_vertical_copy",
+                            metadata.optString("description"),
+                        ),
+                        metadataBackHighlightCopy = metadata.optString("back_highlight_copy"),
+                        metadataSpineStyle = metadata.optString("spine_style", "reference_stacked"),
+                        metadataAccentColorMode = metadata.optString("accent_color_mode", "auto"),
+                        metadataExtractedAccentColor = metadata.optString("extracted_accent_color"),
                         metadataLanguage = metadata.optString("language"),
                         pageCount = inspectedPages.pageCount,
                         pageCountEstimated = inspectedPages.estimated,
@@ -132,6 +181,14 @@ class CoverViewModel @JvmOverloads constructor(
                         metadataSeriesName = metadata.optString("series_name"),
                         metadataInternalBookCode = metadata.optString("internal_book_code"),
                         metadataSpineAccentColor = metadata.optString("spine_accent_color", "#F15A24"),
+                        metadataBackVerticalCopy = metadata.optString(
+                            "back_vertical_copy",
+                            metadata.optString("description"),
+                        ),
+                        metadataBackHighlightCopy = metadata.optString("back_highlight_copy"),
+                        metadataSpineStyle = metadata.optString("spine_style", "reference_stacked"),
+                        metadataAccentColorMode = metadata.optString("accent_color_mode", "auto"),
+                        metadataExtractedAccentColor = metadata.optString("extracted_accent_color"),
                         metadataLanguage = metadata.optString("language"),
                         trimPreset = trimPresetFor(handoff.trimSize),
                         pageCount = handoff.pageCount,
@@ -214,8 +271,80 @@ class CoverViewModel @JvmOverloads constructor(
     fun setMetadataInternalBookCode(value: String) = _uiState.update {
         it.copy(metadataInternalBookCode = value, errorMessage = null)
     }
-    fun setMetadataSpineAccentColor(value: String) = _uiState.update {
-        it.copy(metadataSpineAccentColor = value, errorMessage = null)
+    fun setMetadataSpineAccentColor(value: String) {
+        _uiState.update {
+            it.copy(
+                metadataSpineAccentColor = value,
+                metadataAccentColorMode = "manual",
+                errorMessage = null,
+            )
+        }
+        refreshModernMetadata {
+            it.copy(
+                spineAccentColor = value,
+                accentColorMode = "manual",
+            )
+        }
+    }
+    fun setBackVerticalCopy(value: String) {
+        _uiState.update {
+            it.copy(metadataBackVerticalCopy = value, errorMessage = null)
+        }
+        refreshModernMetadata { it.copy(backVerticalCopy = value) }
+    }
+    fun setBackHighlightCopy(value: String) {
+        _uiState.update {
+            it.copy(metadataBackHighlightCopy = value, errorMessage = null)
+        }
+        refreshModernMetadata { it.copy(backHighlightCopy = value) }
+    }
+    fun setSpineStyle(value: String) {
+        _uiState.update {
+            it.copy(metadataSpineStyle = value, errorMessage = null)
+        }
+        refreshModernMetadata { it.copy(spineStyle = value) }
+    }
+    fun setAutomaticAccent(enabled: Boolean) {
+        val mode = if (enabled) "auto" else "manual"
+        _uiState.update {
+            it.copy(metadataAccentColorMode = mode, errorMessage = null)
+        }
+        refreshModernMetadata { it.copy(accentColorMode = mode) }
+    }
+    fun reextractAccentColor() {
+        _uiState.update {
+            it.copy(metadataAccentColorMode = "auto", errorMessage = null)
+        }
+        if (stagedSource != null && _uiState.value.canCreateProject) createProject()
+    }
+    fun setShowCropMarks(enabled: Boolean) {
+        val project = _uiState.value.project
+        if (project == null) {
+            _uiState.update { it.copy(showCropMarks = enabled) }
+        } else {
+            _uiState.update { it.copy(showCropMarks = enabled) }
+            commitProject(withShowCropMarks(project, enabled))
+        }
+    }
+
+    private fun refreshModernMetadata(
+        transform: (tw.daniel.epubword.cover.model.CoverMetadata) ->
+            tw.daniel.epubword.cover.model.CoverMetadata,
+    ) {
+        val state = _uiState.value
+        val project = state.project ?: return
+        val candidateJson = CoverProjectJson.encode(
+            project.copy(metadata = transform(project.metadata)),
+        )
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    gateway.applyTemplate(candidateJson, state.templateId)
+                }
+            }.onSuccess {
+                commitProject(CoverProjectJson.decode(it))
+            }.onFailure(::showError)
+        }
     }
     fun setExportDpi(value: Int) {
         _uiState.update { it.copy(exportDpi = normalizeCoverExportDpi(value)) }
@@ -237,29 +366,10 @@ class CoverViewModel @JvmOverloads constructor(
             _uiState.update { it.copy(status = CoverStatus.CREATING, errorMessage = null) }
             runCatching {
                 withContext(Dispatchers.IO) {
-                    val settings = JSONObject()
-                        .put("working_dir", staged.workingFiles.root.absolutePath)
-                        .put("trim_width_mm", state.trimPreset.widthMm)
-                        .put("trim_height_mm", state.trimPreset.heightMm)
-                        .put("page_count", state.pageCount)
-                        .put("paper_caliper_mm", state.paperCaliperMm)
-                        .put("manual_spine_width_mm", state.manualSpineWidthMm ?: JSONObject.NULL)
-                        .put("bleed_mm", state.bleedMm)
-                        .put("overlap_mm", 5.0)
-                        .put("image_mode", state.imageMode.wire)
-                        .put("isbn", state.metadataIsbn.trim())
-                        .put("isbn_addon", state.metadataIsbnAddon.trim())
-                        .put("publisher", state.metadataPublisher.trim())
-                        .put("price", state.metadataPrice.trim())
-                        .put("publication_place", state.metadataPublicationPlace.trim())
-                        .put("translator", state.metadataTranslator.trim())
-                        .put("publisher_id", state.metadataPublisherId.trim())
-                        .put("english_title", state.metadataEnglishTitle.trim())
-                        .put("volume_number", state.metadataVolumeNumber.trim())
-                        .put("arc_label", state.metadataArcLabel.trim())
-                        .put("series_name", state.metadataSeriesName.trim())
-                        .put("internal_book_code", state.metadataInternalBookCode.trim())
-                        .put("spine_accent_color", state.metadataSpineAccentColor.trim())
+                    val settings = buildCoverCreationSettings(
+                        state,
+                        staged.workingFiles.root.absolutePath,
+                    )
                     val created = gateway.newProject(staged.localFile, settings)
                     gateway.applyTemplate(created, state.templateId)
                 }
@@ -286,7 +396,11 @@ class CoverViewModel @JvmOverloads constructor(
 
     fun applyTemplate(templateId: String) {
         val state = _uiState.value
-        if (templateId == PUBLISHER_BACK_MATTER_TEMPLATE_ID) {
+        if (templateId in setOf(
+                PUBLISHER_BACK_MATTER_TEMPLATE_ID,
+                MODERN_VERTICAL_TEMPLATE_ID,
+            )
+        ) {
             val issue = state.copy(templateId = templateId).publisherTemplateIssue
             if (issue != null) {
                 _uiState.update { it.copy(errorMessage = issue) }
@@ -539,6 +653,12 @@ class CoverViewModel @JvmOverloads constructor(
                 metadataSeriesName = project.metadata.seriesName,
                 metadataInternalBookCode = project.metadata.internalBookCode,
                 metadataSpineAccentColor = project.metadata.spineAccentColor,
+                metadataBackVerticalCopy = project.metadata.backVerticalCopy,
+                metadataBackHighlightCopy = project.metadata.backHighlightCopy,
+                metadataSpineStyle = project.metadata.spineStyle,
+                metadataAccentColorMode = project.metadata.accentColorMode,
+                metadataExtractedAccentColor = project.metadata.extractedAccentColor,
+                showCropMarks = project.exportSettings.showCropMarks,
                 selectedElementId = if (clearSelection) null else selectId,
                 guides = project.editorGuides(),
                 canUndo = undoHistory.isNotEmpty(),

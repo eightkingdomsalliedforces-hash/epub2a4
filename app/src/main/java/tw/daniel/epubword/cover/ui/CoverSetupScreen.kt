@@ -67,6 +67,12 @@ data class CoverSetupCallbacks(
     val onSeriesName: (String) -> Unit = {},
     val onInternalBookCode: (String) -> Unit = {},
     val onSpineAccentColor: (String) -> Unit = {},
+    val onBackVerticalCopy: (String) -> Unit = {},
+    val onBackHighlightCopy: (String) -> Unit = {},
+    val onSpineStyle: (String) -> Unit = {},
+    val onAutomaticAccent: (Boolean) -> Unit = {},
+    val onReextractAccent: () -> Unit = {},
+    val onShowCropMarks: (Boolean) -> Unit = {},
     val onChoosePublisherLogo: () -> Unit = {},
     val onSearchPublisherLogo: () -> Unit = {},
     val onCreateProject: () -> Unit = {},
@@ -270,6 +276,23 @@ private fun AppearanceCard(state: CoverUiState, callbacks: CoverSetupCallbacks) 
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = state.showCropMarks,
+                    role = Role.Checkbox,
+                    onValueChange = callbacks.onShowCropMarks,
+                )
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(
+                checked = state.showCropMarks,
+                onCheckedChange = null,
+            )
+            Text("顯示完整裁切框")
+        }
     }
 }
 
@@ -376,6 +399,59 @@ private fun PublisherMetadataCard(state: CoverUiState, callbacks: CoverSetupCall
             enabled = !state.isBusy,
             modifier = Modifier.fillMaxWidth(),
         )
+        OutlinedTextField(
+            value = state.metadataBackVerticalCopy,
+            onValueChange = callbacks.onBackVerticalCopy,
+            label = { Text("封底中間直排內文") },
+            minLines = 4,
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.metadataBackHighlightCopy,
+            onValueChange = callbacks.onBackHighlightCopy,
+            label = { Text("封底醒目文案") },
+            minLines = 4,
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text("書脊樣式", style = MaterialTheme.typography.titleSmall)
+        listOf(
+            "reference_stacked" to "參考圖堆疊式",
+            "clean_centered" to "簡潔置中式",
+            "parallel_columns" to "雙欄現代式",
+        ).forEach { (id, label) ->
+            FilterChip(
+                selected = state.metadataSpineStyle == id,
+                onClick = { callbacks.onSpineStyle(id) },
+                label = { Text(label) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = state.metadataAccentColorMode == "auto",
+                    role = Role.Checkbox,
+                    onValueChange = callbacks.onAutomaticAccent,
+                )
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(
+                checked = state.metadataAccentColorMode == "auto",
+                onCheckedChange = null,
+            )
+            Text("自動從封面取主題色")
+        }
+        OutlinedButton(
+            onClick = callbacks.onReextractAccent,
+            enabled = !state.isBusy,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("重新從封面擷取")
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),

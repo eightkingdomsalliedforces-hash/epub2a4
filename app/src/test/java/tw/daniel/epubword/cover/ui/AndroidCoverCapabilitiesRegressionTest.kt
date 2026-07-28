@@ -32,6 +32,19 @@ class AndroidCoverCapabilitiesRegressionTest {
     }
 
     @Test
+    fun modernVerticalTemplateIsAvailableAndUsesPublisherMetadataCard() {
+        assertTrue(
+            COVER_TEMPLATE_OPTIONS.any {
+                it.id == MODERN_VERTICAL_TEMPLATE_ID
+            },
+        )
+        assertTrue(
+            CoverUiState(templateId = MODERN_VERTICAL_TEMPLATE_ID)
+                .publisherTemplateSelected,
+        )
+    }
+
+    @Test
     fun publisherTemplateRequiresAValidIsbnAndPublisher() {
         val base = CoverUiState(
             status = CoverStatus.SETUP,

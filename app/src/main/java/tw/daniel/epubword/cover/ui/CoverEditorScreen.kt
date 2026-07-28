@@ -38,6 +38,7 @@ data class CoverEditorCallbacks(
     val onSelectEmbeddedImage: (String) -> Unit = {},
     val onAddText: () -> Unit = {},
     val onToggleGuides: () -> Unit = {},
+    val onShowCropMarks: (Boolean) -> Unit = {},
     val onPreviewWord: () -> Unit = {},
     val onPrepareExport: (Int) -> Unit = {},
     val onRequestExportDirectory: () -> Unit = {},
@@ -101,6 +102,17 @@ fun CoverEditorScreen(
                 ) {
                     TextButton(onClick = callbacks.onToggleGuides) {
                         Text(if (state.guidesVisible) "隱藏導引線" else "顯示導引線")
+                    }
+                    TextButton(
+                        onClick = { callbacks.onShowCropMarks(!state.showCropMarks) },
+                    ) {
+                        Text(
+                            if (state.showCropMarks) {
+                                "隱藏完整裁切框"
+                            } else {
+                                "顯示完整裁切框"
+                            },
+                        )
                     }
                     TextButton(onClick = { sheet = EditorSheet.LAYERS }) { Text("圖層") }
                     TextButton(
@@ -210,6 +222,8 @@ fun CoverEditorScreen(
     if (showExportDialog) {
         ExportCoverDialog(
             initialDpi = state.exportDpi,
+            showCropMarks = state.showCropMarks,
+            onShowCropMarks = callbacks.onShowCropMarks,
             onDismiss = { showExportDialog = false },
             onExport = {
                 showExportDialog = false
@@ -230,7 +244,10 @@ private fun TemplateChoices(
     ) {
         Text("套用模板", style = MaterialTheme.typography.titleLarge)
         COVER_TEMPLATE_OPTIONS.forEach { option ->
-            val enabled = option.id != PUBLISHER_BACK_MATTER_TEMPLATE_ID || publisherReady
+            val enabled = option.id !in setOf(
+                PUBLISHER_BACK_MATTER_TEMPLATE_ID,
+                MODERN_VERTICAL_TEMPLATE_ID,
+            ) || publisherReady
             Button(
                 onClick = { onApply(option.id) },
                 enabled = enabled,
