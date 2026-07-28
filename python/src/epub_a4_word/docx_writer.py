@@ -200,7 +200,13 @@ def _add_page_number(cell, page_number: int, settings: LayoutSettings, first: bo
     paragraph = cell.paragraphs[0] if first else cell.add_paragraph()
     if first:
         _clear_paragraph(paragraph)
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT if page_number % 2 else WD_ALIGN_PARAGRAPH.LEFT
+    odd_is_right = settings.binding_direction == "left"
+    align_right = (page_number % 2 == 1) == odd_is_right
+    paragraph.alignment = (
+        WD_ALIGN_PARAGRAPH.RIGHT
+        if align_right
+        else WD_ALIGN_PARAGRAPH.LEFT
+    )
     paragraph.paragraph_format.space_before = Pt(0)
     paragraph.paragraph_format.space_after = Pt(0)
     paragraph.paragraph_format.line_spacing = Pt(8)
@@ -235,7 +241,7 @@ def _populate_cell(
         _clear_paragraph(cell.paragraphs[0])
         return warnings
     first = True
-    if settings.page_numbers and page.logical_page_number is not None and page.has_text:
+    if settings.page_numbers and page.logical_page_number is not None:
         _add_page_number(cell, page.logical_page_number, settings, first)
         first = False
     for block in page.blocks:
@@ -299,7 +305,11 @@ def write_docx(
     )
 
     warnings: list[str] = []
-    plan = build_imposition(len(pages), imposition_mode)
+    plan = build_imposition(
+        len(pages),
+        imposition_mode,
+        settings.binding_direction,
+    )
 
     def configure_table(table) -> None:
         table.alignment = WD_TABLE_ALIGNMENT.CENTER

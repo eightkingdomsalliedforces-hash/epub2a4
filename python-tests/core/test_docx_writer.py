@@ -3,6 +3,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from PIL import Image
 
 from epub_a4_word.docx_writer import write_docx
@@ -130,7 +131,7 @@ def test_writer_renders_signature16_as_four_a4_sides(tmp_path: Path) -> None:
     assert int(page_line.split(":", 1)[1].strip()) == 4
 
 
-def test_writer_displays_logical_number_only_on_text_pages(tmp_path: Path) -> None:
+def test_writer_displays_logical_number_on_text_and_image_pages(tmp_path: Path) -> None:
     output = tmp_path / "logical-numbers.docx"
     text_page = MiniPage(
         [TextBlock((TextRun("序章正文"),), style="body")],
@@ -156,7 +157,69 @@ def test_writer_displays_logical_number_only_on_text_pages(tmp_path: Path) -> No
     document = Document(output)
     cells = [cell for row in document.tables[0].rows for cell in row.cells]
     assert "1" in cells[0].text.splitlines()
+    assert "2" in cells[1].text.splitlines()
+
+
+def test_writer_page_number_switch_removes_numbers_from_all_page_types(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "no-logical-numbers.docx"
+    pages = [
+        MiniPage(
+            [TextBlock((TextRun("正文"),), style="body")],
+            logical_page_number=1,
+        ),
+        MiniPage([ImageBlock("Images/test.png")], logical_page_number=2),
+    ]
+    image_data = BytesIO()
+    Image.new("RGB", (200, 300), "white").save(image_data, format="PNG")
+
+    write_docx(
+        pages,
+        output,
+        resources={"Images/test.png": image_data.getvalue()},
+        media_types={"Images/test.png": "image/png"},
+        settings=LayoutSettings(page_numbers=False, imposition_mode="four_up"),
+    )
+
+    cells = [
+        cell
+        for row in Document(output).tables[0].rows
+        for cell in row.cells
+    ]
+    assert "1" not in cells[0].text.splitlines()
     assert "2" not in cells[1].text.splitlines()
+
+
+def test_right_binding_mirrors_page_number_alignment(tmp_path: Path) -> None:
+    output = tmp_path / "right-binding-page-numbers.docx"
+    pages = [
+        MiniPage(
+            [TextBlock((TextRun("第一頁"),), style="body")],
+            logical_page_number=1,
+        ),
+        MiniPage(
+            [TextBlock((TextRun("第二頁"),), style="body")],
+            logical_page_number=2,
+        ),
+    ]
+
+    write_docx(
+        pages,
+        output,
+        resources={},
+        media_types={},
+        settings=LayoutSettings(
+            imposition_mode="single_a5",
+            binding_direction="right",
+            page_numbers=True,
+        ),
+        imposition_mode="single_a5",
+    )
+
+    rows = Document(output).tables[0].rows
+    assert rows[0].cells[0].paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT
+    assert rows[1].cells[0].paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
 
 
 def test_borderless_writer_sets_zero_a4_outer_margins(tmp_path: Path) -> None:
