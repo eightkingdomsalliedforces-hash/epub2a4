@@ -259,6 +259,7 @@ def make_text_box_shape(
     stroke: str | None = None,
     behind_text: bool = False,
     z_index: int = 10,
+    direction: str = "horizontal",
 ) -> Any:
     run = OxmlElement("w:r")
     pict = OxmlElement("w:pict")
@@ -311,11 +312,30 @@ def make_text_box_shape(
     color_node = OxmlElement("w:color")
     _set(color_node, "w:val", _hex_color(color))
     run_properties.append(color_node)
-    text_node = OxmlElement("w:t")
-    text_node.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-    text_node.text = text
-    text_run.append(text_node)
+    _append_text_with_direction(text_run, text, direction)
     return run
+
+
+def _append_text_with_direction(run, text: str, direction: str) -> None:
+    if direction != "vertical":
+        text_node = OxmlElement("w:t")
+        text_node.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        text_node.text = text
+        run.append(text_node)
+        return
+
+    characters = list(text)
+    for index, character in enumerate(characters):
+        if character != "\n":
+            text_node = OxmlElement("w:t")
+            text_node.set(
+                "{http://www.w3.org/XML/1998/namespace}space",
+                "preserve",
+            )
+            text_node.text = character
+            run.append(text_node)
+        if index < len(characters) - 1:
+            run.append(OxmlElement("w:br"))
 
 
 def add_text_box(paragraph: Paragraph, element: CoverElement, rect: RectMm) -> None:
@@ -333,6 +353,7 @@ def add_text_box(paragraph: Paragraph, element: CoverElement, rect: RectMm) -> N
         fill=content.get("fill"),
         stroke=content.get("stroke"),
         z_index=element.z_index,
+        direction=str(content.get("direction", "horizontal")),
     )
     paragraph._p.append(shape)
 

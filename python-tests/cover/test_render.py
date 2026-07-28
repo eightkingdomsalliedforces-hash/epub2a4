@@ -178,6 +178,39 @@ def test_text_overflow_is_reported_in_preview(
     assert any("overflow-text" in warning for warning in result.warnings)
 
 
+def test_vertical_text_newline_starts_a_new_column(
+    sample_project: Callable[..., CoverProject], tmp_path: Path
+) -> None:
+    project = sample_project()
+    layout = calculate_layout(project)
+    text = CoverElement(
+        id="two-vertical-columns",
+        kind=ElementKind.TEXT,
+        region=Region.BACK,
+        transform=ElementTransform(
+            layout.back_safe_rect.x_mm,
+            layout.back_safe_rect.y_mm,
+            12.0,
+            20.0,
+        ),
+        content={
+            "text": "甲乙丙丁\n戊己庚辛",
+            "font_family": "sans-serif",
+            "font_size_pt": 12.0,
+            "color": "#111111",
+            "direction": "vertical",
+        },
+    )
+
+    result = render_preview(
+        replace(project, elements=(text,)),
+        tmp_path / "vertical-columns.png",
+        max_px=900,
+    )
+
+    assert not any("two-vertical-columns" in warning for warning in result.warnings)
+
+
 def test_font_fallback_returns_a_usable_font() -> None:
     font = resolve_font("missing-family", None, 18)
     assert font is not None

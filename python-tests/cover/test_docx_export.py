@@ -11,6 +11,7 @@ from PIL import Image
 import pytest
 
 from epub_a4_word.cover.docx_export import export_docx
+from epub_a4_word.cover.geometry import calculate_layout
 from epub_a4_word.cover.models import (
     CoverElement,
     CoverProject,
@@ -125,6 +126,44 @@ def test_text_boxes_contain_real_word_text_and_absolute_vml_positioning(
     assert shapes
     assert all("position:absolute" in shape.get("style", "") for shape in shapes)
     assert document.xpath(".//w:txbxContent//w:t[text()='範例書名']", namespaces=NS)
+
+
+def test_vertical_text_box_keeps_editable_characters_with_line_breaks(
+    sample_project: Callable[..., CoverProject], tmp_path: Path
+) -> None:
+    project = sample_project()
+    safe = calculate_layout(project).back_safe_rect
+    vertical = CoverElement(
+        id="editable-vertical-copy",
+        kind=ElementKind.TEXT,
+        region=Region.BACK,
+        transform=ElementTransform(
+            safe.x_mm,
+            safe.y_mm,
+            8.0,
+            50.0,
+        ),
+        content={
+            "text": "直排測試",
+            "font_family": "sans-serif",
+            "font_size_pt": 10.0,
+            "color": "#111111",
+            "direction": "vertical",
+        },
+    )
+    path = export_docx(
+        replace(project, elements=(vertical,)),
+        tmp_path / "vertical.docx",
+    ).path
+    document = _document_xml(path)
+    shapes = document.xpath(
+        ".//v:shape[@id='textbox-editable-vertical-copy']",
+        namespaces=NS,
+    )
+
+    assert len(shapes) == 1
+    assert "".join(shapes[0].xpath(".//w:t/text()", namespaces=NS)) == "直排測試"
+    assert len(shapes[0].xpath(".//w:br", namespaces=NS)) == 3
 
 
 def test_docx_package_reopens_and_has_image_relationships(

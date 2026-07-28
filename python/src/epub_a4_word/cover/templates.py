@@ -8,6 +8,7 @@ from .geometry import CoverLayout, RectMm, calculate_layout
 from .isbn import normalize_ean_addon, normalize_isbn
 from .publisher_info_layout import layout_publisher_info
 from .spine_layout import build_spine_slots
+from .vertical_copy_layout import layout_vertical_copy
 from .models import (
     CoverElement,
     LogoAssetMetadata,
@@ -48,6 +49,11 @@ _TEMPLATE_CATALOG: tuple[TemplateSummary, ...] = (
         "出版社封底＋直式書脊",
         "出版社式 ISBN／條碼封底與依書脊寬度自動調整的直式書脊。",
     ),
+    TemplateSummary(
+        "modern_vertical_back_with_spine",
+        "現代直排封底＋可選書脊",
+        "可編輯直排內文、醒目文案與三種書脊。",
+    ),
 )
 
 STANDARD_TEMPLATE_IDS = frozenset(
@@ -76,6 +82,19 @@ STANDARD_TEMPLATE_IDS = frozenset(
         "back-publisher-logo",
     }
 )
+
+_MODERN_TEMPLATE_PREFIXES = (
+    "modern-back-copy-column-",
+    "modern-back-copy-separator-",
+    "modern-back-highlight-column-",
+    "modern-back-highlight-separator-",
+)
+
+
+def _is_template_managed_id(element_id: str) -> bool:
+    return element_id in STANDARD_TEMPLATE_IDS or element_id.startswith(
+        _MODERN_TEMPLATE_PREFIXES
+    )
 
 
 def list_templates() -> tuple[TemplateSummary, ...]:
@@ -643,6 +662,138 @@ def _publisher_back_matter_with_spine(
         project, layout
     )
 
+
+def _modern_vertical_columns(
+    *,
+    text: str,
+    target: RectMm,
+    prefix: str,
+    color: str,
+    preferred_font_pt: float,
+    minimum_font_pt: float,
+    maximum_columns: int,
+) -> tuple[CoverElement, ...]:
+    if not text.strip():
+        return ()
+    result = layout_vertical_copy(
+        text,
+        target,
+        preferred_font_pt=preferred_font_pt,
+        minimum_font_pt=minimum_font_pt,
+        preferred_gap_mm=2.0,
+        maximum_columns=maximum_columns,
+    )
+    elements: list[CoverElement] = []
+    for index, column in enumerate(result.columns, start=1):
+        element = text_element(
+            f"{prefix}-column-{index}",
+            Region.BACK,
+            column.rect,
+            column.text,
+            column.font_size_pt,
+            align="center",
+            font_weight=500 if "highlight" in prefix else 400,
+            color=color,
+            z_index=20,
+            font_family="DFPYuanW5-GB" if "highlight" in prefix else "DFPYuanW3-GB",
+            vertical_align="top",
+            line_spacing=1.0,
+        )
+        elements.append(
+            replace(
+                element,
+                content={
+                    **element.content,
+                    "direction": "vertical",
+                    "group_id": "modern-back-copy",
+                    "layout_role": (
+                        "highlight-copy" if "highlight" in prefix else "body-copy"
+                    ),
+                    "layout_warnings": list(result.warnings) if index == 1 else [],
+                },
+            )
+        )
+    for index, separator in enumerate(result.separators, start=1):
+        elements.append(
+            _shape_element(
+                f"{prefix}-separator-{index}",
+                Region.BACK,
+                separator,
+                color if "highlight" in prefix else "#B8B8B8",
+                z_index=19,
+            )
+        )
+    return tuple(elements)
+
+
+def _modern_vertical_back(
+    project: CoverProject,
+    layout: CoverLayout,
+) -> tuple[CoverElement, ...]:
+    safe = layout.back_safe_rect
+    top_limit = safe.y_mm + safe.height_mm * 0.20
+    allowed_top_ids = {
+        "back-isbn-label",
+        "back-isbn-code",
+        "back-publisher-heading",
+        "back-publisher-details",
+    }
+    top_elements: list[CoverElement] = []
+    for element in _publisher_back_matter_only(project, layout):
+        if element.id not in allowed_top_ids:
+            continue
+        available_height = top_limit - element.transform.y_mm
+        if available_height <= 0:
+            continue
+        if element.transform.height_mm > available_height:
+            element = replace(
+                element,
+                transform=replace(
+                    element.transform,
+                    height_mm=available_height,
+                ),
+            )
+        top_elements.append(element)
+
+    body_target = RectMm(
+        safe.x_mm + safe.width_mm * 0.05,
+        safe.y_mm + safe.height_mm * 0.24,
+        safe.width_mm * 0.61,
+        safe.height_mm * 0.62,
+    )
+    highlight_target = RectMm(
+        safe.x_mm + safe.width_mm * 0.69,
+        safe.y_mm + safe.height_mm * 0.24,
+        safe.width_mm * 0.27,
+        safe.height_mm * 0.62,
+    )
+    accent = project.metadata.spine_accent_color.strip() or "#F15A24"
+    body = _modern_vertical_columns(
+        text=project.metadata.back_vertical_copy,
+        target=body_target,
+        prefix="modern-back-copy",
+        color="#242424",
+        preferred_font_pt=10.0,
+        minimum_font_pt=7.0,
+        maximum_columns=10,
+    )
+    highlight = _modern_vertical_columns(
+        text=project.metadata.back_highlight_copy,
+        target=highlight_target,
+        prefix="modern-back-highlight",
+        color=accent,
+        preferred_font_pt=15.0,
+        minimum_font_pt=9.0,
+        maximum_columns=5,
+    )
+    return (
+        *top_elements,
+        *body,
+        *highlight,
+        *_publisher_spine_elements(project, layout),
+    )
+
+
 _BUILDERS = {
     "source_cover_only": _source_cover_only,
     "minimal_text": _minimal_text,
@@ -650,6 +801,7 @@ _BUILDERS = {
     "full_spread": _full_spread,
     "top_bottom_blocks": _top_bottom_blocks,
     "publisher_back_matter_with_spine": _publisher_back_matter_with_spine,
+    "modern_vertical_back_with_spine": _modern_vertical_back,
 }
 
 _TEMPLATE_ALIASES = {
@@ -671,7 +823,7 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
     retained = tuple(
         element
         for element in project.elements
-        if element.id not in STANDARD_TEMPLATE_IDS
+        if not _is_template_managed_id(element.id)
         and not element.id.startswith("template-")
     )
     standard_elements = _standard_panel_elements(project, layout)
@@ -686,7 +838,10 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
         standard_elements = tuple(
             element for element in standard_elements if element.region is Region.BACK
         )
-    elif canonical_template_id == "publisher_back_matter_with_spine":
+    elif canonical_template_id in {
+        "publisher_back_matter_with_spine",
+        "modern_vertical_back_with_spine",
+    }:
         standard_elements = tuple(
             element
             for element in standard_elements
@@ -700,6 +855,7 @@ def apply_template(project: CoverProject, template_id: str) -> CoverProject:
         "source_cover_only",
         "full_spread",
         "publisher_back_matter_with_spine",
+        "modern_vertical_back_with_spine",
     }:
         spine_elements, new_warnings = (), ()
     else:
@@ -787,7 +943,7 @@ def refresh_template_metadata(
     merged: list[CoverElement] = []
     for element in generated.elements:
         old = old_by_id.get(element.id)
-        if old is None or element.id not in STANDARD_TEMPLATE_IDS:
+        if old is None or not _is_template_managed_id(element.id):
             merged.append(element)
             continue
         old_content = dict(old.content)
@@ -825,7 +981,7 @@ def refresh_template_metadata(
         )
 
     for old in project.elements:
-        if old.id not in STANDARD_TEMPLATE_IDS or old.id in generated_ids:
+        if not _is_template_managed_id(old.id) or old.id in generated_ids:
             continue
         content = dict(old.content)
         content["template_hidden"] = True
