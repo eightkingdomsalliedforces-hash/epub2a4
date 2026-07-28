@@ -7,6 +7,9 @@ from epub_a4_word.converter import convert_epub
 from epub_a4_word.pagination import LayoutSettings
 
 
+FIXTURES = Path(__file__).parents[1] / "fixtures"
+
+
 def test_convert_epub_produces_editable_docx_with_text_and_image(sample_epub: Path, tmp_path: Path) -> None:
     output = tmp_path / "converted.docx"
     progress: list[int] = []
@@ -114,3 +117,32 @@ def test_convert_epub_defaults_to_body_only_but_can_preserve_covers(
 
     assert body_only.image_count == 0
     assert with_covers.image_count == 2
+
+
+def test_vertical_epub_end_to_end_is_right_bound_and_reopenable(tmp_path: Path) -> None:
+    output = tmp_path / "vertical.docx"
+
+    result = convert_epub(
+        FIXTURES / "vertical_mixed.epub",
+        output,
+        LayoutSettings(
+            imposition_mode="signature16",
+            writing_mode="taiwan_vertical",
+            binding_direction="right",
+            page_numbers=True,
+        ),
+    )
+
+    reopened = Document(output)
+    text = "\n".join(
+        cell.text
+        for table in reopened.tables
+        for row in table.rows
+        for cell in row.cells
+    )
+    assert "中文 English 2026" in text
+    assert len(reopened.inline_shapes) == 1
+    assert result.mini_page_count >= 2
+    with ZipFile(output) as archive:
+        xml = archive.read("word/document.xml")
+        assert b'<w:textDirection w:val="tbRl"' in xml
