@@ -33,7 +33,7 @@ def test_b6_content_is_anchored_to_a5_bottom_right():
     assert build_imposition(3, "b6_on_a5").sides == ((1,), (2,), (3,))
 
 
-def test_crop_mark_mode_adds_only_top_and_left_guides(tmp_path):
+def test_crop_mark_mode_adds_only_page_local_top_and_left_guides(tmp_path):
     normal = tmp_path / "normal.docx"
     marked = tmp_path / "marked.docx"
     for output, mark_mode in ((normal, "normal"), (marked, "crop_marks")):
@@ -53,13 +53,9 @@ def test_crop_mark_mode_adds_only_top_and_left_guides(tmp_path):
     assert document.sections[0].page_width.mm == pytest.approx(148.0, abs=0.2)
     assert document.sections[0].page_height.mm == pytest.approx(210.0, abs=0.2)
 
-    def header_xml(path):
+    def document_xml(path):
         with ZipFile(path) as archive:
-            return b"".join(
-                archive.read(name)
-                for name in archive.namelist()
-                if name.startswith("word/header")
-            )
+            return archive.read("word/document.xml")
 
-    assert header_xml(normal).count(b"<v:line") == 0
-    assert header_xml(marked).count(b"<v:line") == 2
+    assert document_xml(normal).count(b"<v:line") == 0
+    assert document_xml(marked).count(b"<v:line") == 2

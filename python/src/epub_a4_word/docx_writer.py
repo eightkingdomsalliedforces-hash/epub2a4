@@ -13,7 +13,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
 
-from .crop_marks import add_page_guides
+from .crop_marks import add_guides_to_paragraph, add_page_guides
 from .imposition import ImpositionMode, build_imposition
 from .models import ImageBlock, TextBlock, TextRun
 from .page_placement import build_page_placement
@@ -113,12 +113,18 @@ def _clear_paragraph(paragraph) -> None:
 def _configure_page_prefix(paragraph, page_break_before: bool) -> None:
     _clear_paragraph(paragraph)
     fmt = paragraph.paragraph_format
-    fmt.space_before = Pt(0)
-    fmt.space_after = Pt(0)
-    fmt.line_spacing = Pt(1)
-    fmt.page_break_before = page_break_before
+    fmt.page_break_before = True if page_break_before else None
+    p_pr = paragraph._p.get_or_add_pPr()
+    spacing = p_pr.find(qn("w:spacing"))
+    if spacing is None:
+        spacing = OxmlElement("w:spacing")
+        p_pr.append(spacing)
+    spacing.set(qn("w:before"), "0")
+    spacing.set(qn("w:after"), "0")
+    spacing.set(qn("w:line"), "1")
+    spacing.set(qn("w:lineRule"), "exact")
     run = paragraph.add_run("\u200b")
-    run.font.size = Pt(1)
+    run.font.size = Pt(0.5)
 
 
 def _normalized_image(data: bytes, media_type: str, resource_path: str) -> tuple[BytesIO, int, int]:
@@ -331,19 +337,23 @@ def write_docx(
     section.bottom_margin = Cm(settings.page_margin_bottom_cm)
     section.left_margin = Cm(settings.page_margin_left_cm)
     section.right_margin = Cm(settings.page_margin_right_cm)
+    if imposition_mode in _SINGLE_PAGE_TABLE_MODES:
+        section.left_margin = Cm(0)
+        section.right_margin = Cm(0)
     section.header_distance = Cm(0)
     section.footer_distance = Cm(0)
     document.core_properties.title = title
     document.core_properties.author = author
 
     placement = build_page_placement(settings)
-    add_page_guides(
-        section,
-        placement.guides,
-        paper_width_mm=placement.paper_width_mm,
-        paper_height_mm=placement.paper_height_mm,
-        render_mode=settings.guide_render_mode,
-    )
+    if imposition_mode not in _SINGLE_PAGE_TABLE_MODES:
+        add_page_guides(
+            section,
+            placement.guides,
+            paper_width_mm=placement.paper_width_mm,
+            paper_height_mm=placement.paper_height_mm,
+            render_mode=settings.guide_render_mode,
+        )
 
     warnings: list[str] = []
     if settings.writing_mode == "taiwan_vertical":
@@ -375,17 +385,51 @@ def write_docx(
 
     if imposition_mode in _SINGLE_PAGE_TABLE_MODES:
         if plan.sides:
-            table = document.add_table(rows=len(plan.sides), cols=1)
-            configure_table(table)
+            first_prefix = document.add_paragraph()
             for side_index, slots in enumerate(plan.sides):
-                row = table.rows[side_index]
-                configure_row(row)
+                prefix = (
+                    first_prefix
+                    if side_index == 0
+                    else document.add_paragraph()
+                )
+                _configure_page_prefix(
+                    prefix,
+                    page_break_before=side_index > 0,
+                )
                 physical_page_number = slots[0]
                 page = (
                     pages[physical_page_number - 1]
                     if physical_page_number is not None
                     else None
                 )
+                parity_number = (
+                    page.logical_page_number
+                    if page is not None
+                    and page.logical_page_number is not None
+                    else side_index + 1
+                )
+                page_placement = build_page_placement(
+                    settings,
+                    page_number=parity_number,
+                )
+                add_guides_to_paragraph(
+                    prefix,
+                    page_placement.guides,
+                    paper_width_mm=page_placement.paper_width_mm,
+                    paper_height_mm=page_placement.paper_height_mm,
+                    render_mode=settings.guide_render_mode,
+                    identifier_start=side_index * 10 + 1,
+                )
+
+                table = document.add_table(rows=1, cols=1)
+                configure_table(table)
+                table.alignment = (
+                    WD_TABLE_ALIGNMENT.RIGHT
+                    if parity_number % 2 == 1
+                    else WD_TABLE_ALIGNMENT.LEFT
+                )
+                row = table.rows[0]
+                configure_row(row)
                 warnings.extend(
                     _populate_cell(
                         row.cells[0],

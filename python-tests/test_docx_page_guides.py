@@ -18,11 +18,11 @@ _LINE_RE = re.compile(
 )
 
 
-def _page(text: str = "測試正文") -> MiniPage:
+def _page(text: str = "測試正文", number: int = 1) -> MiniPage:
     return MiniPage(
         [TextBlock((TextRun(text),), style="body")],
         used_points=20.0,
-        logical_page_number=1,
+        logical_page_number=number,
     )
 
 
@@ -53,14 +53,22 @@ def _document_xml(path: Path) -> bytes:
         return archive.read("word/document.xml")
 
 
-def _lines(path: Path):
+def _lines_from_payload(payload: bytes):
     return [
         (
             tuple(float(value) for value in match.groups()[:5]),
             match.group(6),
         )
-        for match in _LINE_RE.finditer(_header_xml(path))
+        for match in _LINE_RE.finditer(payload)
     ]
+
+
+def _lines_from_headers(path: Path):
+    return _lines_from_payload(_header_xml(path))
+
+
+def _lines_from_document(path: Path):
+    return _lines_from_payload(_document_xml(path))
 
 
 def test_b6_docx_uses_bottom_right_content_and_full_cut_lines(tmp_path: Path) -> None:
@@ -69,12 +77,12 @@ def test_b6_docx_uses_bottom_right_content_and_full_cut_lines(tmp_path: Path) ->
     section = Document(output).sections[0]
     assert section.page_width.mm == pytest.approx(148.0, abs=0.2)
     assert section.page_height.mm == pytest.approx(210.0, abs=0.2)
-    assert section.left_margin.mm == pytest.approx(20.0, abs=0.2)
+    assert section.left_margin.mm == pytest.approx(0.0, abs=0.2)
     assert section.right_margin.mm == pytest.approx(0.0, abs=0.2)
     assert section.top_margin.mm == pytest.approx(28.0, abs=0.2)
     assert section.bottom_margin.mm == pytest.approx(0.0, abs=0.2)
 
-    lines = _lines(output)
+    lines = _lines_from_document(output)
     assert len(lines) == 2
     coordinates = [values[:4] for values, _inner in lines]
     expected = [
@@ -85,29 +93,31 @@ def test_b6_docx_uses_bottom_right_content_and_full_cut_lines(tmp_path: Path) ->
         assert actual == pytest.approx(wanted, abs=0.01)
     assert [values[4] for values, _inner in lines] == pytest.approx([0.35, 0.35])
     assert all(b"dashstyle" not in inner for _values, inner in lines)
+    assert _lines_from_headers(output) == []
 
 
 def test_b6_normal_mode_keeps_position_without_header_guides(tmp_path: Path) -> None:
     output = _write(tmp_path, "b6_on_a5", output_mark_mode="normal")
     section = Document(output).sections[0]
-    assert section.left_margin.mm == pytest.approx(20.0, abs=0.2)
+    assert section.left_margin.mm == pytest.approx(0.0, abs=0.2)
     assert section.top_margin.mm == pytest.approx(28.0, abs=0.2)
     assert section.right_margin.mm == pytest.approx(0.0, abs=0.2)
     assert section.bottom_margin.mm == pytest.approx(0.0, abs=0.2)
-    assert _lines(output) == []
+    assert _lines_from_document(output) == []
+    assert _lines_from_headers(output) == []
 
 
 @pytest.mark.parametrize("mode", ["single_a5", "single_4x6"])
 def test_single_sheet_docx_has_no_internal_guides(tmp_path: Path, mode: str) -> None:
     output = _write(tmp_path, mode, output_mark_mode="crop_marks")
-    assert _lines(output) == []
+    assert _lines_from_headers(output) == []
 
 
 def test_four_up_docx_uses_two_solid_crop_guides_without_table_borders(
     tmp_path: Path,
 ) -> None:
     output = _write(tmp_path, "four_up", cut_guides=True)
-    lines = _lines(output)
+    lines = _lines_from_headers(output)
     assert len(lines) == 2
     assert all(b"dashstyle" not in inner for _values, inner in lines)
     document_xml = _document_xml(output)
@@ -118,7 +128,7 @@ def test_four_up_docx_uses_two_solid_crop_guides_without_table_borders(
 
 def test_signature16_docx_uses_two_dashed_fold_guides(tmp_path: Path) -> None:
     output = _write(tmp_path, "signature16", cut_guides=True)
-    lines = _lines(output)
+    lines = _lines_from_headers(output)
     assert len(lines) == 2
     assert all(b'dashstyle="dash"' in inner for _values, inner in lines)
     document_xml = _document_xml(output)
@@ -127,5 +137,34 @@ def test_signature16_docx_uses_two_dashed_fold_guides(tmp_path: Path) -> None:
 
 
 def test_grid_docx_can_hide_guides(tmp_path: Path) -> None:
-    assert _lines(_write(tmp_path, "four_up", cut_guides=False)) == []
-    assert _lines(_write(tmp_path, "signature16", cut_guides=False)) == []
+    assert _lines_from_headers(_write(tmp_path, "four_up", cut_guides=False)) == []
+    assert _lines_from_headers(_write(tmp_path, "signature16", cut_guides=False)) == []
+
+
+def test_b6_docx_mirrors_crop_lines_per_page(tmp_path: Path) -> None:
+    output = tmp_path / "b6-mirrored-guides.docx"
+    pages = [_page("odd page", 1), _page("even page", 2)]
+    write_docx(
+        pages,
+        output,
+        resources={},
+        media_types={},
+        settings=LayoutSettings(
+            imposition_mode="b6_on_a5",
+            output_mark_mode="crop_marks",
+        ),
+        imposition_mode="b6_on_a5",
+    )
+
+    lines = _lines_from_document(output)
+    assert len(lines) == 4
+    vertical_x = [
+        values[0]
+        for values, _inner in lines
+        if values[0] == values[2]
+    ]
+    assert vertical_x == pytest.approx(
+        [20.0 * 72.0 / 25.4, 128.0 * 72.0 / 25.4],
+        abs=0.01,
+    )
+    assert _lines_from_headers(output) == []

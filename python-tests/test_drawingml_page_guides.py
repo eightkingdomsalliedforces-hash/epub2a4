@@ -30,6 +30,11 @@ def _header_xml(path: Path) -> str:
         )
 
 
+def _document_xml(path: Path) -> str:
+    with ZipFile(path) as archive:
+        return archive.read("word/document.xml").decode("utf-8")
+
+
 def test_page_local_drawingml_guides_keep_distinct_coordinates(
     tmp_path: Path,
 ) -> None:
@@ -81,7 +86,7 @@ def test_b6_drawingml_guides_use_same_full_page_coordinates(tmp_path: Path) -> N
         imposition_mode="b6_on_a5",
     )
 
-    xml = _header_xml(output)
+    xml = _document_xml(output)
     assert "<w:drawing" in xml
     assert "<v:line" not in xml
     assert xml.count('name="epub2a4-crop-guide-') == 2
@@ -97,6 +102,7 @@ def test_b6_drawingml_guides_use_same_full_page_coordinates(tmp_path: Path) -> N
         ("0", str(28 * emu_per_mm), str(148 * emu_per_mm), "1"),
         (str(20 * emu_per_mm), "0", "1", str(210 * emu_per_mm)),
     ]
+    assert _header_xml(output) == ""
 
 
 def test_signature_drawingml_fold_guides_are_dashed(tmp_path: Path) -> None:

@@ -20,7 +20,7 @@ def _page(number: int) -> MiniPage:
     )
 
 
-def test_b6_uses_one_multirow_table_without_standalone_prefix_paragraphs(tmp_path) -> None:
+def test_b6_uses_one_table_per_page_with_minimal_prefixes(tmp_path) -> None:
     output = tmp_path / "b6.docx"
     write_docx(
         [_page(1), _page(2)],
@@ -37,6 +37,6 @@ def test_b6_uses_one_multirow_table_without_standalone_prefix_paragraphs(tmp_pat
     body = document.find(f"{{{W_NS}}}body")
     assert body is not None
     top_level = [etree.QName(child).localname for child in body]
-    assert top_level == ["tbl", "sectPr"]
-    assert int(document.xpath("count(.//w:tbl)", namespaces={"w": W_NS})) == 1
-    assert int(document.xpath("count(.//w:tbl/w:tr)", namespaces={"w": W_NS})) == 2
+    assert top_level == ["p", "tbl", "p", "tbl", "sectPr"]
+    assert int(document.xpath("count(.//w:body/w:tbl)", namespaces={"w": W_NS})) == 2
+    assert int(document.xpath("count(.//w:pageBreakBefore)", namespaces={"w": W_NS})) == 1

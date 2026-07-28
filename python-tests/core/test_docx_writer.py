@@ -2,7 +2,9 @@ from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
 
+import pytest
 from docx import Document
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from PIL import Image
 
@@ -217,9 +219,83 @@ def test_right_binding_mirrors_page_number_alignment(tmp_path: Path) -> None:
         imposition_mode="single_a5",
     )
 
-    rows = Document(output).tables[0].rows
-    assert rows[0].cells[0].paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT
-    assert rows[1].cells[0].paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+    tables = Document(output).tables
+    assert tables[0].cell(0, 0).paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT
+    assert tables[1].cell(0, 0).paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["single_a5", "single_4x6", "b6_on_a5"],
+)
+def test_single_page_modes_mirror_each_page_table(
+    mode: str,
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / f"{mode}-mirrored.docx"
+    pages = [
+        MiniPage(
+            [TextBlock((TextRun(f"page {number}"),), style="body")],
+            logical_page_number=number,
+        )
+        for number in (1, 2, 3)
+    ]
+
+    write_docx(
+        pages,
+        output,
+        resources={},
+        media_types={},
+        settings=LayoutSettings(
+            imposition_mode=mode,
+            page_numbers=False,
+        ),
+        imposition_mode=mode,
+    )
+
+    document = Document(output)
+    assert len(document.tables) == 3
+    assert [table.alignment for table in document.tables] == [
+        WD_TABLE_ALIGNMENT.RIGHT,
+        WD_TABLE_ALIGNMENT.LEFT,
+        WD_TABLE_ALIGNMENT.RIGHT,
+    ]
+    assert [
+        table.cell(0, 0).text
+        for table in document.tables
+    ] == ["page 1", "page 2", "page 3"]
+
+
+def test_single_page_alignment_uses_logical_parity_then_physical_fallback(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "logical-parity.docx"
+    pages = [
+        MiniPage(
+            [TextBlock((TextRun("logical even"),), style="body")],
+            logical_page_number=2,
+        ),
+        MiniPage(
+            [TextBlock((TextRun("logical odd"),), style="body")],
+            logical_page_number=1,
+        ),
+        MiniPage([TextBlock((TextRun("fallback odd"),), style="body")]),
+    ]
+
+    write_docx(
+        pages,
+        output,
+        resources={},
+        media_types={},
+        settings=LayoutSettings(imposition_mode="single_a5", page_numbers=False),
+        imposition_mode="single_a5",
+    )
+
+    assert [table.alignment for table in Document(output).tables] == [
+        WD_TABLE_ALIGNMENT.LEFT,
+        WD_TABLE_ALIGNMENT.RIGHT,
+        WD_TABLE_ALIGNMENT.RIGHT,
+    ]
 
 
 def test_borderless_writer_sets_zero_a4_outer_margins(tmp_path: Path) -> None:
@@ -303,11 +379,13 @@ def test_writer_creates_one_a5_page_per_content_page(tmp_path: Path) -> None:
     section = document.sections[0]
     assert abs(section.page_width.cm - 14.8) < 0.02
     assert abs(section.page_height.cm - 21.0) < 0.02
-    assert len(document.tables) == 1
-    table = document.tables[0]
-    assert len(table.rows) == 2
-    assert all(len(row.cells) == 1 for row in table.rows)
-    assert [row.cells[0].text.strip() for row in table.rows] == ["A5 第一頁", "A5 第二頁"]
+    assert len(document.tables) == 2
+    assert all(len(table.rows) == 1 for table in document.tables)
+    assert all(len(table.rows[0].cells) == 1 for table in document.tables)
+    assert [
+        table.cell(0, 0).text.strip()
+        for table in document.tables
+    ] == ["A5 第一頁", "A5 第二頁"]
 
 
 def test_writer_creates_one_4x6_page_per_content_page(tmp_path: Path) -> None:
@@ -327,11 +405,13 @@ def test_writer_creates_one_4x6_page_per_content_page(tmp_path: Path) -> None:
     section = document.sections[0]
     assert abs(section.page_width.cm - 10.16) < 0.02
     assert abs(section.page_height.cm - 15.24) < 0.02
-    assert len(document.tables) == 1
-    table = document.tables[0]
-    assert len(table.rows) == 2
-    assert all(len(row.cells) == 1 for row in table.rows)
-    assert [row.cells[0].text.strip() for row in table.rows] == ["4×6 第一頁", "4×6 第二頁"]
+    assert len(document.tables) == 2
+    assert all(len(table.rows) == 1 for table in document.tables)
+    assert all(len(table.rows[0].cells) == 1 for table in document.tables)
+    assert [
+        table.cell(0, 0).text.strip()
+        for table in document.tables
+    ] == ["4×6 第一頁", "4×6 第二頁"]
 
 
 def test_writer_renders_single_a5_without_blank_pages(tmp_path: Path) -> None:
