@@ -6,6 +6,7 @@ import re
 
 from .geometry import CoverLayout, RectMm, calculate_layout
 from .isbn import normalize_ean_addon, normalize_isbn
+from .modern_spine_layout import build_modern_spine_slots
 from .publisher_info_layout import layout_publisher_info
 from .spine_layout import build_spine_slots
 from .vertical_copy_layout import layout_vertical_copy
@@ -88,6 +89,7 @@ _MODERN_TEMPLATE_PREFIXES = (
     "modern-back-copy-separator-",
     "modern-back-highlight-column-",
     "modern-back-highlight-separator-",
+    "modern-spine-",
 )
 
 
@@ -790,8 +792,137 @@ def _modern_vertical_back(
         *top_elements,
         *body,
         *highlight,
-        *_publisher_spine_elements(project, layout),
+        *_modern_spine_elements(project, layout),
     )
+
+
+def _modern_spine_elements(
+    project: CoverProject,
+    layout: CoverLayout,
+) -> tuple[CoverElement, ...]:
+    metadata = project.metadata
+    accent = metadata.spine_accent_color.strip() or "#F15A24"
+    spine_layout = build_modern_spine_slots(
+        layout,
+        metadata.spine_style,
+        accent,
+    )
+    elements: list[CoverElement] = [
+        _shape_element(
+            "modern-spine-background",
+            Region.SPINE,
+            layout.spine_rect,
+            "#FFFFFF",
+            z_index=-5,
+        )
+    ]
+    values = {
+        "title": metadata.title,
+        "english_title": metadata.english_title,
+        "arc": metadata.arc_label,
+        "volume_badge": metadata.volume_number,
+        "author": metadata.author,
+        "code": metadata.internal_book_code,
+        "publisher": metadata.publisher,
+    }
+    for slot in spine_layout.slots:
+        if slot.role == "logo":
+            logo = metadata.publisher_logo
+            if logo is None or not logo.path or not Path(logo.path).is_file():
+                continue
+            elements.append(
+                CoverElement(
+                    id=slot.element_id,
+                    kind=ElementKind.IMAGE,
+                    region=Region.SPINE,
+                    transform=ElementTransform(
+                        slot.rect.x_mm,
+                        slot.rect.y_mm,
+                        slot.rect.width_mm,
+                        slot.rect.height_mm,
+                    ),
+                    z_index=22,
+                    content={
+                        "path": logo.path,
+                        "fit": "contain",
+                        "group_id": "modern-spine-stack",
+                        "layout_role": "logo",
+                        "clip_to_region": True,
+                    },
+                )
+            )
+            continue
+
+        value = str(values.get(slot.role, "")).strip()
+        if not value:
+            continue
+        if slot.role == "volume_badge":
+            diameter = min(slot.rect.width_mm, slot.rect.height_mm)
+            badge = RectMm(
+                slot.rect.x_mm + (slot.rect.width_mm - diameter) / 2.0,
+                slot.rect.y_mm + (slot.rect.height_mm - diameter) / 2.0,
+                diameter,
+                diameter,
+            )
+            elements.append(
+                CoverElement(
+                    id="modern-spine-volume-badge",
+                    kind=ElementKind.SHAPE,
+                    region=Region.SPINE,
+                    transform=ElementTransform(
+                        badge.x_mm,
+                        badge.y_mm,
+                        badge.width_mm,
+                        badge.height_mm,
+                    ),
+                    z_index=20,
+                    content={
+                        "shape": "ellipse",
+                        "fill": "#FFFFFF",
+                        "stroke": accent,
+                        "stroke_width": 0.45,
+                        "group_id": "modern-spine-stack",
+                        "layout_role": "volume-badge",
+                    },
+                )
+            )
+            target = badge
+        else:
+            target = slot.rect
+        element = text_element(
+            slot.element_id,
+            Region.SPINE,
+            target,
+            value,
+            slot.font_size_pt,
+            align="center",
+            rotation_deg=90.0 if slot.direction == "horizontal" else 0.0,
+            font_weight=slot.font_weight,
+            color=slot.color,
+            z_index=21,
+            font_family=(
+                "sans-serif" if slot.direction == "horizontal" else "DFPYuanW5-GB"
+            ),
+            vertical_align="center",
+            line_spacing=1.0,
+        )
+        elements.append(
+            replace(
+                element,
+                content={
+                    **element.content,
+                    "direction": slot.direction,
+                    "group_id": "modern-spine-stack",
+                    "layout_role": slot.role,
+                    "layout_warnings": (
+                        list(spine_layout.warnings)
+                        if slot.role == "title"
+                        else []
+                    ),
+                },
+            )
+        )
+    return tuple(elements)
 
 
 _BUILDERS = {
