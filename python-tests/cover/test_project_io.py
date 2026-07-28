@@ -55,6 +55,41 @@ def test_project_round_trip_preserves_types(tmp_path: Path) -> None:
     assert restored.elements[0].transform.width_mm == 105.0
 
 
+def test_load_migrates_removed_gray_template_without_touching_user_shapes(
+    tmp_path: Path,
+) -> None:
+    project = sample_project(tmp_path)
+    legacy_front = CoverElement(
+        id="template-front-top-block",
+        kind=ElementKind.SHAPE,
+        region=Region.FRONT,
+        transform=ElementTransform(0.0, 0.0, 105.0, 40.0),
+        content={"fill": "#E2E2E2"},
+    )
+    legacy_back = replace(
+        legacy_front,
+        id="template-back-bottom-block",
+        region=Region.BACK,
+    )
+    user_shape = replace(
+        legacy_front,
+        id="user-gray-decoration",
+        content={"fill": "#E2E2E2"},
+    )
+    project = replace(
+        project,
+        elements=project.elements + (legacy_front, legacy_back, user_shape),
+        background={"active_template": "top_bottom_blocks"},
+    )
+
+    restored = loads_project(dumps_project(project))
+
+    assert "template-front-top-block" not in restored.elements_by_id
+    assert "template-back-bottom-block" not in restored.elements_by_id
+    assert restored.elements_by_id["user-gray-decoration"] == user_shape
+    assert restored.background["active_template"] == "minimal_text"
+
+
 def test_project_round_trip_preserves_modern_cover_metadata(tmp_path: Path) -> None:
     project = sample_project(tmp_path)
     project = replace(

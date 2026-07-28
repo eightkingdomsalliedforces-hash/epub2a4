@@ -41,11 +41,6 @@ _TEMPLATE_CATALOG: tuple[TemplateSummary, ...] = (
         "圖片可橫跨封底、書脊與封面。",
     ),
     TemplateSummary(
-        "top_bottom_blocks",
-        "上下色塊",
-        "以可編輯色塊分隔標題與出版資訊。",
-    ),
-    TemplateSummary(
         "publisher_back_matter_with_spine",
         "出版社封底＋直式書脊",
         "出版社式 ISBN／條碼封底與依書脊寬度自動調整的直式書脊。",
@@ -367,37 +362,6 @@ def _full_spread(project: CoverProject, layout: CoverLayout) -> tuple[CoverEleme
             layout.bleed_rect,
             "#E5E5E5",
             z_index=-20,
-        ),
-    )
-
-
-def _top_bottom_blocks(project: CoverProject, layout: CoverLayout) -> tuple[CoverElement, ...]:
-    top_height = max(12.0, layout.front_rect.height_mm * 0.28)
-    bottom_height = max(10.0, layout.back_rect.height_mm * 0.18)
-    return (
-        _shape_element(
-            "template-front-top-block",
-            Region.FRONT,
-            RectMm(
-                layout.front_rect.x_mm,
-                layout.front_rect.y_mm,
-                layout.front_rect.width_mm,
-                top_height,
-            ),
-            "#E2E2E2",
-            z_index=-10,
-        ),
-        _shape_element(
-            "template-back-bottom-block",
-            Region.BACK,
-            RectMm(
-                layout.back_rect.x_mm,
-                layout.back_rect.bottom_mm - bottom_height,
-                layout.back_rect.width_mm,
-                bottom_height,
-            ),
-            "#E2E2E2",
-            z_index=-10,
         ),
     )
 
@@ -940,7 +904,6 @@ _BUILDERS = {
     "minimal_text": _minimal_text,
     "front_image_plain_back": _front_image_plain_back,
     "full_spread": _full_spread,
-    "top_bottom_blocks": _top_bottom_blocks,
     "publisher_back_matter_with_spine": _publisher_back_matter_with_spine,
     "modern_vertical_back_with_spine": _modern_vertical_back,
 }

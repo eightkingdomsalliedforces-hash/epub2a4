@@ -71,7 +71,6 @@ class TemplatePanel(QGroupBox):
         self.combo = QComboBox(self)
         for label, template_id in (
             ("極簡", "minimal"),
-            ("上下色塊", "top_bottom_blocks"),
             ("全圖覆蓋", "full_bleed_image"),
             ("經典書籍", "classic_book"),
             ("出版社封底＋直式書脊", "publisher_back_matter"),

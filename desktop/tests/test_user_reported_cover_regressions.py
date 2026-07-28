@@ -18,7 +18,6 @@ def test_desktop_template_options_remain_available(qtbot) -> None:
 
     expected = [
         "minimal",
-        "top_bottom_blocks",
         "full_bleed_image",
         "classic_book",
         "publisher_back_matter",

@@ -22,7 +22,6 @@ from epub_a4_word.cover.templates import STANDARD_TEMPLATE_IDS, apply_template, 
         "minimal_text",
         "front_image_plain_back",
         "full_spread",
-        "top_bottom_blocks",
     ],
 )
 def test_template_creates_unique_standard_elements(
@@ -30,7 +29,7 @@ def test_template_creates_unique_standard_elements(
 ) -> None:
     result = apply_template(sample_project(), template_id)
     assert len({element.id for element in result.elements}) == len(result.elements)
-    if template_id in {"minimal_text", "top_bottom_blocks"}:
+    if template_id == "minimal_text":
         assert any(element.id == "front-title" for element in result.elements)
         assert any(element.id == "front-author" for element in result.elements)
         assert any(element.id == "spine-title" for element in result.elements)
@@ -61,7 +60,6 @@ def test_template_catalog_is_deterministic() -> None:
         "minimal_text",
         "front_image_plain_back",
         "full_spread",
-        "top_bottom_blocks",
         "publisher_back_matter_with_spine",
         "modern_vertical_back_with_spine",
     ]
@@ -86,9 +84,16 @@ def test_reapplying_template_replaces_standard_elements_without_duplicates(
     sample_project: Callable[..., CoverProject],
 ) -> None:
     first = apply_template(sample_project(), "minimal_text")
-    second = apply_template(first, "top_bottom_blocks")
+    second = apply_template(first, "minimal_text")
     assert len({element.id for element in second.elements}) == len(second.elements)
     assert len([element for element in second.elements if element.id == "front-title"]) == 1
+
+
+def test_removed_top_bottom_blocks_template_is_rejected(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    with pytest.raises(ValueError, match="未知封面模板"):
+        apply_template(sample_project(), "top_bottom_blocks")
 
 
 def test_spine_under_two_mm_omits_text_and_adds_warning_without_mutating_input(

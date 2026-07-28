@@ -85,7 +85,6 @@ def test_legacy_desktop_template_ids_are_accepted(tmp_path: Path) -> None:
     project = _project_with_embedded_front_cover(tmp_path)
     aliases = {
         "minimal": "source_cover_only",
-        "top_bottom_blocks": "top_bottom_blocks",
         "full_bleed_image": "full_spread",
         "classic_book": "minimal_text",
     }

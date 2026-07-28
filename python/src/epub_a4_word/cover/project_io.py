@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import fields, is_dataclass
+from dataclasses import fields, is_dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any, Mapping
@@ -43,9 +43,28 @@ def loads_project(json_text: str) -> CoverProject:
         raw = json.loads(json_text)
     except json.JSONDecodeError as exc:
         raise CoverValidationError(f"封面專案 JSON 無效：{exc.msg}") from exc
-    project = _project_from_dict(raw)
+    project = _migrate_removed_gray_template(_project_from_dict(raw))
     validate_project(project)
     return project
+
+
+_REMOVED_GRAY_TEMPLATE_ELEMENT_IDS = frozenset(
+    {"template-front-top-block", "template-back-bottom-block"}
+)
+
+
+def _migrate_removed_gray_template(project: CoverProject) -> CoverProject:
+    elements = tuple(
+        element
+        for element in project.elements
+        if element.id not in _REMOVED_GRAY_TEMPLATE_ELEMENT_IDS
+    )
+    background = dict(project.background)
+    if background.get("active_template") == "top_bottom_blocks":
+        background["active_template"] = "minimal_text"
+    if elements == project.elements and background == project.background:
+        return project
+    return replace(project, elements=elements, background=background)
 
 
 def validate_project(project: CoverProject) -> None:

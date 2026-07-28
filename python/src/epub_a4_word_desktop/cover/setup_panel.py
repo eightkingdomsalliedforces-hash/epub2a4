@@ -189,7 +189,6 @@ class CoverSetupPanel(QWidget):
 
         self.template_combo = QComboBox(self)
         self.template_combo.addItem("原始封面（不加文字）", "minimal")
-        self.template_combo.addItem("上下色塊", "top_bottom_blocks")
         self.template_combo.addItem("全圖覆蓋", "full_bleed_image")
         self.template_combo.addItem("經典書籍", "classic_book")
         self.template_combo.addItem(
