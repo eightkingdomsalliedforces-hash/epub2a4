@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from zipfile import ZipFile
 
 from PIL import Image
+from pypdf import PdfReader
+import pytest
 
 from epub_a4_word.cover.crop_frame import build_crop_frame
+from epub_a4_word.cover.docx_export import export_docx
 from epub_a4_word.cover.geometry import RectMm, calculate_layout
 from epub_a4_word.cover.models import LogoAssetMetadata, Region
+from epub_a4_word.cover.pdf_export import export_original_pdf
 from epub_a4_word.cover.render import mm_to_px, render_spread
 from epub_a4_word.cover.templates import apply_template
+from scripts.inspect_cover_exports import project_geometry_snapshot
 
 
 ACCENT = (223, 107, 50)
@@ -35,7 +41,7 @@ def _element_crop(image: Image.Image, element, dpi: int) -> Image.Image:
     )
 
 
-def _reference_project(sample_project, tmp_path):
+def _reference_project(sample_project, tmp_path, width: float = 12.0):
     logo_path = tmp_path / "publisher-logo.png"
     logo = Image.new("RGBA", (240, 120), (255, 255, 255, 0))
     for x in range(35, 205):
@@ -44,7 +50,7 @@ def _reference_project(sample_project, tmp_path):
                 logo.putpixel((x, y), (*ACCENT, 255))
     logo.save(logo_path)
 
-    base = sample_project(manual_spine_width_mm=12.0)
+    base = sample_project(manual_spine_width_mm=width)
     metadata = replace(
         base.metadata,
         title="歡迎來到實力至上主義的教室",
@@ -78,6 +84,57 @@ def _reference_project(sample_project, tmp_path):
         replace(base, metadata=metadata),
         "modern_vertical_back_with_spine",
     )
+
+
+@pytest.mark.parametrize("width", [4.0, 6.03, 8.0, 12.0])
+def test_reference_spine_export_elements_are_inside_real_spine(
+    width, sample_project, tmp_path
+) -> None:
+    project = _reference_project(sample_project, tmp_path, width)
+    spine = calculate_layout(project).spine_rect
+
+    for element in project.elements:
+        if not element.id.startswith("modern-spine-"):
+            continue
+        assert _inside(element.transform, spine)
+
+
+def test_reference_export_paths_share_the_bounded_spine(
+    sample_project, tmp_path
+) -> None:
+    dpi = 200
+    project = _reference_project(sample_project, tmp_path)
+    preview = render_spread(project, dpi)
+    preview_path = tmp_path / "reference.png"
+    preview.save(preview_path)
+    pdf_path = export_original_pdf(
+        project, tmp_path / "reference.pdf", dpi=dpi
+    ).path
+    docx_path = export_docx(project, tmp_path / "reference.docx").path
+    layout = calculate_layout(project)
+
+    assert preview_path.stat().st_size > 0
+    assert pdf_path.stat().st_size > 0
+    assert docx_path.stat().st_size > 0
+    assert preview.size == (
+        mm_to_px(layout.bleed_rect.width_mm, dpi),
+        mm_to_px(layout.bleed_rect.height_mm, dpi),
+    )
+    page = PdfReader(pdf_path).pages[0]
+    assert float(page.mediabox.width) / 72 * 25.4 == pytest.approx(
+        layout.bleed_rect.width_mm, abs=0.05
+    )
+    with ZipFile(docx_path) as package:
+        assert package.read("word/document.xml")
+    assert "modern-spine-publisher-abbreviation" not in project.elements_by_id
+
+    snapshot = project_geometry_snapshot(project)
+    diagnostics = snapshot["modern_spine_elements"]
+    assert diagnostics
+    assert all(item["inside_spine"] for item in diagnostics)
+    assert sum(
+        item["layout_role"] == "publisher" for item in diagnostics
+    ) == 1
 
 
 def test_reference_layout_keeps_everything_in_its_print_region(
