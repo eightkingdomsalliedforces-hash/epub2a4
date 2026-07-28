@@ -6,6 +6,7 @@ from typing import Literal
 from .pagination import LayoutSettings, resolve_layout
 
 GuideRole = Literal["crop", "fold"]
+_SINGLE_PAGE_MODES = frozenset({"single_a5", "single_4x6", "b6_on_a5"})
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,12 @@ def _mm(cm: float | None, label: str) -> float:
     return float(cm) * 10.0
 
 
-def build_page_placement(settings: LayoutSettings) -> PagePlacement:
+def build_page_placement(
+    settings: LayoutSettings,
+    page_number: int = 1,
+) -> PagePlacement:
+    if page_number < 1:
+        raise ValueError("page_number must be positive")
     resolved = resolve_layout(settings)
     paper_width = _mm(resolved.paper_width_cm, "paper_width_cm")
     paper_height = _mm(resolved.paper_height_cm, "paper_height_cm")
@@ -51,16 +57,30 @@ def build_page_placement(settings: LayoutSettings) -> PagePlacement:
         )
     content_width = cell_width * cols
     content_height = cell_height * rows
+    if resolved.imposition_mode in _SINGLE_PAGE_MODES:
+        horizontal_slack = max(0.0, paper_width - content_width)
+        content_x = horizontal_slack if page_number % 2 == 1 else 0.0
 
     guides: list[CropGuide] = []
     if (
         resolved.imposition_mode == "b6_on_a5"
         and resolved.output_mark_mode == "crop_marks"
     ):
+        vertical_guide_x = (
+            content_x
+            if page_number % 2 == 1
+            else content_x + content_width
+        )
         guides.extend(
             (
                 CropGuide(0.0, content_y, paper_width, content_y, "crop"),
-                CropGuide(content_x, 0.0, content_x, paper_height, "crop"),
+                CropGuide(
+                    vertical_guide_x,
+                    0.0,
+                    vertical_guide_x,
+                    paper_height,
+                    "crop",
+                ),
             )
         )
     elif (

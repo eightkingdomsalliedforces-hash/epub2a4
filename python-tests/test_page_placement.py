@@ -10,6 +10,56 @@ def _resolved(mode: str, **kwargs):
     return resolve_layout(LayoutSettings(imposition_mode=mode, **kwargs))
 
 
+@pytest.mark.parametrize(
+    ("mode", "odd_x", "even_x", "width"),
+    [
+        ("single_a5", 4.0, 0.0, 144.0),
+        ("single_4x6", 4.0, 0.0, 97.6),
+        ("b6_on_a5", 20.0, 0.0, 128.0),
+    ],
+)
+def test_single_page_modes_mirror_horizontal_placement(
+    mode: str,
+    odd_x: float,
+    even_x: float,
+    width: float,
+) -> None:
+    settings = _resolved(mode)
+
+    odd = build_page_placement(settings, page_number=1)
+    even = build_page_placement(settings, page_number=2)
+
+    assert (odd.content_x_mm, odd.content_width_mm) == pytest.approx(
+        (odd_x, width)
+    )
+    assert (even.content_x_mm, even.content_width_mm) == pytest.approx(
+        (even_x, width)
+    )
+    assert odd.content_y_mm == pytest.approx(even.content_y_mm)
+    assert odd.content_height_mm == pytest.approx(even.content_height_mm)
+
+
+def test_b6_crop_guides_follow_page_parity() -> None:
+    settings = _resolved("b6_on_a5", output_mark_mode="crop_marks")
+
+    odd = build_page_placement(settings, page_number=1)
+    even = build_page_placement(settings, page_number=2)
+
+    assert odd.guides == (
+        CropGuide(0.0, 28.0, 148.0, 28.0, "crop"),
+        CropGuide(20.0, 0.0, 20.0, 210.0, "crop"),
+    )
+    assert even.guides == (
+        CropGuide(0.0, 28.0, 148.0, 28.0, "crop"),
+        CropGuide(128.0, 0.0, 128.0, 210.0, "crop"),
+    )
+
+
+def test_page_number_must_be_positive() -> None:
+    with pytest.raises(ValueError, match="page_number must be positive"):
+        build_page_placement(_resolved("single_a5"), page_number=0)
+
+
 def test_b6_on_a5_uses_bottom_right_trim_and_full_cut_lines() -> None:
     placement = build_page_placement(
         _resolved("b6_on_a5", output_mark_mode="crop_marks")
