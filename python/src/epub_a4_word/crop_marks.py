@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -11,6 +12,9 @@ from .page_placement import CropGuide
 PT_PER_MM = 72.0 / 25.4
 EMU_PER_MM = 36000
 EMU_PER_PT = 12700
+_GUIDE_IDENTIFIER_RE = re.compile(
+    r"epub2a4-(?:guide|(?:crop|fold)-guide)-(\d+)"
+)
 
 
 @dataclass(frozen=True)
@@ -124,11 +128,19 @@ def add_guides_to_paragraph(
     if not guides:
         return
     install_story_template_fallbacks()
-    first_identifier = (
-        paragraph.part.next_id
-        if identifier_start is None
-        else identifier_start
-    )
+    if identifier_start is None:
+        existing_identifiers = [
+            int(match)
+            for match in _GUIDE_IDENTIFIER_RE.findall(
+                paragraph.part.element.xml
+            )
+        ]
+        first_identifier = max(
+            paragraph.part.next_id,
+            max(existing_identifiers, default=0) + 1,
+        )
+    else:
+        first_identifier = identifier_start
     for index, guide in enumerate(guides, start=first_identifier):
         run = paragraph.add_run()
         xml = (

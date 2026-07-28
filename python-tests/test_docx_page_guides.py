@@ -181,6 +181,12 @@ def test_b6_docx_mirrors_crop_lines_per_page(tmp_path: Path) -> None:
         "count(.//w:body/w:tbl//w:pict)",
         namespaces=namespaces,
     )) == 4
+    identifiers = re.findall(
+        rb'id="epub2a4-guide-(\d+)"',
+        _document_xml(output),
+    )
+    assert len(identifiers) == 4
+    assert len(set(identifiers)) == len(identifiers)
 
 
 def test_page_local_drawingml_guides_use_unique_document_ids(
