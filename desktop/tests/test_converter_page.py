@@ -83,8 +83,31 @@ def test_start_builds_request_from_form(qtbot, tmp_path: Path) -> None:
     assert request.heading_font_pt == 16.0
     assert request.page_numbers is False
     assert request.cut_guides is True
+    assert request.writing_mode == "taiwan_vertical"
+    assert request.binding_direction == "right"
     assert page.start_button.isEnabled() is False
     assert page.cancel_button.isEnabled() is True
+
+
+def test_direction_selector_builds_horizontal_left_request(
+    qtbot,
+    tmp_path: Path,
+) -> None:
+    controller = FakeController()
+    page = ConverterPage(controller)
+    qtbot.addWidget(page)
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"epub")
+    page.set_source_path(source)
+
+    page.direction_combo.setCurrentIndex(
+        page.direction_combo.findText("橫排（左裝訂）")
+    )
+    page._start_conversion()
+
+    request = controller.started[-1]
+    assert request.writing_mode == "horizontal"
+    assert request.binding_direction == "left"
 
 
 def test_completion_shows_warnings_and_emits_cover_payload(qtbot, tmp_path: Path) -> None:

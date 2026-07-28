@@ -27,6 +27,12 @@ class LayoutPreview(QWidget):
             return "紙張邊緣即成品邊"
         return ""
 
+    @property
+    def reading_direction_message(self) -> str:
+        if self._settings.writing_mode == "taiwan_vertical":
+            return "直排：由上往下、欄位由右往左；右裝訂"
+        return "橫排：由左往右；左裝訂"
+
     def set_settings(self, settings: LayoutSettings) -> None:
         self._settings = resolve_layout(settings)
         self._placement = build_page_placement(self._settings)
@@ -39,7 +45,10 @@ class LayoutPreview(QWidget):
             f"紙張 {placement.paper_width_mm:g} × {placement.paper_height_mm:g} mm；"
             f"內容 {placement.content_width_mm:g} × {placement.content_height_mm:g} mm"
         )
-        return f"{text}；{self.finished_edge_message}" if self.finished_edge_message else text
+        parts = [text, self.reading_direction_message]
+        if self.finished_edge_message:
+            parts.append(self.finished_edge_message)
+        return "；".join(parts)
 
     def paintEvent(self, event) -> None:
         super().paintEvent(event)
@@ -77,6 +86,19 @@ class LayoutPreview(QWidget):
                     left + guide.x2_mm * scale,
                     top + guide.y2_mm * scale,
                 )
+            )
+        painter.setPen(self.palette().highlight().color())
+        if self._settings.writing_mode == "taiwan_vertical":
+            painter.drawText(
+                content,
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight,
+                "↓　↓　↓\n← 欄位\n右裝訂",
+            )
+        else:
+            painter.drawText(
+                content,
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft,
+                "→ 橫排\n左裝訂",
             )
         if self.finished_edge_message:
             painter.setPen(self.palette().text().color())

@@ -46,3 +46,35 @@ def test_single_a5_preview_reports_finished_paper_edge_and_no_internal_guides(qt
     assert preview.placement.guides == ()
     assert preview.finished_edge_message == "紙張邊緣即成品邊"
     assert "紙張邊緣即成品邊" in preview.toolTip()
+
+
+def test_vertical_preview_reports_right_to_left_reading(qtbot) -> None:
+    preview = LayoutPreview()
+    qtbot.addWidget(preview)
+
+    preview.set_settings(
+        LayoutSettings(
+            writing_mode="taiwan_vertical",
+            binding_direction="right",
+        )
+    )
+
+    assert (
+        preview.reading_direction_message
+        == "直排：由上往下、欄位由右往左；右裝訂"
+    )
+    assert "右裝訂" in preview.toolTip()
+
+
+def test_horizontal_preview_reports_left_to_right_reading(qtbot) -> None:
+    preview = LayoutPreview()
+    qtbot.addWidget(preview)
+
+    preview.set_settings(
+        LayoutSettings(
+            writing_mode="horizontal",
+            binding_direction="left",
+        )
+    )
+
+    assert preview.reading_direction_message == "橫排：由左往右；左裝訂"

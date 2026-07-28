@@ -78,6 +78,24 @@ def test_request_maps_all_layout_settings(tmp_path: Path) -> None:
     assert settings.heading_font_pt == 14.0
     assert settings.page_numbers is True
     assert settings.cut_guides is True
+    assert settings.writing_mode == "taiwan_vertical"
+    assert settings.binding_direction == "right"
+
+
+def test_request_maps_horizontal_left_layout_settings(tmp_path: Path) -> None:
+    request = make_request(tmp_path, mode="single_a5")
+    request = ConversionRequest(
+        **{
+            **request.__dict__,
+            "writing_mode": "horizontal",
+            "binding_direction": "left",
+        }
+    )
+
+    settings = request.to_layout_settings()
+
+    assert settings.writing_mode == "horizontal"
+    assert settings.binding_direction == "left"
 
 
 def test_epub_completion_payload_uses_actual_page_count(tmp_path: Path) -> None:
