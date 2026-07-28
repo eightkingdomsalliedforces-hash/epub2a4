@@ -63,6 +63,11 @@ _ALLOWED_SETTINGS = {
     "series_name",
     "internal_book_code",
     "spine_accent_color",
+    "back_vertical_copy",
+    "back_highlight_copy",
+    "spine_style",
+    "accent_color_mode",
+    "extracted_accent_color",
     "confirmed_back_cover_asset_id",
 }
 
@@ -348,6 +353,13 @@ def new_project(source_path: str, settings_json: str) -> str:
         spine_accent_color=metadata_text(
             "spine_accent_color", inspection.metadata.spine_accent_color
         ) or "#F15A24",
+        back_vertical_copy=metadata_text(
+            "back_vertical_copy", inspection.metadata.description
+        ),
+        back_highlight_copy=metadata_text("back_highlight_copy", ""),
+        spine_style=metadata_text("spine_style", "reference_stacked"),
+        accent_color_mode=metadata_text("accent_color_mode", "auto"),
+        extracted_accent_color=metadata_text("extracted_accent_color", ""),
         page_count_is_estimate=estimated,
     )
     image_mode_value = settings.get("image_mode", ImageMode.FRONT_ONLY.value)

@@ -56,6 +56,30 @@ def test_new_project_uses_working_assets_and_never_writes_beside_source(
     assert project.page_count == 160
 
 
+def test_new_project_initializes_modern_cover_metadata(
+    fixtures_dir: Path, tmp_path: Path
+) -> None:
+    source = fixtures_dir / "cover/metadata.epub"
+    project = loads_project(
+        new_project(
+            str(source),
+            _settings(
+                tmp_path,
+                back_highlight_copy="醒目文案",
+                spine_style="clean_centered",
+                accent_color_mode="manual",
+                extracted_accent_color="#D56A31",
+            ),
+        )
+    )
+
+    assert project.metadata.back_vertical_copy == project.metadata.description
+    assert project.metadata.back_highlight_copy == "醒目文案"
+    assert project.metadata.spine_style == "clean_centered"
+    assert project.metadata.accent_color_mode == "manual"
+    assert project.metadata.extracted_accent_color == "#D56A31"
+
+
 def test_new_project_estimates_epub_pages_when_not_supplied(
     fixtures_dir: Path, tmp_path: Path
 ) -> None:

@@ -125,10 +125,23 @@ def _validate_metadata(metadata: CoverMetadata) -> None:
         "series_name",
         "internal_book_code",
         "spine_accent_color",
+        "back_vertical_copy",
+        "back_highlight_copy",
+        "spine_style",
+        "accent_color_mode",
+        "extracted_accent_color",
         "language",
     ):
         if not isinstance(getattr(metadata, name), str):
             raise CoverValidationError(f"metadata.{name} 必須是字串。")
+    if metadata.spine_style not in {
+        "reference_stacked",
+        "clean_centered",
+        "parallel_columns",
+    }:
+        raise CoverValidationError("metadata.spine_style 無效。")
+    if metadata.accent_color_mode not in {"auto", "manual"}:
+        raise CoverValidationError("metadata.accent_color_mode 無效。")
     if metadata.publisher_logo is not None:
         _validate_logo_metadata(metadata.publisher_logo)
     if not isinstance(metadata.page_count_is_estimate, bool):
@@ -250,6 +263,11 @@ def _metadata_from_dict(raw: Any) -> CoverMetadata:
         "series_name",
         "internal_book_code",
         "spine_accent_color",
+        "back_vertical_copy",
+        "back_highlight_copy",
+        "spine_style",
+        "accent_color_mode",
+        "extracted_accent_color",
         "publisher_logo",
         "language",
         "page_count_is_estimate",
@@ -280,6 +298,22 @@ def _metadata_from_dict(raw: Any) -> CoverMetadata:
         spine_accent_color=_string(
             data.get("spine_accent_color", "#F15A24"),
             "metadata.spine_accent_color",
+        ),
+        back_vertical_copy=_string(
+            data.get("back_vertical_copy", ""), "metadata.back_vertical_copy"
+        ),
+        back_highlight_copy=_string(
+            data.get("back_highlight_copy", ""), "metadata.back_highlight_copy"
+        ),
+        spine_style=_string(
+            data.get("spine_style", "reference_stacked"), "metadata.spine_style"
+        ),
+        accent_color_mode=_string(
+            data.get("accent_color_mode", "auto"), "metadata.accent_color_mode"
+        ),
+        extracted_accent_color=_string(
+            data.get("extracted_accent_color", ""),
+            "metadata.extracted_accent_color",
         ),
         publisher_logo=_logo_metadata_from_dict(data.get("publisher_logo")),
         language=_string(data.get("language", ""), "metadata.language"),

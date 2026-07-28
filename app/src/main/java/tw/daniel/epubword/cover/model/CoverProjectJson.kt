@@ -111,6 +111,11 @@ object CoverProjectJson {
             "series_name",
             "internal_book_code",
             "spine_accent_color",
+            "back_vertical_copy",
+            "back_highlight_copy",
+            "spine_style",
+            "accent_color_mode",
+            "extracted_accent_color",
             "language",
             "page_count_is_estimate",
             "embedded_images",
@@ -134,6 +139,11 @@ object CoverProjectJson {
             seriesName = optionalString(value, "series_name", ""),
             internalBookCode = optionalString(value, "internal_book_code", ""),
             spineAccentColor = optionalString(value, "spine_accent_color", "#F15A24"),
+            backVerticalCopy = optionalString(value, "back_vertical_copy", ""),
+            backHighlightCopy = optionalString(value, "back_highlight_copy", ""),
+            spineStyle = optionalString(value, "spine_style", "reference_stacked"),
+            accentColorMode = optionalString(value, "accent_color_mode", "auto"),
+            extractedAccentColor = optionalString(value, "extracted_accent_color", ""),
             language = optionalString(value, "language", ""),
             pageCountIsEstimate = optionalBoolean(value, "page_count_is_estimate", false),
             embeddedImages = buildList {
@@ -248,6 +258,11 @@ object CoverProjectJson {
         .put("series_name", value.seriesName)
         .put("internal_book_code", value.internalBookCode)
         .put("spine_accent_color", value.spineAccentColor)
+        .put("back_vertical_copy", value.backVerticalCopy)
+        .put("back_highlight_copy", value.backHighlightCopy)
+        .put("spine_style", value.spineStyle)
+        .put("accent_color_mode", value.accentColorMode)
+        .put("extracted_accent_color", value.extractedAccentColor)
         .put("language", value.language)
         .put("page_count_is_estimate", value.pageCountIsEstimate)
         .put("embedded_images", JSONArray().also { array ->
@@ -291,6 +306,17 @@ object CoverProjectJson {
         finite(project.overlapMm, "overlap_mm")
         if (project.overlapMm != 5.0) fail("第一版 overlap_mm 必須為 5。")
         if (project.exportSettings.dpi <= 0) fail("export_settings.dpi 必須大於 0。")
+        if (project.metadata.spineStyle !in setOf(
+                "reference_stacked",
+                "clean_centered",
+                "parallel_columns",
+            )
+        ) {
+            fail("metadata.spine_style 無效。")
+        }
+        if (project.metadata.accentColorMode !in setOf("auto", "manual")) {
+            fail("metadata.accent_color_mode 無效。")
+        }
 
         val ids = mutableSetOf<String>()
         project.elements.forEach { element ->
