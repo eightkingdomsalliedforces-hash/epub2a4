@@ -7,10 +7,13 @@ from typing import Mapping
 
 from PySide6.QtCore import QSignalBlocker, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QFormLayout,
     QGroupBox,
     QLabel,
     QLineEdit,
+    QPlainTextEdit,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -34,6 +37,11 @@ class PublisherMetadataValues:
     series_name: str = ""
     internal_book_code: str = ""
     spine_accent_color: str = "#F15A24"
+    back_vertical_copy: str = ""
+    back_highlight_copy: str = ""
+    spine_style: str = "reference_stacked"
+    accent_color_mode: str = "auto"
+    extracted_accent_color: str = ""
 
     def as_settings(self) -> dict[str, str]:
         return {
@@ -50,6 +58,11 @@ class PublisherMetadataValues:
             "series_name": self.series_name,
             "internal_book_code": self.internal_book_code,
             "spine_accent_color": self.spine_accent_color,
+            "back_vertical_copy": self.back_vertical_copy,
+            "back_highlight_copy": self.back_highlight_copy,
+            "spine_style": self.spine_style,
+            "accent_color_mode": self.accent_color_mode,
+            "extracted_accent_color": self.extracted_accent_color,
         }
 
     @classmethod
@@ -71,6 +84,18 @@ class PublisherMetadataValues:
             spine_accent_color=str(
                 data.get("spine_accent_color", "#F15A24") or "#F15A24"
             ).strip(),
+            back_vertical_copy=str(data.get("back_vertical_copy", "") or "").strip(),
+            back_highlight_copy=str(data.get("back_highlight_copy", "") or "").strip(),
+            spine_style=str(
+                data.get("spine_style", "reference_stacked")
+                or "reference_stacked"
+            ).strip(),
+            accent_color_mode=str(
+                data.get("accent_color_mode", "auto") or "auto"
+            ).strip(),
+            extracted_accent_color=str(
+                data.get("extracted_accent_color", "") or ""
+            ).strip(),
         )
 
 
@@ -85,6 +110,7 @@ class PublisherMetadataPanel(QGroupBox):
     search_logo_requested = Signal(str)
     manual_logo_requested = Signal()
     clear_logo_requested = Signal()
+    reextract_accent_requested = Signal()
 
     _COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -116,6 +142,22 @@ class PublisherMetadataPanel(QGroupBox):
         self.internal_book_code_edit.setPlaceholderText("例如：CL0308-17")
         self.spine_accent_color_edit = QLineEdit("#F15A24", self)
         self.spine_accent_color_edit.setPlaceholderText("#RRGGBB")
+        self.back_vertical_copy_edit = QPlainTextEdit(self)
+        self.back_vertical_copy_edit.setPlaceholderText("封底中間黑色直排內文")
+        self.back_vertical_copy_edit.setMinimumHeight(88)
+        self.back_highlight_copy_edit = QPlainTextEdit(self)
+        self.back_highlight_copy_edit.setPlaceholderText("封底醒目文案")
+        self.back_highlight_copy_edit.setMinimumHeight(72)
+        self.spine_style_combo = QComboBox(self)
+        self.spine_style_combo.addItem("參考圖堆疊式", "reference_stacked")
+        self.spine_style_combo.addItem("簡潔置中式", "clean_centered")
+        self.spine_style_combo.addItem("雙欄現代式", "parallel_columns")
+        self.auto_accent_check = QCheckBox("自動從封面取主題色", self)
+        self.auto_accent_check.setChecked(True)
+        self.reextract_accent_button = QPushButton("重新從封面擷取", self)
+        self._accent_color_mode = "auto"
+        self._extracted_accent_color = ""
+        self._automatic_accent_color = "#F15A24"
         self.publisher_id_edit = QLineEdit(self)
         self.publisher_id_edit.setVisible(False)
 
@@ -160,6 +202,11 @@ class PublisherMetadataPanel(QGroupBox):
         add_field("系列名稱", "series_name", self.series_name_edit)
         add_field("內部書號", "internal_book_code", self.internal_book_code_edit)
         add_field("書脊強調色", "spine_accent_color", self.spine_accent_color_edit)
+        add_field("封底直排內文", "back_vertical_copy", self.back_vertical_copy_edit)
+        add_field("封底醒目文案", "back_highlight_copy", self.back_highlight_copy_edit)
+        add_field("書脊樣式", "spine_style", self.spine_style_combo)
+        form.addRow("", self.auto_accent_check)
+        form.addRow("", self.reextract_accent_button)
         form.addRow("出版社 Logo", logo_row)
         form.addRow("Logo 狀態", self.logo_status_label)
         layout = QVBoxLayout(self)
@@ -178,10 +225,19 @@ class PublisherMetadataPanel(QGroupBox):
             self.arc_label_edit,
             self.series_name_edit,
             self.internal_book_code_edit,
-            self.spine_accent_color_edit,
         )
         for edit in self._edits:
             edit.textChanged.connect(self._on_any_changed)
+        self.spine_accent_color_edit.textChanged.connect(
+            self._on_accent_color_changed
+        )
+        self.back_vertical_copy_edit.textChanged.connect(self._on_any_changed)
+        self.back_highlight_copy_edit.textChanged.connect(self._on_any_changed)
+        self.spine_style_combo.currentIndexChanged.connect(self._on_any_changed)
+        self.auto_accent_check.toggled.connect(self._on_auto_accent_toggled)
+        self.reextract_accent_button.clicked.connect(
+            self._request_accent_reextract
+        )
         self.search_logo_button.clicked.connect(
             lambda _checked=False: self.search_logo_requested.emit(
                 self.publisher_edit.text().strip()
@@ -235,6 +291,11 @@ class PublisherMetadataPanel(QGroupBox):
             series_name=self.series_name_edit.text().strip(),
             internal_book_code=self.internal_book_code_edit.text().strip(),
             spine_accent_color=color.upper(),
+            back_vertical_copy=self.back_vertical_copy_edit.toPlainText().strip(),
+            back_highlight_copy=self.back_highlight_copy_edit.toPlainText().strip(),
+            spine_style=str(self.spine_style_combo.currentData()),
+            accent_color_mode=self._accent_color_mode,
+            extracted_accent_color=self._extracted_accent_color,
         )
 
     def set_values(self, values: PublisherMetadataValues | Mapping[str, object]) -> None:
@@ -258,10 +319,37 @@ class PublisherMetadataPanel(QGroupBox):
             (self.internal_book_code_edit, normalized.internal_book_code),
             (self.spine_accent_color_edit, normalized.spine_accent_color),
         )
-        blockers = [QSignalBlocker(edit) for edit, _text in pairs]
+        widgets = [
+            *(edit for edit, _text in pairs),
+            self.back_vertical_copy_edit,
+            self.back_highlight_copy_edit,
+            self.spine_style_combo,
+            self.auto_accent_check,
+        ]
+        blockers = [QSignalBlocker(widget) for widget in widgets]
         try:
             for edit, text in pairs:
                 edit.setText(text)
+            self.back_vertical_copy_edit.setPlainText(
+                normalized.back_vertical_copy
+            )
+            self.back_highlight_copy_edit.setPlainText(
+                normalized.back_highlight_copy
+            )
+            style_index = self.spine_style_combo.findData(
+                normalized.spine_style
+            )
+            self.spine_style_combo.setCurrentIndex(max(0, style_index))
+            self._accent_color_mode = normalized.accent_color_mode
+            self._extracted_accent_color = normalized.extracted_accent_color
+            self._automatic_accent_color = (
+                normalized.extracted_accent_color
+                or normalized.spine_accent_color
+                or "#F15A24"
+            ).upper()
+            self.auto_accent_check.setChecked(
+                normalized.accent_color_mode == "auto"
+            )
         finally:
             del blockers
         self.clear_validation_error()
@@ -301,7 +389,32 @@ class PublisherMetadataPanel(QGroupBox):
             self.error_label.clear()
             self.error_label.hide()
 
-    def _on_any_changed(self, _text: str) -> None:
+    def _on_accent_color_changed(self, text: str) -> None:
+        normalized = str(text).strip().upper()
+        self._accent_color_mode = (
+            "auto"
+            if normalized == self._automatic_accent_color
+            else "manual"
+        )
+        blocker = QSignalBlocker(self.auto_accent_check)
+        try:
+            self.auto_accent_check.setChecked(
+                self._accent_color_mode == "auto"
+            )
+        finally:
+            del blocker
+        self._on_any_changed(text)
+
+    def _on_auto_accent_toggled(self, enabled: bool) -> None:
+        self._accent_color_mode = "auto" if enabled else "manual"
+        self._on_any_changed(enabled)
+
+    def _request_accent_reextract(self, _checked: bool = False) -> None:
+        self._accent_color_mode = "auto"
+        self.auto_accent_check.setChecked(True)
+        self.reextract_accent_requested.emit()
+
+    def _on_any_changed(self, _value: object = None) -> None:
         self.clear_validation_error()
         try:
             values = self.values()

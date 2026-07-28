@@ -1071,9 +1071,12 @@ def refresh_template_metadata(
             - old_heading.transform.height_mm,
         )
     generated_ids = {element.id for element in generated.elements}
+    spine_style_changed = metadata.spine_style != project.metadata.spine_style
     merged: list[CoverElement] = []
     for element in generated.elements:
         old = old_by_id.get(element.id)
+        if spine_style_changed and element.id.startswith("modern-spine-"):
+            old = None
         if old is None or not _is_template_managed_id(element.id):
             merged.append(element)
             continue

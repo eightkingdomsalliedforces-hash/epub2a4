@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 from uuid import uuid4
 
-from PySide6.QtCore import QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QRectF, QSignalBlocker, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -75,6 +75,7 @@ class TemplatePanel(QGroupBox):
             ("全圖覆蓋", "full_bleed_image"),
             ("經典書籍", "classic_book"),
             ("出版社封底＋直式書脊", "publisher_back_matter"),
+            ("現代直排封底＋可選書脊", "modern_vertical_back_with_spine"),
         ):
             self.combo.addItem(label, template_id)
         self.apply_button = QPushButton("套用模板", self)
@@ -286,6 +287,12 @@ class CoverPage(QWidget):
         )
         self.publisher_metadata_panel.clear_logo_requested.connect(
             self._clear_publisher_logo
+        )
+        self.publisher_metadata_panel.reextract_accent_requested.connect(
+            self._reextract_accent_color
+        )
+        self.setup_panel.show_crop_marks_check.toggled.connect(
+            self._set_crop_frame_enabled
         )
         self.reset_publisher_template_button.clicked.connect(
             self._reset_publisher_template
@@ -516,6 +523,22 @@ class CoverPage(QWidget):
             return
         try:
             self.controller.apply_template(template_id)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _set_crop_frame_enabled(self, enabled: bool) -> None:
+        if not self.controller.project_json:
+            return
+        try:
+            self.controller.set_crop_frame_enabled(enabled)
+        except Exception as exc:
+            self._show_error(str(exc))
+
+    def _reextract_accent_color(self) -> None:
+        if not self.controller.project_json:
+            return
+        try:
+            self.controller.reextract_accent_color()
         except Exception as exc:
             self._show_error(str(exc))
 
@@ -814,6 +837,13 @@ class CoverPage(QWidget):
         self.export_panel.set_project_loaded(True)
         self.inspector.set_element(None)
         project = loads_project(project_json)
+        crop_blocker = QSignalBlocker(self.setup_panel.show_crop_marks_check)
+        try:
+            self.setup_panel.show_crop_marks_check.setChecked(
+                project.export_settings.show_crop_marks
+            )
+        finally:
+            del crop_blocker
         self._syncing_publisher_panel = True
         try:
             self.publisher_metadata_panel.set_values(asdict(project.metadata))

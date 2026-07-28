@@ -143,6 +143,106 @@ def test_template_application_is_undoable(tmp_path: Path) -> None:
     assert loads_project(controller.project_json) == loads_project(original)
 
 
+def test_crop_frame_switch_updates_only_export_setting(tmp_path: Path) -> None:
+    controller = CoverController(working_dir=tmp_path, auto_preview=False)
+    original = make_project(tmp_path)
+    controller.replace_project(dumps_project(original), clear_history=True)
+
+    controller.set_crop_frame_enabled(False)
+
+    changed = loads_project(controller.project_json)
+    assert changed.export_settings.show_crop_marks is False
+    assert replace(
+        changed,
+        export_settings=original.export_settings,
+    ) == original
+
+
+def test_controller_preserves_modern_metadata_fields(tmp_path: Path) -> None:
+    controller = CoverController(working_dir=tmp_path, auto_preview=False)
+    controller.replace_project(
+        dumps_project(make_project(tmp_path)),
+        clear_history=True,
+    )
+
+    controller.update_metadata(
+        {
+            "back_vertical_copy": "黑色直排內文",
+            "back_highlight_copy": "醒目文案",
+            "spine_style": "clean_centered",
+            "accent_color_mode": "manual",
+            "extracted_accent_color": "#2674D9",
+        }
+    )
+
+    metadata = loads_project(controller.project_json).metadata
+    assert metadata.back_vertical_copy == "黑色直排內文"
+    assert metadata.back_highlight_copy == "醒目文案"
+    assert metadata.spine_style == "clean_centered"
+    assert metadata.accent_color_mode == "manual"
+    assert metadata.extracted_accent_color == "#2674D9"
+
+
+def test_reextract_accent_uses_current_front_cover(tmp_path: Path) -> None:
+    cover = tmp_path / "blue-cover.png"
+    Image.new("RGB", (80, 120), "#2674D9").save(cover)
+    project = make_project(tmp_path)
+    project = replace(
+        project,
+        metadata=replace(
+            project.metadata,
+            spine_accent_color="#D56A31",
+            accent_color_mode="manual",
+        ),
+        elements=project.elements
+        + (
+            CoverElement(
+                id="source-cover-image",
+                kind=ElementKind.IMAGE,
+                region=Region.FRONT,
+                transform=ElementTransform(116.0, 3.0, 105.0, 148.0),
+                content={"path": str(cover), "fit": "cover"},
+            ),
+        ),
+    )
+    controller = CoverController(working_dir=tmp_path, auto_preview=False)
+    controller.replace_project(dumps_project(project), clear_history=True)
+
+    controller.reextract_accent_color()
+
+    metadata = loads_project(controller.project_json).metadata
+    assert metadata.spine_accent_color == "#2674D9"
+    assert metadata.extracted_accent_color == "#2674D9"
+    assert metadata.accent_color_mode == "auto"
+
+
+def test_changing_modern_spine_style_reflows_spine_geometry(
+    tmp_path: Path,
+) -> None:
+    project = make_project(tmp_path)
+    project = replace(
+        project,
+        manual_spine_width_mm=12.0,
+        metadata=replace(
+            project.metadata,
+            spine_style="reference_stacked",
+        ),
+    )
+    controller = CoverController(working_dir=tmp_path, auto_preview=False)
+    controller.replace_project(dumps_project(project), clear_history=True)
+    controller.apply_template("modern_vertical_back_with_spine")
+    before = loads_project(controller.project_json).elements_by_id[
+        "modern-spine-title"
+    ].transform
+
+    controller.update_metadata({"spine_style": "clean_centered"})
+
+    after = loads_project(controller.project_json).elements_by_id[
+        "modern-spine-title"
+    ].transform
+    assert after != before
+
+
 def test_replace_project_with_clear_history_disables_undo(tmp_path: Path) -> None:
     controller = CoverController(working_dir=tmp_path, auto_preview=False)
     original = dumps_project(make_project(tmp_path))
