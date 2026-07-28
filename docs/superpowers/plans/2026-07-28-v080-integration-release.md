@@ -223,4 +223,3 @@ Provide:
 - successful workflow run URL;
 - exact test totals from Task 2;
 - the three verified asset names.
-
