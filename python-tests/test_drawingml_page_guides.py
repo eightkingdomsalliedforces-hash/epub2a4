@@ -4,8 +4,12 @@ import re
 from pathlib import Path
 from zipfile import ZipFile
 
+from docx import Document
+
+from epub_a4_word.crop_marks import add_guides_to_paragraph
 from epub_a4_word.docx_writer import write_docx
 from epub_a4_word.models import TextBlock, TextRun
+from epub_a4_word.page_placement import CropGuide
 from epub_a4_word.pagination import LayoutSettings, MiniPage
 
 
@@ -24,6 +28,41 @@ def _header_xml(path: Path) -> str:
             for name in archive.namelist()
             if name.startswith("word/header") and name.endswith(".xml")
         )
+
+
+def test_page_local_drawingml_guides_keep_distinct_coordinates(
+    tmp_path: Path,
+) -> None:
+    document = Document()
+    odd = document.add_paragraph()
+    even = document.add_paragraph()
+    add_guides_to_paragraph(
+        odd,
+        (CropGuide(20.0, 0.0, 20.0, 210.0),),
+        paper_width_mm=148.0,
+        paper_height_mm=210.0,
+        render_mode="drawingml",
+        identifier_start=1,
+    )
+    add_guides_to_paragraph(
+        even,
+        (CropGuide(128.0, 0.0, 128.0, 210.0),),
+        paper_width_mm=148.0,
+        paper_height_mm=210.0,
+        render_mode="drawingml",
+        identifier_start=11,
+    )
+    output = tmp_path / "page-local-guides.docx"
+    document.save(output)
+
+    with ZipFile(output) as archive:
+        xml = archive.read("word/document.xml").decode("utf-8")
+
+    assert xml.count("<w:drawing") == 2
+    assert f"<wp:posOffset>{20 * 36000}</wp:posOffset>" in xml
+    assert f"<wp:posOffset>{128 * 36000}</wp:posOffset>" in xml
+    assert 'name="epub2a4-crop-guide-1"' in xml
+    assert 'name="epub2a4-crop-guide-11"' in xml
 
 
 def test_b6_drawingml_guides_use_same_full_page_coordinates(tmp_path: Path) -> None:

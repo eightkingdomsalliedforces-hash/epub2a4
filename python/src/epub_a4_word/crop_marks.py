@@ -91,17 +91,20 @@ def _drawing_line_xml(identifier: int, guide: CropGuide, stroke_pt: float) -> st
     )
 
 
-def add_page_guides(
-    section,
+def add_guides_to_paragraph(
+    paragraph,
     guides: Sequence[CropGuide],
     *,
     paper_width_mm: float,
     paper_height_mm: float,
     stroke_pt: float = 0.35,
     render_mode: str = "vml",
+    identifier_start: int = 1,
 ) -> None:
-    """Draw page-relative crop or fold guides in the repeating header."""
+    """Draw page-relative crop or fold guides in a paragraph."""
 
+    if identifier_start < 1:
+        raise ValueError("identifier_start must be positive")
     if stroke_pt <= 0.0:
         raise ValueError("導線寬度必須大於 0。")
     if render_mode not in {"vml", "drawingml"}:
@@ -121,13 +124,10 @@ def add_page_guides(
     if not guides:
         return
     install_story_template_fallbacks()
-    header = section.header
-    header.is_linked_to_previous = False
-    paragraph = header.paragraphs[0]
     paragraph.paragraph_format.space_before = 0
     paragraph.paragraph_format.space_after = 0
     paragraph.paragraph_format.line_spacing = 1
-    for index, guide in enumerate(guides, start=1):
+    for index, guide in enumerate(guides, start=identifier_start):
         run = paragraph.add_run()
         xml = (
             _drawing_line_xml(index, guide, stroke_pt)
@@ -135,6 +135,31 @@ def add_page_guides(
             else _line_xml(index, guide, stroke_pt)
         )
         run._r.append(parse_xml(xml))
+
+
+def add_page_guides(
+    section,
+    guides: Sequence[CropGuide],
+    *,
+    paper_width_mm: float,
+    paper_height_mm: float,
+    stroke_pt: float = 0.35,
+    render_mode: str = "vml",
+) -> None:
+    """Draw page-relative crop or fold guides in the repeating header."""
+
+    if not guides:
+        return
+    header = section.header
+    header.is_linked_to_previous = False
+    add_guides_to_paragraph(
+        header.paragraphs[0],
+        guides,
+        paper_width_mm=paper_width_mm,
+        paper_height_mm=paper_height_mm,
+        stroke_pt=stroke_pt,
+        render_mode=render_mode,
+    )
 
 
 def add_crop_marks(
