@@ -152,3 +152,119 @@ def test_convert_docx_rejects_imposition_modes_that_are_not_single_page(tmp_path
             tmp_path / "bad.docx",
             LayoutSettings(imposition_mode="signature16"),
         )
+
+
+def test_convert_docx_vertical_sets_tb_rl_without_losing_content(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.docx"
+    output = tmp_path / "vertical.docx"
+    _make_source_docx(source)
+    before = Document(source)
+
+    result = convert_docx(
+        source,
+        output,
+        LayoutSettings(
+            imposition_mode="single_a5",
+            writing_mode="taiwan_vertical",
+            binding_direction="right",
+            page_numbers=True,
+        ),
+    )
+
+    converted = Document(output)
+    assert _body_paragraph_texts(converted) == _body_paragraph_texts(before)
+    assert converted.paragraphs[1].runs[1].bold is True
+    assert converted.paragraphs[1].runs[3].italic is True
+    assert len(converted.inline_shapes) == 1
+    assert _page_break_count(output) == _page_break_count(source)
+    with ZipFile(output) as archive:
+        assert b'<w:textDirection w:val="tbRl"' in archive.read(
+            "word/document.xml"
+        )
+    assert any("Microsoft Word" in warning for warning in result.warnings)
+
+
+def test_convert_docx_horizontal_removes_tb_rl_from_sections(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.docx"
+    vertical = tmp_path / "vertical.docx"
+    horizontal = tmp_path / "horizontal.docx"
+    _make_source_docx(source)
+    convert_docx(
+        source,
+        vertical,
+        LayoutSettings(
+            imposition_mode="single_a5",
+            writing_mode="taiwan_vertical",
+        ),
+    )
+
+    convert_docx(
+        vertical,
+        horizontal,
+        LayoutSettings(
+            imposition_mode="single_a5",
+            writing_mode="horizontal",
+            binding_direction="left",
+        ),
+    )
+
+    with ZipFile(horizontal) as archive:
+        assert b'<w:textDirection w:val="tbRl"' not in archive.read(
+            "word/document.xml"
+        )
+
+
+def test_convert_docx_accepts_b6_on_a5_with_bottom_right_margins(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.docx"
+    output = tmp_path / "b6.docx"
+    _make_source_docx(source)
+
+    result = convert_docx(
+        source,
+        output,
+        LayoutSettings(
+            imposition_mode="b6_on_a5",
+            writing_mode="taiwan_vertical",
+            binding_direction="right",
+            page_numbers=False,
+        ),
+    )
+
+    section = Document(output).sections[0]
+    assert result.imposition_mode == "b6_on_a5"
+    assert abs(section.page_width.cm - 14.8) < 0.02
+    assert abs(section.page_height.cm - 21.0) < 0.02
+    assert abs(section.left_margin.cm - 2.0) < 0.02
+    assert abs(section.right_margin.cm - 0.0) < 0.02
+    assert abs(section.top_margin.cm - 2.8) < 0.02
+    assert abs(section.bottom_margin.cm - 0.0) < 0.02
+
+
+def test_right_bound_docx_page_fields_use_mirrored_odd_even_footers(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.docx"
+    output = tmp_path / "right-bound.docx"
+    _make_source_docx(source)
+
+    convert_docx(
+        source,
+        output,
+        LayoutSettings(
+            imposition_mode="single_a5",
+            binding_direction="right",
+            page_numbers=True,
+        ),
+    )
+
+    section = Document(output).sections[0]
+    assert section.footer.paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT
+    assert section.even_page_footer.paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+    assert "PAGE" in section.footer._element.xml
+    assert "PAGE" in section.even_page_footer._element.xml
