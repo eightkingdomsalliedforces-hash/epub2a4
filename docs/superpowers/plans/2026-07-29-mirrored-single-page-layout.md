@@ -4,7 +4,7 @@
 
 **Goal:** Mirror all single-page DOCX layouts so odd pages align right, even pages align left, and B6-on-A5 crop lines follow the same parity.
 
-**Architecture:** Add page parity to the shared page-placement geometry, then render each single output page in its own fixed-width one-row table. Move B6 crop guides from a repeating section header to page-local anchor paragraphs so each page can carry different coordinates without creating a section per page.
+**Architecture:** Add page parity to the shared page-placement geometry, then render single pages as mirrored rows in one full-paper-width three-column table. Merge the middle/right cells for odd pages and left/middle cells for even pages. Move B6 crop guides from a repeating section header to each row's content-cell paragraph.
 
 **Tech Stack:** Python 3.13, python-docx, OOXML VML/DrawingML, lxml, pytest
 
@@ -290,7 +290,17 @@ git add python/src/epub_a4_word/crop_marks.py python-tests/test_drawingml_page_g
 git commit -m "refactor: support page-local crop guides"
 ```
 
-### Task 3: Render one mirrored table per single output page
+### Task 3: Render mirrored rows for single output pages
+
+> **Implementation correction:** Microsoft Word proved that a separate
+> page-prefix paragraph cannot coexist with B6's exact `28 mm + 182 mm` vertical
+> extent without generating guide-only blank pages. The final implementation
+> therefore supersedes the per-page-table code examples below: it uses one
+> full-width three-column table, merges two columns per row to mirror the
+> content block, anchors guides inside the content cell, allocates DrawingML
+> identifiers dynamically, and adds one 1-twip terminal paragraph. Only the
+> last B6 row reserves its existing `3 mm` bottom safety inset for that Word
+> terminal paragraph; text and image maxima remain unchanged.
 
 **Files:**
 - Modify: `python/src/epub_a4_word/docx_writer.py:13-24,326-429`

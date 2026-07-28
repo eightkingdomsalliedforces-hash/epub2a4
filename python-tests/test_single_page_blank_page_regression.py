@@ -27,7 +27,7 @@ def _page(number: int) -> MiniPage:
 
 
 @pytest.mark.parametrize("mode", ["single_a5", "single_4x6", "b6_on_a5"])
-def test_single_page_modes_use_one_table_per_page_with_minimal_prefixes(
+def test_single_page_modes_use_mirrored_rows_and_one_minimal_terminal_paragraph(
     tmp_path: Path, mode: str
 ) -> None:
     output = tmp_path / f"{mode}.docx"
@@ -46,16 +46,17 @@ def test_single_page_modes_use_one_table_per_page_with_minimal_prefixes(
     body = root.find(f"{{{W_NS}}}body")
     assert body is not None
     assert [etree.QName(child).localname for child in body] == [
-        "p",
         "tbl",
         "p",
-        "tbl",
-        "p",
-        "tbl",
         "sectPr",
     ]
-    assert int(root.xpath("count(.//w:body/w:tbl)", namespaces={"w": W_NS})) == 3
-    assert int(root.xpath("count(.//w:pageBreakBefore)", namespaces={"w": W_NS})) == 2
+    assert int(root.xpath("count(.//w:body/w:tbl)", namespaces={"w": W_NS})) == 1
+    assert int(root.xpath("count(.//w:body/w:tbl/w:tr)", namespaces={"w": W_NS})) == 3
+    assert int(root.xpath("count(.//w:pageBreakBefore)", namespaces={"w": W_NS})) == 0
+    assert root.xpath(
+        ".//w:body/w:p[last()]/w:pPr/w:spacing[@w:line='1'][@w:lineRule='exact']",
+        namespaces={"w": W_NS},
+    )
 
 
 @pytest.mark.parametrize(

@@ -77,7 +77,7 @@ def _drawing_line_xml(identifier: int, guide: CropGuide, stroke_pt: float) -> st
         f'<wp:extent cx="{cx}" cy="{cy}" />'
         '<wp:effectExtent l="0" t="0" r="0" b="0" />'
         '<wp:wrapNone />'
-        f'<wp:docPr id="{1000 + identifier}" name="{name}" />'
+        f'<wp:docPr id="{identifier}" name="{name}" />'
         '<wp:cNvGraphicFramePr />'
         '<a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">'
         '<wps:wsp><wps:cNvSpPr /><wps:spPr>'
@@ -99,11 +99,11 @@ def add_guides_to_paragraph(
     paper_height_mm: float,
     stroke_pt: float = 0.35,
     render_mode: str = "vml",
-    identifier_start: int = 1,
+    identifier_start: int | None = None,
 ) -> None:
     """Draw page-relative crop or fold guides in a paragraph."""
 
-    if identifier_start < 1:
+    if identifier_start is not None and identifier_start < 1:
         raise ValueError("identifier_start must be positive")
     if stroke_pt <= 0.0:
         raise ValueError("導線寬度必須大於 0。")
@@ -124,10 +124,12 @@ def add_guides_to_paragraph(
     if not guides:
         return
     install_story_template_fallbacks()
-    paragraph.paragraph_format.space_before = 0
-    paragraph.paragraph_format.space_after = 0
-    paragraph.paragraph_format.line_spacing = 1
-    for index, guide in enumerate(guides, start=identifier_start):
+    first_identifier = (
+        paragraph.part.next_id
+        if identifier_start is None
+        else identifier_start
+    )
+    for index, guide in enumerate(guides, start=first_identifier):
         run = paragraph.add_run()
         xml = (
             _drawing_line_xml(index, guide, stroke_pt)
@@ -152,8 +154,12 @@ def add_page_guides(
         return
     header = section.header
     header.is_linked_to_previous = False
+    paragraph = header.paragraphs[0]
+    paragraph.paragraph_format.space_before = 0
+    paragraph.paragraph_format.space_after = 0
+    paragraph.paragraph_format.line_spacing = 1
     add_guides_to_paragraph(
-        header.paragraphs[0],
+        paragraph,
         guides,
         paper_width_mm=paper_width_mm,
         paper_height_mm=paper_height_mm,

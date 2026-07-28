@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import re
+from io import BytesIO
 from pathlib import Path
 from zipfile import ZipFile
 
 import pytest
 from docx import Document
+from lxml import etree
+from PIL import Image
 
 from epub_a4_word.docx_writer import write_docx
-from epub_a4_word.models import TextBlock, TextRun
+from epub_a4_word.models import ImageBlock, TextBlock, TextRun
 from epub_a4_word.pagination import LayoutSettings, MiniPage
 
 
@@ -168,3 +171,51 @@ def test_b6_docx_mirrors_crop_lines_per_page(tmp_path: Path) -> None:
         abs=0.01,
     )
     assert _lines_from_headers(output) == []
+    root = etree.fromstring(_document_xml(output))
+    namespaces = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    assert int(root.xpath(
+        "count(.//w:body/w:p//w:pict)",
+        namespaces=namespaces,
+    )) == 0
+    assert int(root.xpath(
+        "count(.//w:body/w:tbl//w:pict)",
+        namespaces=namespaces,
+    )) == 4
+
+
+def test_page_local_drawingml_guides_use_unique_document_ids(
+    tmp_path: Path,
+) -> None:
+    image_data = BytesIO()
+    Image.new("RGB", (20, 20), "white").save(image_data, format="PNG")
+    image_blocks = [ImageBlock("Images/pixel.png") for _ in range(9)]
+    output = tmp_path / "drawingml-unique-ids.docx"
+    write_docx(
+        [
+            MiniPage(image_blocks, logical_page_number=1),
+            MiniPage(image_blocks, logical_page_number=2),
+        ],
+        output,
+        resources={"Images/pixel.png": image_data.getvalue()},
+        media_types={"Images/pixel.png": "image/png"},
+        settings=LayoutSettings(
+            imposition_mode="b6_on_a5",
+            output_mark_mode="crop_marks",
+            guide_render_mode="drawingml",
+            page_numbers=False,
+        ),
+        imposition_mode="b6_on_a5",
+    )
+
+    root = etree.fromstring(_document_xml(output))
+    identifiers = root.xpath(
+        ".//wp:docPr/@id",
+        namespaces={
+            "wp": (
+                "http://schemas.openxmlformats.org/"
+                "drawingml/2006/wordprocessingDrawing"
+            ),
+        },
+    )
+    assert len(identifiers) == 22
+    assert len(set(identifiers)) == len(identifiers)

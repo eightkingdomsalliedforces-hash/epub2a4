@@ -219,9 +219,9 @@ def test_right_binding_mirrors_page_number_alignment(tmp_path: Path) -> None:
         imposition_mode="single_a5",
     )
 
-    tables = Document(output).tables
-    assert tables[0].cell(0, 0).paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT
-    assert tables[1].cell(0, 0).paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
+    table = Document(output).tables[0]
+    assert table.cell(0, 1).paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.LEFT
+    assert table.cell(1, 0).paragraphs[0].alignment == WD_ALIGN_PARAGRAPH.RIGHT
 
 
 @pytest.mark.parametrize(
@@ -254,16 +254,18 @@ def test_single_page_modes_mirror_each_page_table(
     )
 
     document = Document(output)
-    assert len(document.tables) == 3
-    assert [table.alignment for table in document.tables] == [
-        WD_TABLE_ALIGNMENT.RIGHT,
-        WD_TABLE_ALIGNMENT.LEFT,
-        WD_TABLE_ALIGNMENT.RIGHT,
-    ]
+    assert len(document.tables) == 1
+    table = document.tables[0]
+    assert table.alignment == WD_TABLE_ALIGNMENT.CENTER
+    assert len(table.rows) == 3
     assert [
-        table.cell(0, 0).text
-        for table in document.tables
-    ] == ["page 1", "page 2", "page 3"]
+        [cell.text for cell in row.cells]
+        for row in table.rows
+    ] == [
+        ["", "page 1", "page 1"],
+        ["page 2", "page 2", ""],
+        ["", "page 3", "page 3"],
+    ]
 
 
 def test_single_page_alignment_uses_logical_parity_then_physical_fallback(
@@ -291,10 +293,14 @@ def test_single_page_alignment_uses_logical_parity_then_physical_fallback(
         imposition_mode="single_a5",
     )
 
-    assert [table.alignment for table in Document(output).tables] == [
-        WD_TABLE_ALIGNMENT.LEFT,
-        WD_TABLE_ALIGNMENT.RIGHT,
-        WD_TABLE_ALIGNMENT.RIGHT,
+    table = Document(output).tables[0]
+    assert [
+        [cell.text for cell in row.cells]
+        for row in table.rows
+    ] == [
+        ["logical even", "logical even", ""],
+        ["", "logical odd", "logical odd"],
+        ["", "fallback odd", "fallback odd"],
     ]
 
 
@@ -379,13 +385,11 @@ def test_writer_creates_one_a5_page_per_content_page(tmp_path: Path) -> None:
     section = document.sections[0]
     assert abs(section.page_width.cm - 14.8) < 0.02
     assert abs(section.page_height.cm - 21.0) < 0.02
-    assert len(document.tables) == 2
-    assert all(len(table.rows) == 1 for table in document.tables)
-    assert all(len(table.rows[0].cells) == 1 for table in document.tables)
-    assert [
-        table.cell(0, 0).text.strip()
-        for table in document.tables
-    ] == ["A5 第一頁", "A5 第二頁"]
+    assert len(document.tables) == 1
+    assert len(document.tables[0].rows) == 2
+    assert all(len(row.cells) == 3 for row in document.tables[0].rows)
+    assert document.tables[0].cell(0, 1).text.strip() == "A5 第一頁"
+    assert document.tables[0].cell(1, 0).text.strip() == "A5 第二頁"
 
 
 def test_writer_creates_one_4x6_page_per_content_page(tmp_path: Path) -> None:
@@ -405,13 +409,11 @@ def test_writer_creates_one_4x6_page_per_content_page(tmp_path: Path) -> None:
     section = document.sections[0]
     assert abs(section.page_width.cm - 10.16) < 0.02
     assert abs(section.page_height.cm - 15.24) < 0.02
-    assert len(document.tables) == 2
-    assert all(len(table.rows) == 1 for table in document.tables)
-    assert all(len(table.rows[0].cells) == 1 for table in document.tables)
-    assert [
-        table.cell(0, 0).text.strip()
-        for table in document.tables
-    ] == ["4×6 第一頁", "4×6 第二頁"]
+    assert len(document.tables) == 1
+    assert len(document.tables[0].rows) == 2
+    assert all(len(row.cells) == 3 for row in document.tables[0].rows)
+    assert document.tables[0].cell(0, 1).text.strip() == "4×6 第一頁"
+    assert document.tables[0].cell(1, 0).text.strip() == "4×6 第二頁"
 
 
 def test_writer_renders_single_a5_without_blank_pages(tmp_path: Path) -> None:
@@ -471,7 +473,7 @@ def test_writer_uses_exact_shared_line_height_for_body_and_heading(
     namespace = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
     with ZipFile(output) as archive:
         root = etree.fromstring(archive.read("word/document.xml"))
-    paragraphs = root.xpath(".//w:tc/w:p", namespaces=namespace)
+    paragraphs = root.xpath(".//w:tc/w:p[.//w:t]", namespaces=namespace)
     assert len(paragraphs) == 2
 
     body_spacing = paragraphs[0].find("w:pPr/w:spacing", namespaces=namespace)

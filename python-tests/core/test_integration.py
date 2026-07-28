@@ -72,12 +72,9 @@ def test_convert_epub_single_page_modes_report_one_sheet_per_content_page(sample
         assert result.padded_mini_page_count == result.mini_page_count
 
         document = Document(output)
-        assert len(document.tables) == result.mini_page_count
-        assert all(len(table.rows) == 1 for table in document.tables)
-        assert all(
-            len(table.rows[0].cells) == 1
-            for table in document.tables
-        )
+        assert len(document.tables) == 1
+        assert len(document.tables[0].rows) == result.mini_page_count
+        assert all(len(row.cells) == 3 for row in document.tables[0].rows)
 
 
 def test_convert_input_dispatches_docx_to_reflow(tmp_path: Path) -> None:

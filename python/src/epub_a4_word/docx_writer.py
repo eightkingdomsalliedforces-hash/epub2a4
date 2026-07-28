@@ -113,7 +113,16 @@ def _clear_paragraph(paragraph) -> None:
 def _configure_page_prefix(paragraph, page_break_before: bool) -> None:
     _clear_paragraph(paragraph)
     fmt = paragraph.paragraph_format
-    fmt.page_break_before = True if page_break_before else None
+    fmt.space_before = Pt(0)
+    fmt.space_after = Pt(0)
+    fmt.line_spacing = Pt(1)
+    fmt.page_break_before = page_break_before
+    run = paragraph.add_run("\u200b")
+    run.font.size = Pt(1)
+
+
+def _configure_minimal_paragraph(paragraph) -> None:
+    _clear_paragraph(paragraph)
     p_pr = paragraph._p.get_or_add_pPr()
     spacing = p_pr.find(qn("w:spacing"))
     if spacing is None:
@@ -367,35 +376,42 @@ def write_docx(
         settings.binding_direction,
     )
 
-    def configure_table(table) -> None:
+    def configure_table(table, width_cm: float | None = None) -> None:
         table.alignment = WD_TABLE_ALIGNMENT.CENTER
         table.autofit = False
         _set_fixed_layout(table)
-        _set_table_width(table, settings.cell_width_cm * settings.grid_cols)
+        _set_table_width(
+            table,
+            width_cm
+            if width_cm is not None
+            else settings.cell_width_cm * settings.grid_cols,
+        )
         _set_table_borders(table, False)
 
-    def configure_row(row) -> None:
+    def configure_row(row, set_cell_width: bool = True) -> None:
         row.height = Cm(settings.cell_height_cm)
         row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
         tr_pr = row._tr.get_or_add_trPr()
         cant_split = OxmlElement("w:cantSplit")
         tr_pr.append(cant_split)
-        for cell in row.cells:
-            cell.width = Cm(settings.cell_width_cm)
+        if set_cell_width:
+            for cell in row.cells:
+                cell.width = Cm(settings.cell_width_cm)
 
     if imposition_mode in _SINGLE_PAGE_TABLE_MODES:
         if plan.sides:
-            first_prefix = document.add_paragraph()
+            slack_cm = settings.paper_width_cm - settings.cell_width_cm
+            middle_cm = settings.cell_width_cm - slack_cm
+            column_widths_cm = (slack_cm, middle_cm, slack_cm)
+            table = document.add_table(rows=len(plan.sides), cols=3)
+            configure_table(table, width_cm=settings.paper_width_cm)
+            for column, width_cm in zip(
+                table.columns,
+                column_widths_cm,
+                strict=True,
+            ):
+                column.width = Cm(width_cm)
             for side_index, slots in enumerate(plan.sides):
-                prefix = (
-                    first_prefix
-                    if side_index == 0
-                    else document.add_paragraph()
-                )
-                _configure_page_prefix(
-                    prefix,
-                    page_break_before=side_index > 0,
-                )
                 physical_page_number = slots[0]
                 page = (
                     pages[physical_page_number - 1]
@@ -412,27 +428,36 @@ def write_docx(
                     settings,
                     page_number=parity_number,
                 )
-                add_guides_to_paragraph(
-                    prefix,
-                    page_placement.guides,
-                    paper_width_mm=page_placement.paper_width_mm,
-                    paper_height_mm=page_placement.paper_height_mm,
-                    render_mode=settings.guide_render_mode,
-                    identifier_start=side_index * 10 + 1,
-                )
 
-                table = document.add_table(rows=1, cols=1)
-                configure_table(table)
-                table.alignment = (
-                    WD_TABLE_ALIGNMENT.RIGHT
-                    if parity_number % 2 == 1
-                    else WD_TABLE_ALIGNMENT.LEFT
+                row = table.rows[side_index]
+                configure_row(row, set_cell_width=False)
+                vertical_extent_cm = (
+                    settings.page_margin_top_cm
+                    + settings.cell_height_cm
+                    + settings.page_margin_bottom_cm
                 )
-                row = table.rows[0]
-                configure_row(row)
+                if (
+                    side_index == len(plan.sides) - 1
+                    and vertical_extent_cm >= settings.paper_height_cm
+                ):
+                    row.height = Cm(
+                        settings.cell_height_cm
+                        - settings.cell_vertical_margin_cm
+                    )
+                for cell, width_cm in zip(
+                    row.cells,
+                    column_widths_cm,
+                    strict=True,
+                ):
+                    cell.width = Cm(width_cm)
+                content_cell = (
+                    row.cells[1].merge(row.cells[2])
+                    if parity_number % 2 == 1
+                    else row.cells[0].merge(row.cells[1])
+                )
                 warnings.extend(
                     _populate_cell(
-                        row.cells[0],
+                        content_cell,
                         page,
                         0,
                         1,
@@ -441,6 +466,15 @@ def write_docx(
                         media_types,
                     )
                 )
+                add_guides_to_paragraph(
+                    content_cell.paragraphs[0],
+                    page_placement.guides,
+                    paper_width_mm=page_placement.paper_width_mm,
+                    paper_height_mm=page_placement.paper_height_mm,
+                    render_mode=settings.guide_render_mode,
+                )
+            terminal = document.add_paragraph()
+            _configure_minimal_paragraph(terminal)
     else:
         first_prefix = document.add_paragraph()
         for side_index, slots in enumerate(plan.sides):
