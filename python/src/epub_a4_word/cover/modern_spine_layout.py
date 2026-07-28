@@ -148,7 +148,6 @@ def _reference_full_slots(
             0.05,
             "#555555",
             width=0.52,
-            direction="horizontal",
         ),
         _slot(
             safe,
@@ -158,7 +157,6 @@ def _reference_full_slots(
             0.06,
             "#191919",
             weight=500,
-            direction="horizontal",
         ),
     )
 
@@ -182,7 +180,6 @@ def _reference_compact_slots(
             0.05,
             "#555555",
             width=0.58,
-            direction="horizontal",
         ),
         _slot(
             safe,
@@ -192,7 +189,6 @@ def _reference_compact_slots(
             0.055,
             "#191919",
             weight=500,
-            direction="horizontal",
         ),
     )
 
@@ -216,7 +212,6 @@ def _reference_minimal_slots(
             0.065,
             "#191919",
             weight=500,
-            direction="horizontal",
         ),
     )
 
@@ -308,7 +303,6 @@ def _parallel_slots(
             0.88,
             0.045,
             "#555555",
-            direction="horizontal",
         ),
         _slot(safe, tier, "publisher", 0.935, 0.060, "#191919", weight=500),
     )

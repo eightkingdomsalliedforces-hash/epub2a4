@@ -128,6 +128,23 @@ def test_reference_spine_title_is_dominant_and_publisher_is_last(
     assert slots["publisher"].rect.bottom_mm <= layout.spine_rect.bottom_mm
 
 
+@pytest.mark.parametrize(
+    "style",
+    ["reference_stacked", "clean_centered", "parallel_columns"],
+)
+def test_only_english_title_slot_is_horizontal(style, sample_project) -> None:
+    result = build_modern_spine_slots(
+        calculate_layout(sample_project(manual_spine_width_mm=12.0)),
+        style,
+        "#DF6B32",
+    )
+
+    assert all(
+        slot.direction == ("horizontal" if slot.role == "english_title" else "vertical")
+        for slot in result.slots
+    )
+
+
 def test_long_reference_title_fits_without_dropping_below_readable_minimum(
     sample_project,
 ) -> None:

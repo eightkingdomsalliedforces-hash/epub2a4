@@ -114,7 +114,29 @@ def test_reference_spine_has_one_publisher_name_at_bottom(
     assert [element.id for element in publisher_elements] == [
         "modern-spine-publisher"
     ]
-    assert publisher_elements[0].content["direction"] == "horizontal"
+    assert publisher_elements[0].content["direction"] == "vertical"
+
+
+def test_only_english_title_is_rotated_on_reference_spine(
+    sample_project, tmp_path
+) -> None:
+    result = apply_template(
+        _modern_project(sample_project, 12.0, "reference_stacked", tmp_path),
+        "modern_vertical_back_with_spine",
+    )
+    text_elements = [
+        element
+        for element in result.elements
+        if element.id.startswith("modern-spine-")
+        and element.kind == ElementKind.TEXT
+    ]
+
+    assert result.elements_by_id["modern-spine-english-title"].transform.rotation_deg == 90.0
+    assert all(
+        element.transform.rotation_deg == 0.0
+        for element in text_elements
+        if element.id != "modern-spine-english-title"
+    )
 
 
 def test_missing_logo_never_creates_text_logo_and_reports_warning(
