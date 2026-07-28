@@ -94,7 +94,9 @@ def test_split_docx_has_two_exact_a4_sections(
         width = int(size.get(f"{{{NS['w']}}}w"))
         height = int(size.get(f"{{{NS['w']}}}h"))
         assert sorted((width, height)) == pytest.approx(sorted((11906, 16838)), abs=1)
-        for name in ("top", "right", "bottom", "left", "header", "footer", "gutter"):
+        for name in ("top", "right", "bottom", "left"):
+            assert margins.get(f"{{{NS['w']}}}{name}") == "720"
+        for name in ("header", "footer", "gutter"):
             assert margins.get(f"{{{NS['w']}}}{name}") == "0"
 
 

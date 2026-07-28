@@ -9,6 +9,7 @@ from docx import Document
 from docx.enum.section import WD_ORIENT, WD_SECTION
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.shared import Mm
 
 from .crop_frame import CropFrameLine, build_crop_frame
 from .geometry import RectMm, calculate_layout
@@ -75,10 +76,11 @@ def _configure_section(section, page: PrintPage) -> None:
     )
     section.page_width = mm_to_twips(width_mm)
     section.page_height = mm_to_twips(height_mm)
-    section.top_margin = 0
-    section.right_margin = 0
-    section.bottom_margin = 0
-    section.left_margin = 0
+    safe_margin = Mm(12.7)
+    section.top_margin = safe_margin
+    section.right_margin = safe_margin
+    section.bottom_margin = safe_margin
+    section.left_margin = safe_margin
     section.header_distance = 0
     section.footer_distance = 0
     section.gutter = 0
@@ -99,7 +101,10 @@ def _configure_section(section, page: PrintPage) -> None:
     if page_margins is None:
         page_margins = OxmlElement("w:pgMar")
         properties.append(page_margins)
-    for name in ("top", "right", "bottom", "left", "header", "footer", "gutter"):
+    safe_margin_twips = str(mm_to_twips(12.7))
+    for name in ("top", "right", "bottom", "left"):
+        page_margins.set(qn(f"w:{name}"), safe_margin_twips)
+    for name in ("header", "footer", "gutter"):
         page_margins.set(qn(f"w:{name}"), "0")
 
 
