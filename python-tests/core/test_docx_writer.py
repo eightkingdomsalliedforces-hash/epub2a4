@@ -430,3 +430,103 @@ def test_pre_paginated_heading_does_not_ask_word_to_keep_next(tmp_path: Path) ->
         document_xml = package.read("word/document.xml").decode("utf-8")
 
     assert "<w:keepNext" not in document_xml
+
+
+def test_vertical_writer_emits_native_tb_rl_and_keeps_source_text(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "vertical.docx"
+    text = "中文 English 2026"
+
+    write_docx(
+        [
+            MiniPage(
+                [TextBlock((TextRun(text),), style="body")],
+                logical_page_number=1,
+            )
+        ],
+        output,
+        resources={},
+        media_types={},
+        settings=LayoutSettings(
+            writing_mode="taiwan_vertical",
+            binding_direction="right",
+            page_numbers=False,
+        ),
+    )
+
+    with ZipFile(output) as archive:
+        xml = archive.read("word/document.xml")
+    assert b'<w:textDirection w:val="tbRl"' in xml
+    rendered_text = "\n".join(
+        cell.text
+        for row in Document(output).tables[0].rows
+        for cell in row.cells
+    )
+    assert text in rendered_text
+
+
+def test_horizontal_writer_does_not_emit_vertical_text_direction(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "horizontal.docx"
+
+    write_docx(
+        [_page("中文 English 2026")],
+        output,
+        resources={},
+        media_types={},
+        settings=LayoutSettings(
+            writing_mode="horizontal",
+            binding_direction="left",
+        ),
+    )
+
+    with ZipFile(output) as archive:
+        assert b'<w:textDirection w:val="tbRl"' not in archive.read(
+            "word/document.xml"
+        )
+
+
+def test_vertical_writer_keeps_image_in_horizontal_nested_cell(
+    tmp_path: Path,
+) -> None:
+    image_data = BytesIO()
+    Image.new("RGB", (200, 300), "white").save(image_data, format="PNG")
+    output = tmp_path / "vertical-image.docx"
+
+    write_docx(
+        [MiniPage([ImageBlock("Images/test.png")], logical_page_number=1)],
+        output,
+        resources={"Images/test.png": image_data.getvalue()},
+        media_types={"Images/test.png": "image/png"},
+        settings=LayoutSettings(
+            writing_mode="taiwan_vertical",
+            binding_direction="right",
+        ),
+    )
+
+    with ZipFile(output) as archive:
+        xml = archive.read("word/document.xml")
+        names = archive.namelist()
+    assert b'<w:textDirection w:val="tbRl"' in xml
+    assert b'<w:textDirection w:val="lrTb"' in xml
+    assert len(Document(output).inline_shapes) == 1
+    assert any(name.startswith("word/media/") for name in names)
+
+
+def test_vertical_writer_returns_word_compatibility_warning(
+    tmp_path: Path,
+) -> None:
+    warnings = write_docx(
+        [_page("直排")],
+        tmp_path / "warning.docx",
+        resources={},
+        media_types={},
+        settings=LayoutSettings(writing_mode="taiwan_vertical"),
+    )
+
+    assert any(
+        "Microsoft Word" in warning and "East Asia" in warning
+        for warning in warnings
+    )

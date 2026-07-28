@@ -70,6 +70,25 @@ def _set_fixed_layout(table) -> None:
     layout.set(qn("w:type"), "fixed")
 
 
+def _set_cell_text_direction(cell, value: str) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    node = tc_pr.find(qn("w:textDirection"))
+    if node is None:
+        node = OxmlElement("w:textDirection")
+        tc_pr.append(node)
+    node.set(qn("w:val"), value)
+
+
+def _horizontal_container(parent_cell):
+    table = parent_cell.add_table(rows=1, cols=1)
+    table.autofit = True
+    _set_table_borders(table, False)
+    nested = table.cell(0, 0)
+    _set_cell_text_direction(nested, "lrTb")
+    _set_cell_margins(nested, 0, 0, 0, 0)
+    return nested
+
+
 def _set_table_width(table, width_cm: float) -> None:
     tbl_pr = table._tbl.tblPr
     width = tbl_pr.first_child_found_in("w:tblW")
@@ -186,8 +205,18 @@ def _add_image_block(
     if height_pt > settings.max_image_height_pt:
         height_pt = settings.max_image_height_pt
         width_pt = height_pt * width_px / max(1, height_px)
-    paragraph = cell.paragraphs[0] if first else cell.add_paragraph()
-    if first:
+    target_cell = (
+        _horizontal_container(cell)
+        if settings.writing_mode == "taiwan_vertical"
+        else cell
+    )
+    target_first = first if target_cell is cell else True
+    paragraph = (
+        target_cell.paragraphs[0]
+        if target_first
+        else target_cell.add_paragraph()
+    )
+    if target_first:
         _clear_paragraph(paragraph)
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     paragraph.paragraph_format.space_before = Pt(0)
@@ -197,8 +226,18 @@ def _add_image_block(
 
 
 def _add_page_number(cell, page_number: int, settings: LayoutSettings, first: bool) -> None:
-    paragraph = cell.paragraphs[0] if first else cell.add_paragraph()
-    if first:
+    target_cell = (
+        _horizontal_container(cell)
+        if settings.writing_mode == "taiwan_vertical"
+        else cell
+    )
+    target_first = first if target_cell is cell else True
+    paragraph = (
+        target_cell.paragraphs[0]
+        if target_first
+        else target_cell.add_paragraph()
+    )
+    if target_first:
         _clear_paragraph(paragraph)
     odd_is_right = settings.binding_direction == "left"
     align_right = (page_number % 2 == 1) == odd_is_right
@@ -226,6 +265,8 @@ def _populate_cell(
 ) -> list[str]:
     warnings: list[str] = []
     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+    if settings.writing_mode == "taiwan_vertical":
+        _set_cell_text_direction(cell, "tbRl")
     assert settings.cell_outer_margin_cm is not None
     assert settings.gutter_margin_cm is not None
     assert settings.cell_vertical_margin_cm is not None
@@ -305,6 +346,11 @@ def write_docx(
     )
 
     warnings: list[str] = []
+    if settings.writing_mode == "taiwan_vertical":
+        warnings.append(
+            "直排使用 Microsoft Word 原生格式；"
+            "其他閱讀器或缺少 East Asia 字型時可能替代字形。"
+        )
     plan = build_imposition(
         len(pages),
         imposition_mode,
