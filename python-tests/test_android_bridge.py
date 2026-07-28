@@ -26,7 +26,7 @@ def test_probe_lists_android_supported_modes():
     result = android_bridge.probe()
 
     assert result["bridge_version"] == "1.0"
-    assert result["python_core_version"] == "0.7.0"
+    assert result["python_core_version"] == "0.8.0"
     assert result["supported_inputs"] == ["epub", "docx"]
     assert result["supported_modes"]["docx"] == [
         "single_a5",
