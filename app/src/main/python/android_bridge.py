@@ -15,7 +15,7 @@ from typing import Any
 from epub_a4_word import __version__ as CORE_VERSION
 from epub_a4_word.converter import convert_input
 from epub_a4_word.docx_compat import install_story_template_fallbacks
-from epub_a4_word.pagination import LayoutSettings
+from epub_a4_word.pagination import LayoutSettings, resolve_layout
 from epub_a4_word.cover import service as cover_service
 
 BRIDGE_VERSION = "1.0"
@@ -26,6 +26,8 @@ _SUPPORTED_MODES = {
 }
 _SETTING_FIELDS = {
     "imposition_mode",
+    "writing_mode",
+    "binding_direction",
     "margin_mode",
     "font_name",
     "body_font_pt",
@@ -124,7 +126,9 @@ def _settings_for(source_type: str, options: dict[str, Any]) -> LayoutSettings:
             raise ValueError("DOCX 重新排版只支援 A5、B6 置於 A5 或 4×6 英吋單頁模式。")
         raise ValueError("EPUB 輸出模式無效。")
     try:
-        return LayoutSettings(**options)
+        settings = LayoutSettings(**options)
+        resolve_layout(settings)
+        return settings
     except TypeError as exc:
         raise ValueError(f"設定值無效：{exc}") from exc
 

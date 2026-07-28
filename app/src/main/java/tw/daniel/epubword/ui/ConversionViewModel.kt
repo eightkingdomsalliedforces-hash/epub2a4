@@ -18,6 +18,7 @@ import tw.daniel.epubword.model.InputKind
 import tw.daniel.epubword.model.MarginMode
 import tw.daniel.epubword.model.OutputMode
 import tw.daniel.epubword.model.StagedInput
+import tw.daniel.epubword.model.WritingPreset
 import tw.daniel.epubword.python.PythonConversionGateway
 import java.io.File
 import java.util.concurrent.CancellationException
@@ -103,6 +104,8 @@ class ConversionViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun setOutputMode(mode: OutputMode) = updateOptions { copy(outputMode = mode) }
+    fun setWritingPreset(preset: WritingPreset) =
+        updateOptions { copy(writingPreset = preset) }
     fun setMarginMode(mode: MarginMode) = updateOptions { copy(marginMode = mode) }
     fun setFontName(value: String) = updateOptions { copy(fontName = value) }
     fun setBodyFontPt(value: Double) = updateOptions { copy(bodyFontPt = value) }
