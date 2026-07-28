@@ -14,7 +14,6 @@ val COVER_TEMPLATE_OPTIONS: List<CoverTemplateOption> = listOf(
     CoverTemplateOption("minimal_text", "極簡文字"),
     CoverTemplateOption("front_image_plain_back", "正面圖片＋純色封底"),
     CoverTemplateOption("full_spread", "跨頁滿版圖片"),
-    CoverTemplateOption("top_bottom_blocks", "上下色塊"),
     CoverTemplateOption(PUBLISHER_BACK_MATTER_TEMPLATE_ID, "出版社式封底"),
     CoverTemplateOption(MODERN_VERTICAL_TEMPLATE_ID, "現代直排封底＋可選書脊"),
 )

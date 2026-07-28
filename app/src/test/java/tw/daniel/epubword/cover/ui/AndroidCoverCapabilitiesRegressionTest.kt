@@ -2,10 +2,16 @@ package tw.daniel.epubword.cover.ui
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AndroidCoverCapabilitiesRegressionTest {
+    @Test
+    fun removedGrayBlockTemplateIsNotAvailableOnAndroid() {
+        assertFalse(COVER_TEMPLATE_OPTIONS.any { it.id == "top_bottom_blocks" })
+    }
+
     @Test
     fun estimatedEpubPageCountUsesSharedInspectionResult() {
         val inspection = JSONObject(

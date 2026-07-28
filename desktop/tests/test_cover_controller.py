@@ -136,9 +136,9 @@ def test_template_application_is_undoable(tmp_path: Path) -> None:
     controller = CoverController(working_dir=tmp_path, auto_preview=False)
     original = dumps_project(make_project(tmp_path))
     controller.replace_project(original, clear_history=True)
-    controller.apply_template("top_bottom_blocks")
+    controller.apply_template("minimal_text")
     changed = loads_project(controller.project_json)
-    assert "template-front-top-block" in changed.elements_by_id
+    assert "spine-title" in changed.elements_by_id
     controller.undo()
     assert loads_project(controller.project_json) == loads_project(original)
 

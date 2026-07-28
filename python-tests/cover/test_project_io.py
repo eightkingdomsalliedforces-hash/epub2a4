@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from epub_a4_word.cover.docx_export import export_docx
+from epub_a4_word.cover.geometry import calculate_layout
 from epub_a4_word.cover.models import (
     CoverElement,
     CoverMetadata,
@@ -16,7 +18,9 @@ from epub_a4_word.cover.models import (
     Region,
     TrimSize,
 )
+from epub_a4_word.cover.pdf_export import export_original_pdf
 from epub_a4_word.cover.project_io import CoverValidationError, dumps_project, loads_project
+from epub_a4_word.cover.render import mm_to_px, render_spread
 
 
 def sample_project(tmp_path: Path) -> CoverProject:
@@ -88,6 +92,77 @@ def test_load_migrates_removed_gray_template_without_touching_user_shapes(
     assert "template-back-bottom-block" not in restored.elements_by_id
     assert restored.elements_by_id["user-gray-decoration"] == user_shape
     assert restored.background["active_template"] == "minimal_text"
+
+
+def test_migrated_gray_template_stays_removed_from_png_pdf_and_docx(
+    tmp_path: Path,
+) -> None:
+    project = replace(sample_project(tmp_path), elements=())
+    layout = calculate_layout(project)
+    legacy_front = CoverElement(
+        id="template-front-top-block",
+        kind=ElementKind.SHAPE,
+        region=Region.FRONT,
+        transform=ElementTransform(
+            layout.front_rect.x_mm,
+            layout.front_rect.y_mm,
+            layout.front_rect.width_mm,
+            layout.front_rect.height_mm * 0.28,
+        ),
+        content={"fill": "#E2E2E2"},
+    )
+    legacy_back = replace(
+        legacy_front,
+        id="template-back-bottom-block",
+        region=Region.BACK,
+        transform=ElementTransform(
+            layout.back_rect.x_mm,
+            layout.back_rect.bottom_mm - layout.back_rect.height_mm * 0.18,
+            layout.back_rect.width_mm,
+            layout.back_rect.height_mm * 0.18,
+        ),
+    )
+    user_shape = replace(
+        legacy_front,
+        id="user-gray-decoration",
+        region=Region.BACK,
+        transform=ElementTransform(
+            layout.back_safe_rect.x_mm,
+            layout.back_safe_rect.y_mm,
+            10.0,
+            10.0,
+        ),
+    )
+    restored = loads_project(
+        dumps_project(
+            replace(
+                project,
+                elements=(legacy_front, legacy_back, user_shape),
+                background={"active_template": "top_bottom_blocks"},
+            )
+        )
+    )
+
+    dpi = 100
+    preview = render_spread(restored, dpi).convert("RGB")
+    front_sample = (
+        mm_to_px(layout.front_rect.x_mm + 2.0, dpi),
+        mm_to_px(layout.front_rect.y_mm + 2.0, dpi),
+    )
+    user_sample = (
+        mm_to_px(layout.back_safe_rect.x_mm + 2.0, dpi),
+        mm_to_px(layout.back_safe_rect.y_mm + 2.0, dpi),
+    )
+    preview_path = tmp_path / "migrated.png"
+    preview.save(preview_path)
+    pdf_path = export_original_pdf(restored, tmp_path / "migrated.pdf", dpi=200).path
+    docx_path = export_docx(restored, tmp_path / "migrated.docx").path
+
+    assert preview.getpixel(front_sample) != (226, 226, 226)
+    assert preview.getpixel(user_sample) == (226, 226, 226)
+    assert preview_path.stat().st_size > 0
+    assert pdf_path.stat().st_size > 0
+    assert docx_path.stat().st_size > 0
 
 
 def test_project_round_trip_preserves_modern_cover_metadata(tmp_path: Path) -> None:
