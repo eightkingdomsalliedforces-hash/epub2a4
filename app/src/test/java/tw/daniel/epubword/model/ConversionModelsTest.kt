@@ -1,5 +1,6 @@
 package tw.daniel.epubword.model
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -63,5 +64,28 @@ class ConversionModelsTest {
 
         assertTrue(defaults.contentOnly)
         assertTrue(disabled.contains("\"content_only\":false"))
+    }
+
+    @Test
+    fun defaultsToTaiwanVerticalRightBinding() {
+        val options = ConversionOptions()
+        val json = JSONObject(options.toJson())
+
+        assertEquals(WritingPreset.TAIWAN_VERTICAL, options.writingPreset)
+        assertEquals("taiwan_vertical", json.getString("writing_mode"))
+        assertEquals("right", json.getString("binding_direction"))
+    }
+
+    @Test
+    fun horizontalPresetSendsHorizontalLeftPair() {
+        val options = ConversionOptions(
+            writingPreset = WritingPreset.HORIZONTAL,
+            pageNumbers = false,
+        )
+        val json = JSONObject(options.toJson())
+
+        assertEquals("horizontal", json.getString("writing_mode"))
+        assertEquals("left", json.getString("binding_direction"))
+        assertFalse(json.getBoolean("page_numbers"))
     }
 }

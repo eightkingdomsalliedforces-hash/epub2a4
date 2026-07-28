@@ -37,11 +37,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import tw.daniel.epubword.model.InputKind
 import tw.daniel.epubword.model.MarginMode
 import tw.daniel.epubword.model.OutputMode
+import tw.daniel.epubword.model.WritingPreset
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,6 +52,7 @@ fun ConverterScreen(
     state: ConversionUiState,
     onChooseInput: () -> Unit,
     onOutputMode: (OutputMode) -> Unit,
+    onWritingPreset: (WritingPreset) -> Unit,
     onMarginMode: (MarginMode) -> Unit,
     onFontName: (String) -> Unit,
     onBodyFontSize: (Double) -> Unit,
@@ -124,6 +127,29 @@ fun ConverterScreen(
             }
 
             StepCard(number = 3, title = "排版設定") {
+                Text("正文方向", fontWeight = FontWeight.Medium)
+                WritingPreset.entries.forEach { preset ->
+                    FilterChip(
+                        selected = state.options.writingPreset == preset,
+                        onClick = { onWritingPreset(preset) },
+                        enabled = !state.isBusy,
+                        label = { Text(preset.label) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Text(
+                    state.options.writingPreset.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.testTag("reading-direction-preview"),
+                )
+                if (state.options.writingPreset == WritingPreset.TAIWAN_VERTICAL) {
+                    Text(
+                        "直排使用 Microsoft Word 原生格式；其他閱讀器可能無法完整呈現。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                 Text("邊界", fontWeight = FontWeight.Medium)
                 MarginMode.entries.forEach { mode ->
                     FilterChip(

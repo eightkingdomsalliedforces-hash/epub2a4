@@ -1,3 +1,5 @@
+import pytest
+
 from epub_a4_word.imposition import build_imposition
 
 
@@ -54,3 +56,31 @@ def test_single_4x6_maps_each_content_page_to_one_sheet() -> None:
     assert plan.paper_sheet_count == 2
     assert plan.signature_count == 0
     assert plan.padded_page_count == 2
+
+
+def test_right_binding_mirrors_each_signature_row_without_reordering_pages() -> None:
+    plan = build_imposition(16, "signature16", "right")
+
+    assert plan.sides == (
+        (1, 16, 3, 14),
+        (15, 2, 13, 4),
+        (5, 12, 7, 10),
+        (11, 6, 9, 8),
+    )
+    assert sorted(page for side in plan.sides for page in side if page) == list(
+        range(1, 17)
+    )
+
+
+def test_right_binding_mirrors_four_up_rows() -> None:
+    assert build_imposition(4, "four_up", "right").sides == ((2, 1, 4, 3),)
+
+
+@pytest.mark.parametrize("mode", ["single_a5", "single_4x6", "b6_on_a5"])
+def test_single_page_modes_keep_logical_order_for_right_binding(mode: str) -> None:
+    assert build_imposition(3, mode, "right").sides == ((1,), (2,), (3,))
+
+
+def test_imposition_rejects_unknown_binding_direction() -> None:
+    with pytest.raises(ValueError, match="binding direction"):
+        build_imposition(4, "four_up", "middle")

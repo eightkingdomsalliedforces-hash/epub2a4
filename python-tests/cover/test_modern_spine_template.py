@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from epub_a4_word.cover.geometry import calculate_layout
-from epub_a4_word.cover.models import LogoAssetMetadata
+from epub_a4_word.cover.models import ElementKind, LogoAssetMetadata
 from epub_a4_word.cover.templates import apply_template
 
 
@@ -37,7 +37,7 @@ def _modern_project(sample_project, width: float, style: str, tmp_path):
 def test_arc_and_volume_use_distinct_fields(sample_project, tmp_path) -> None:
     project = _modern_project(
         sample_project,
-        8.0,
+        12.0,
         "reference_stacked",
         tmp_path,
     )
@@ -78,3 +78,102 @@ def test_all_generated_spine_elements_are_clipped_to_spine(
     )
     logo = result.elements_by_id["modern-spine-logo"]
     assert logo.transform.width_mm >= spine.width_mm * 0.70
+
+
+def test_reference_spine_top_contains_only_real_logo(
+    sample_project, tmp_path
+) -> None:
+    project = _modern_project(
+        sample_project, 12.0, "reference_stacked", tmp_path
+    )
+
+    result = apply_template(project, "modern_vertical_back_with_spine")
+
+    logo = result.elements_by_id["modern-spine-logo"]
+    assert logo.kind == ElementKind.IMAGE
+    assert logo.content["fit"] == "contain"
+    assert logo.content["clip_to_region"] is True
+    assert "modern-spine-publisher-abbreviation" not in result.elements_by_id
+
+
+def test_reference_spine_has_one_publisher_name_at_bottom(
+    sample_project, tmp_path
+) -> None:
+    result = apply_template(
+        _modern_project(
+            sample_project, 12.0, "reference_stacked", tmp_path
+        ),
+        "modern_vertical_back_with_spine",
+    )
+
+    publisher_elements = [
+        element
+        for element in result.elements
+        if element.content.get("layout_role") == "publisher"
+    ]
+    assert [element.id for element in publisher_elements] == [
+        "modern-spine-publisher"
+    ]
+    assert publisher_elements[0].content["direction"] == "horizontal"
+
+
+def test_missing_logo_never_creates_text_logo_and_reports_warning(
+    sample_project, tmp_path
+) -> None:
+    project = _modern_project(
+        sample_project, 8.0, "reference_stacked", tmp_path
+    )
+    project = replace(
+        project,
+        metadata=replace(project.metadata, publisher_logo=None),
+    )
+
+    result = apply_template(project, "modern_vertical_back_with_spine")
+
+    assert "modern-spine-logo" not in result.elements_by_id
+    assert not any("abbreviation" in element.id for element in result.elements)
+    title = result.elements_by_id["modern-spine-title"]
+    assert "出版社 Logo" in " ".join(title.content["layout_warnings"])
+
+
+def test_volume_badge_uses_current_accent_color(
+    sample_project, tmp_path
+) -> None:
+    project = _modern_project(
+        sample_project, 12.0, "reference_stacked", tmp_path
+    )
+    project = replace(
+        project,
+        metadata=replace(project.metadata, spine_accent_color="#4A78C2"),
+    )
+
+    result = apply_template(project, "modern_vertical_back_with_spine")
+
+    badge = result.elements_by_id["modern-spine-volume-badge"]
+    number = result.elements_by_id["modern-spine-volume"]
+    assert badge.content["stroke"] == "#4A78C2"
+    assert number.content["color"] == "#4A78C2"
+
+
+@pytest.mark.parametrize(
+    ("width", "missing_ids"),
+    [
+        (12.0, set()),
+        (8.0, {"modern-spine-english-title"}),
+        (
+            4.0,
+            {"modern-spine-english-title", "modern-spine-code"},
+        ),
+    ],
+)
+def test_reference_generated_elements_follow_width_tier(
+    width, missing_ids, sample_project, tmp_path
+) -> None:
+    result = apply_template(
+        _modern_project(
+            sample_project, width, "reference_stacked", tmp_path
+        ),
+        "modern_vertical_back_with_spine",
+    )
+
+    assert missing_ids.isdisjoint(result.elements_by_id)

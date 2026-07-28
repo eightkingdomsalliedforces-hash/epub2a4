@@ -26,7 +26,7 @@ def test_probe_lists_android_supported_modes():
     result = android_bridge.probe()
 
     assert result["bridge_version"] == "1.0"
-    assert result["python_core_version"] == "0.7.0"
+    assert result["python_core_version"] == "0.8.0"
     assert result["supported_inputs"] == ["epub", "docx"]
     assert result["supported_modes"]["docx"] == [
         "single_a5",
@@ -77,6 +77,8 @@ def test_convert_file_builds_settings_for_epub(monkeypatch, tmp_path: Path):
                 "imposition_mode": "signature16",
                 "margin_mode": "safe",
                 "body_font_pt": 9.0,
+                "writing_mode": "taiwan_vertical",
+                "binding_direction": "right",
                 "page_numbers": True,
                 "cut_guides": False,
             }
@@ -89,6 +91,8 @@ def test_convert_file_builds_settings_for_epub(monkeypatch, tmp_path: Path):
     assert captured["settings"].imposition_mode == "signature16"
     assert captured["settings"].margin_mode == "safe"
     assert captured["settings"].body_font_pt == 9.0
+    assert captured["settings"].writing_mode == "taiwan_vertical"
+    assert captured["settings"].binding_direction == "right"
     assert captured["content_only"] is True
     assert callback.events == [(42, "排版中")]
     assert result["output_path"] == str(output)
@@ -121,6 +125,38 @@ def test_unknown_option_is_rejected(tmp_path: Path):
             str(source),
             str(tmp_path / "out.docx"),
             json.dumps({"dangerous": True}),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("writing_mode", "diagonal", "writing mode"),
+        ("binding_direction", "middle", "binding direction"),
+    ],
+)
+def test_invalid_direction_option_is_rejected_before_conversion(
+    monkeypatch,
+    tmp_path: Path,
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    import android_bridge
+
+    source = tmp_path / "input.epub"
+    source.write_bytes(b"fixture")
+    monkeypatch.setattr(
+        android_bridge,
+        "convert_input",
+        lambda *args, **kwargs: pytest.fail("conversion must not start"),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        android_bridge.convert_file(
+            str(source),
+            str(tmp_path / "out.docx"),
+            json.dumps({field: value}),
         )
 
 

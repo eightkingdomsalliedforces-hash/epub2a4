@@ -26,6 +26,8 @@ class ConversionRequest:
     input_path: Path
     output_path: Path
     imposition_mode: str = "signature16"
+    writing_mode: str = "taiwan_vertical"
+    binding_direction: str = "right"
     margin_mode: str = "safe"
     font_name: str = "Noto Serif CJK TC"
     body_font_pt: float = 9.0
@@ -59,6 +61,10 @@ class ConversionRequest:
             raise ValueError(f"{label} 不支援所選輸出模式。")
         if self.margin_mode not in _ALLOWED_MARGINS:
             raise ValueError("邊界模式無效。")
+        if self.writing_mode not in {"taiwan_vertical", "horizontal"}:
+            raise ValueError("正文方向無效。")
+        if self.binding_direction not in {"right", "left"}:
+            raise ValueError("裝訂方向無效。")
         if self.output_mark_mode not in _ALLOWED_MARK_MODES:
             raise ValueError("輸出標記模式無效。")
         if self.imposition_mode != "b6_on_a5" and self.output_mark_mode != "normal":
@@ -73,6 +79,8 @@ class ConversionRequest:
     def to_layout_settings(self) -> LayoutSettings:
         return LayoutSettings(
             imposition_mode=self.imposition_mode,
+            writing_mode=self.writing_mode,
+            binding_direction=self.binding_direction,
             margin_mode=self.margin_mode,
             font_name=self.font_name.strip(),
             body_font_pt=float(self.body_font_pt),

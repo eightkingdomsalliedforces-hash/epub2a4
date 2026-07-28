@@ -16,6 +16,7 @@ import tw.daniel.epubword.cover.ui.CoverStatus
 import tw.daniel.epubword.cover.ui.CoverUiState
 import tw.daniel.epubword.model.MarginMode
 import tw.daniel.epubword.model.OutputMode
+import tw.daniel.epubword.model.WritingPreset
 
 enum class AppRoute { HOME, CONVERTER, COVER_SETUP, COVER_EDITOR }
 
@@ -28,6 +29,7 @@ fun AppRoot(
     conversionState: ConversionUiState,
     onChooseConversionSource: () -> Unit,
     onOutputMode: (OutputMode) -> Unit,
+    onWritingPreset: (WritingPreset) -> Unit,
     onMarginMode: (MarginMode) -> Unit,
     onFontName: (String) -> Unit,
     onBodyFontSize: (Double) -> Unit,
@@ -96,6 +98,7 @@ fun AppRoot(
             state = conversionState,
             onChooseInput = onChooseConversionSource,
             onOutputMode = onOutputMode,
+            onWritingPreset = onWritingPreset,
             onMarginMode = onMarginMode,
             onFontName = onFontName,
             onBodyFontSize = onBodyFontSize,

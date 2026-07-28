@@ -141,6 +141,7 @@ class MainActivity : ComponentActivity() {
                         inputLauncher.launch(arrayOf(EPUB_MIME, DOCX_MIME, "application/octet-stream"))
                     },
                     onOutputMode = conversionViewModel::setOutputMode,
+                    onWritingPreset = conversionViewModel::setWritingPreset,
                     onMarginMode = conversionViewModel::setMarginMode,
                     onFontName = conversionViewModel::setFontName,
                     onBodyFontSize = conversionViewModel::setBodyFontPt,

@@ -1,9 +1,38 @@
+from dataclasses import replace
+
+import pytest
+
 from epub_a4_word.models import ImageBlock, PageBreakBlock, TextBlock, TextRun
-from epub_a4_word.pagination import LayoutSettings, paginate
+from epub_a4_word.pagination import LayoutSettings, paginate, resolve_layout
 
 
 def _body(text: str) -> TextBlock:
     return TextBlock((TextRun(text),), style="body")
+
+
+def test_layout_direction_defaults_preserve_legacy_horizontal_behavior() -> None:
+    settings = LayoutSettings()
+
+    assert settings.writing_mode == "horizontal"
+    assert settings.binding_direction == "left"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("writing_mode", "diagonal", "writing mode"),
+        ("binding_direction", "middle", "binding direction"),
+    ],
+)
+def test_resolve_layout_rejects_unknown_direction_values(
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    settings = replace(LayoutSettings(), **{field: value})
+
+    with pytest.raises(ValueError, match=message):
+        resolve_layout(settings)
 
 
 def test_paginate_splits_long_cjk_paragraph_without_losing_text() -> None:
@@ -21,6 +50,84 @@ def test_paginate_splits_long_cjk_paragraph_without_losing_text() -> None:
     )
     assert rebuilt == text
     assert all(page.used_points <= settings.content_height_pt + 0.01 for page in pages)
+
+
+def test_vertical_pagination_keeps_mixed_text_in_source_order() -> None:
+    text = "魔法禁書目錄 A Certain Magical Index 2026。" * 90
+    settings = LayoutSettings(
+        writing_mode="taiwan_vertical",
+        binding_direction="right",
+        content_width_pt=120,
+        content_height_pt=220,
+        page_numbers=False,
+    )
+
+    pages = paginate([_body(text)], settings, image_sizes={})
+
+    rebuilt = "".join(
+        block.text
+        for page in pages
+        for block in page.blocks
+        if isinstance(block, TextBlock)
+    )
+    assert len(pages) > 1
+    assert rebuilt == text
+    assert all(page.used_points <= settings.content_width_pt + 0.01 for page in pages)
+
+
+def test_vertical_page_height_controls_characters_per_column() -> None:
+    tall = LayoutSettings(
+        writing_mode="taiwan_vertical",
+        content_width_pt=120,
+        content_height_pt=260,
+        page_numbers=False,
+    )
+    short = replace(tall, content_height_pt=130)
+    text = _body("直排容量測試。" * 120)
+
+    assert len(paginate([text], tall, {})) < len(paginate([text], short, {}))
+
+
+def test_vertical_pagination_rejects_page_that_cannot_fit_one_character() -> None:
+    settings = LayoutSettings(
+        writing_mode="taiwan_vertical",
+        content_width_pt=4,
+        content_height_pt=4,
+        body_font_pt=9,
+        page_numbers=False,
+    )
+
+    with pytest.raises(ValueError, match="直排版面"):
+        paginate([_body("字")], settings, {})
+
+
+def test_vertical_pagination_preserves_styles_breaks_and_image_order() -> None:
+    image = ImageBlock("Images/plate.png")
+    blocks = [
+        TextBlock((TextRun("第一章"),), style="heading"),
+        _body("正文" * 100),
+        TextBlock((TextRun("引文"),), style="quote"),
+        PageBreakBlock(),
+        image,
+        _body("插圖後文字"),
+    ]
+    settings = LayoutSettings(
+        writing_mode="taiwan_vertical",
+        binding_direction="right",
+        content_width_pt=150,
+        content_height_pt=210,
+        page_numbers=False,
+    )
+
+    pages = paginate(blocks, settings, {"Images/plate.png": (600, 900)})
+    flattened = [block for page in pages for block in page.blocks]
+
+    text_blocks = [block for block in flattened if isinstance(block, TextBlock)]
+    assert text_blocks[0].style == "heading"
+    assert next(index for index, block in enumerate(flattened) if block == image) < len(
+        flattened
+    ) - 1
+    assert text_blocks[-1].text == "插圖後文字"
 
 
 def test_explicit_page_break_starts_a_new_mini_page() -> None:
@@ -106,11 +213,6 @@ def test_single_page_modes_resolve_exact_paper_and_one_by_one_grid() -> None:
     assert a5.cell_height_cm > photo.cell_height_cm
     assert a5.content_width_pt > photo.content_width_pt
     assert a5.content_height_pt > photo.content_height_pt
-
-
-import pytest
-
-from epub_a4_word.pagination import resolve_layout
 
 
 @pytest.mark.parametrize(

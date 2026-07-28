@@ -37,6 +37,10 @@ _MARGIN_LABELS = {
     "maximized": "最大化內容",
     "borderless": "無外邊界",
 }
+_DIRECTION_PRESETS = (
+    ("台灣直排（右裝訂）", ("taiwan_vertical", "right")),
+    ("橫排（左裝訂）", ("horizontal", "left")),
+)
 
 
 class ConverterPage(QWidget):
@@ -64,6 +68,10 @@ class ConverterPage(QWidget):
 
         self.mode_combo = QComboBox(self)
         self.mode_combo.setObjectName("conversion-mode")
+        self.direction_combo = QComboBox(self)
+        self.direction_combo.setObjectName("conversion-writing-direction")
+        for label, value in _DIRECTION_PRESETS:
+            self.direction_combo.addItem(label, value)
         self.margin_combo = QComboBox(self)
         for value, label in _MARGIN_LABELS.items():
             self.margin_combo.addItem(label, value)
@@ -125,6 +133,7 @@ class ConverterPage(QWidget):
         form.addRow("來源檔案", source_row)
         form.addRow("輸出 DOCX", output_row)
         form.addRow("輸出模式", self.mode_combo)
+        form.addRow("正文方向", self.direction_combo)
         form.addRow("邊界模式", self.margin_combo)
         form.addRow("版面預覽", self.layout_preview)
         form.addRow("字型", self.font_edit)
@@ -157,6 +166,7 @@ class ConverterPage(QWidget):
         self.controller.cancelled.connect(self._on_cancelled)
         self.source_edit.editingFinished.connect(self._sync_source_from_text)
         self.mode_combo.currentIndexChanged.connect(self._sync_mode_controls)
+        self.direction_combo.currentIndexChanged.connect(self._sync_mode_controls)
         self.cut_guides.toggled.connect(self._sync_mode_controls)
         self.high_compat_guides.toggled.connect(self._sync_mode_controls)
         self._populate_modes(Path("book.epub"))
@@ -187,10 +197,13 @@ class ConverterPage(QWidget):
         self.layout_preview.set_settings(request.to_layout_settings())
 
     def _preview_request(self, mode: str) -> ConversionRequest:
+        writing_mode, binding_direction = self._selected_direction()
         return ConversionRequest(
             input_path=Path(self.source_edit.text().strip() or "book.epub"),
             output_path=Path(self.output_edit.text().strip() or "preview.docx"),
             imposition_mode=mode,
+            writing_mode=writing_mode,
+            binding_direction=binding_direction,
             margin_mode=str(self.margin_combo.currentData() or "maximized"),
             font_name=self.font_edit.text(),
             body_font_pt=self.body_size.value(),
@@ -207,6 +220,12 @@ class ConverterPage(QWidget):
             ),
             content_only=self.content_only.isChecked(),
         )
+
+    def _selected_direction(self) -> tuple[str, str]:
+        value = self.direction_combo.currentData()
+        if isinstance(value, (tuple, list)) and len(value) == 2:
+            return str(value[0]), str(value[1])
+        return "taiwan_vertical", "right"
 
     def set_source_path(self, source: Path | str) -> None:
         path = Path(source).expanduser()
@@ -242,10 +261,13 @@ class ConverterPage(QWidget):
 
     def _build_request(self) -> ConversionRequest:
         mode = str(self.mode_combo.currentData() or "")
+        writing_mode, binding_direction = self._selected_direction()
         return ConversionRequest(
             input_path=Path(self.source_edit.text().strip()).expanduser(),
             output_path=Path(self.output_edit.text().strip()).expanduser(),
             imposition_mode=mode,
+            writing_mode=writing_mode,
+            binding_direction=binding_direction,
             margin_mode=str(self.margin_combo.currentData() or ""),
             font_name=self.font_edit.text(),
             body_font_pt=self.body_size.value(),
@@ -286,6 +308,7 @@ class ConverterPage(QWidget):
         self.cancel_button.setEnabled(running)
         self.source_button.setEnabled(not running)
         self.output_button.setEnabled(not running)
+        self.direction_combo.setEnabled(not running)
         if self.source_edit.text().strip().lower().endswith(".epub"):
             self.content_only.setEnabled(not running)
 

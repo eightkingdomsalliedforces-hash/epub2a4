@@ -37,8 +37,29 @@ enum class MarginMode(val wireValue: String, val label: String) {
     BORDERLESS("borderless", "無邊界（0 mm）"),
 }
 
+enum class WritingPreset(
+    val writingMode: String,
+    val bindingDirection: String,
+    val label: String,
+    val description: String,
+) {
+    TAIWAN_VERTICAL(
+        "taiwan_vertical",
+        "right",
+        "台灣直排（右裝訂）",
+        "由上往下，欄位由右往左 · 右裝訂",
+    ),
+    HORIZONTAL(
+        "horizontal",
+        "left",
+        "橫排（左裝訂）",
+        "由左往右 · 左裝訂",
+    ),
+}
+
 data class ConversionOptions(
     val outputMode: OutputMode = OutputMode.SIGNATURE16,
+    val writingPreset: WritingPreset = WritingPreset.TAIWAN_VERTICAL,
     val marginMode: MarginMode = MarginMode.MAXIMIZED,
     val fontName: String = "Noto Serif CJK TC",
     val bodyFontPt: Double = 8.5,
@@ -65,6 +86,8 @@ data class ConversionOptions(
     fun toJson(): String {
         val values = linkedMapOf<String, String>(
             "imposition_mode" to outputMode.wireValue.jsonQuoted(),
+            "writing_mode" to writingPreset.writingMode.jsonQuoted(),
+            "binding_direction" to writingPreset.bindingDirection.jsonQuoted(),
             "margin_mode" to marginMode.wireValue.jsonQuoted(),
             "font_name" to fontName.jsonQuoted(),
             "body_font_pt" to bodyFontPt.jsonNumber(),

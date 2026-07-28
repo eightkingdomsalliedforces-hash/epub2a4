@@ -6,7 +6,7 @@ import re
 
 from .geometry import CoverLayout, RectMm, calculate_layout
 from .isbn import normalize_ean_addon, normalize_isbn
-from .modern_spine_layout import build_modern_spine_slots
+from .modern_spine_layout import build_modern_spine_slots, fit_spine_font_size
 from .publisher_info_layout import layout_publisher_info
 from .spine_layout import build_spine_slots
 from .vertical_copy_layout import layout_vertical_copy
@@ -825,11 +825,13 @@ def _modern_spine_elements(
         "code": metadata.internal_book_code,
         "publisher": metadata.publisher,
     }
+    logo = metadata.publisher_logo
+    logo_missing = logo is None or not logo.path or not Path(logo.path).is_file()
     for slot in spine_layout.slots:
         if slot.role == "logo":
-            logo = metadata.publisher_logo
-            if logo is None or not logo.path or not Path(logo.path).is_file():
+            if logo_missing:
                 continue
+            assert logo is not None
             elements.append(
                 CoverElement(
                     id=slot.element_id,
@@ -889,12 +891,23 @@ def _modern_spine_elements(
             target = badge
         else:
             target = slot.rect
+        fitted_font_size, fit_warnings = fit_spine_font_size(slot, value)
+        layout_warnings = list(fit_warnings)
+        if slot.role == "title":
+            layout_warnings = [
+                *spine_layout.warnings,
+                *layout_warnings,
+            ]
+            if logo_missing:
+                layout_warnings.append(
+                    "出版社 Logo 無法讀取，已略過 Logo。"
+                )
         element = text_element(
             slot.element_id,
             Region.SPINE,
             target,
             value,
-            slot.font_size_pt,
+            fitted_font_size,
             align="center",
             rotation_deg=90.0 if slot.direction == "horizontal" else 0.0,
             font_weight=slot.font_weight,
@@ -914,11 +927,8 @@ def _modern_spine_elements(
                     "direction": slot.direction,
                     "group_id": "modern-spine-stack",
                     "layout_role": slot.role,
-                    "layout_warnings": (
-                        list(spine_layout.warnings)
-                        if slot.role == "title"
-                        else []
-                    ),
+                    "layout_warnings": layout_warnings,
+                    "clip_to_region": True,
                 },
             )
         )

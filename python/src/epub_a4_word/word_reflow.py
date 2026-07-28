@@ -15,7 +15,7 @@ from .converter import ConversionResult
 from .pagination import LayoutSettings, resolve_layout
 
 ProgressCallback = Callable[[int, str], None]
-_SUPPORTED_MODES = {"single_a5", "single_4x6"}
+_SUPPORTED_MODES = {"single_a5", "single_4x6", "b6_on_a5"}
 
 
 def _notify(progress: ProgressCallback | None, percent: int, message: str) -> None:
@@ -30,8 +30,8 @@ def _clear_story(story) -> None:
     element.append(OxmlElement("w:p"))
 
 
-def _append_page_field(paragraph) -> None:
-    paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+def _append_page_field(paragraph, alignment) -> None:
+    paragraph.alignment = alignment
     run = paragraph.add_run()
     run.font.size = Pt(8)
 
@@ -56,27 +56,50 @@ def _remove_page_number_restart(section) -> None:
         sect_pr.remove(node)
 
 
+def _set_section_text_direction(section, value: str | None) -> None:
+    sect_pr = section._sectPr
+    node = sect_pr.find(qn("w:textDirection"))
+    if value is None:
+        if node is not None:
+            sect_pr.remove(node)
+        return
+    if node is None:
+        node = OxmlElement("w:textDirection")
+        sect_pr.append(node)
+    node.set(qn("w:val"), value)
+
+
 def _configure_section(section, settings: LayoutSettings, add_page_number: bool) -> None:
     resolved = resolve_layout(settings)
     assert resolved.paper_width_cm is not None
     assert resolved.paper_height_cm is not None
-    assert resolved.outer_margin_cm is not None
+    assert resolved.page_margin_left_cm is not None
+    assert resolved.page_margin_right_cm is not None
+    assert resolved.page_margin_top_cm is not None
+    assert resolved.page_margin_bottom_cm is not None
 
     section.orientation = WD_ORIENT.PORTRAIT
     section.page_width = Cm(resolved.paper_width_cm)
     section.page_height = Cm(resolved.paper_height_cm)
 
-    outer = resolved.outer_margin_cm
-    section.top_margin = Cm(outer)
-    section.left_margin = Cm(outer)
-    section.right_margin = Cm(outer)
+    section.top_margin = Cm(resolved.page_margin_top_cm)
+    section.left_margin = Cm(resolved.page_margin_left_cm)
+    section.right_margin = Cm(resolved.page_margin_right_cm)
     # A footer needs a small reserved strip. With page numbers disabled the
     # requested margin preset is applied exactly, including true 0 mm mode.
-    section.bottom_margin = Cm(max(outer, 0.62) if add_page_number else outer)
+    section.bottom_margin = Cm(
+        max(resolved.page_margin_bottom_cm, 0.62)
+        if add_page_number
+        else resolved.page_margin_bottom_cm
+    )
     section.header_distance = Cm(0.1)
     section.footer_distance = Cm(0.12)
     section.different_first_page_header_footer = False
     _remove_page_number_restart(section)
+    _set_section_text_direction(
+        section,
+        "tbRl" if resolved.writing_mode == "taiwan_vertical" else None,
+    )
 
     stories = (
         section.header,
@@ -91,7 +114,21 @@ def _configure_section(section, settings: LayoutSettings, add_page_number: bool)
         _clear_story(story)
 
     if add_page_number:
-        _append_page_field(section.footer.paragraphs[0])
+        odd_alignment = (
+            WD_ALIGN_PARAGRAPH.RIGHT
+            if resolved.binding_direction == "left"
+            else WD_ALIGN_PARAGRAPH.LEFT
+        )
+        even_alignment = (
+            WD_ALIGN_PARAGRAPH.LEFT
+            if resolved.binding_direction == "left"
+            else WD_ALIGN_PARAGRAPH.RIGHT
+        )
+        _append_page_field(section.footer.paragraphs[0], odd_alignment)
+        _append_page_field(
+            section.even_page_footer.paragraphs[0],
+            even_alignment,
+        )
 
 
 
@@ -191,16 +228,23 @@ def convert_docx(
     if source.suffix.lower() != ".docx" or not source.is_file():
         raise ValueError("請選擇有效的 DOCX Word 文件。")
     if settings.imposition_mode not in _SUPPORTED_MODES:
-        raise ValueError("DOCX 重新排版只支援 A5 或 4×6 英吋單頁模式。")
+        raise ValueError(
+            "DOCX 重新排版只支援 A5、B6 置於 A5 或 4×6 英吋單頁模式。"
+        )
     if output.resolve() == source.resolve():
         raise ValueError("輸出路徑不可覆蓋原始 Word 文件。")
 
     _notify(progress, 5, "正在讀取 Word 文件…")
     document = Document(source)
     warnings = _document_warnings(source)
+    if settings.writing_mode == "taiwan_vertical":
+        warnings.append(
+            "直排使用 Microsoft Word 原生格式；"
+            "其他閱讀器或缺少 East Asia 字型時可能替代字形。"
+        )
     _notify(progress, 30, "正在保留段落、表格、圖片與原始格式…")
 
-    document.settings.odd_and_even_pages_header_footer = False
+    document.settings.odd_and_even_pages_header_footer = settings.page_numbers
     for section in document.sections:
         _configure_section(section, settings, add_page_number=settings.page_numbers)
     _fit_body_objects(document)

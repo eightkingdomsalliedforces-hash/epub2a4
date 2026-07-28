@@ -50,6 +50,29 @@ def _jsonable(value: Any) -> Any:
 def project_geometry_snapshot(project: CoverProject) -> dict[str, Any]:
     layout = calculate_layout(project)
     plan = build_print_plan(layout)
+    spine = layout.spine_rect
+    modern_spine_elements = []
+    for element in project.elements:
+        if not element.id.startswith("modern-spine-"):
+            continue
+        transform = element.transform
+        inside_spine = (
+            spine.x_mm <= transform.x_mm
+            and transform.x_mm + transform.width_mm <= spine.right_mm + 1e-9
+            and spine.y_mm <= transform.y_mm
+            and transform.y_mm + transform.height_mm <= spine.bottom_mm + 1e-9
+        )
+        modern_spine_elements.append(
+            {
+                "id": element.id,
+                "layout_role": element.content.get("layout_role", ""),
+                "x_mm": transform.x_mm,
+                "y_mm": transform.y_mm,
+                "width_mm": transform.width_mm,
+                "height_mm": transform.height_mm,
+                "inside_spine": inside_spine,
+            }
+        )
     return {
         "schema_version": project.schema_version,
         "trim_width_mm": project.trim_size.width_mm,
@@ -61,7 +84,25 @@ def project_geometry_snapshot(project: CoverProject) -> dict[str, Any]:
         "overlap_mm": project.overlap_mm,
         "layout": _jsonable(asdict(layout)),
         "print_plan": _jsonable(asdict(plan)),
+        "modern_spine_elements": modern_spine_elements,
     }
+
+
+def _modern_spine_errors(geometry: dict[str, Any]) -> list[str]:
+    elements = geometry["modern_spine_elements"]
+    errors = [
+        f"{item['id']} exceeds the physical spine"
+        for item in elements
+        if not item["inside_spine"]
+    ]
+    publisher_count = sum(
+        item["layout_role"] == "publisher" for item in elements
+    )
+    if publisher_count > 1:
+        errors.append(
+            f"modern spine contains {publisher_count} publisher elements"
+        )
+    return errors
 
 
 def inspect_pdf(path: Path | str) -> dict[str, Any]:
@@ -148,9 +189,12 @@ def main(argv: list[str] | None = None) -> int:
         "pdf": inspect_pdf(args.pdf),
         "docx": inspect_docx(args.docx),
     }
+    errors = _modern_spine_errors(geometry)
+    if errors:
+        result["errors"] = errors
     _configure_utf8_stdout()
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
-    return 0
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":

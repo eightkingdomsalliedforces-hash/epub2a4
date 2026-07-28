@@ -10,6 +10,7 @@ from zipfile import BadZipFile, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 errors: list[str] = []
+EXPECTED_VERSION = "0.8.0"
 
 
 def require(path: str) -> Path:
@@ -59,6 +60,24 @@ checks = {
 for label, pattern in checks.items():
     if not re.search(pattern, app_gradle):
         errors.append(f"Gradle check failed: {label}")
+
+version_sources = {
+    "pyproject.toml": require("pyproject.toml").read_text(encoding="utf-8"),
+    "python package": require(
+        "python/src/epub_a4_word/__init__.py"
+    ).read_text(encoding="utf-8"),
+    "Android": app_gradle,
+}
+version_patterns = {
+    "pyproject.toml": rf'^version\s*=\s*"{re.escape(EXPECTED_VERSION)}"$',
+    "python package": rf'__version__\s*=\s*"{re.escape(EXPECTED_VERSION)}"',
+    "Android": rf'versionName\s*=\s*"{re.escape(EXPECTED_VERSION)}"',
+}
+for label, source in version_sources.items():
+    if not re.search(version_patterns[label], source, re.MULTILINE):
+        errors.append(f"version check failed: {label} must be {EXPECTED_VERSION}")
+if not re.search(r"versionCode\s*=\s*9\b", app_gradle):
+    errors.append("version check failed: Android versionCode must be 9")
 
 chaquopy_index = app_gradle.find("chaquopy {")
 canonical_source_index = app_gradle.find('srcDir("../python/src")')

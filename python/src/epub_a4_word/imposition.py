@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
+
+from .models import BindingDirection
 
 ImpositionMode = Literal[
     "four_up",
@@ -79,13 +81,36 @@ def _build_single_page(page_count: int, mode: ImpositionMode) -> ImpositionPlan:
     )
 
 
-def build_imposition(page_count: int, mode: ImpositionMode = "four_up") -> ImpositionPlan:
+def _mirror_rows(side: SideSlots, columns: int) -> SideSlots:
+    return tuple(
+        item
+        for start in range(0, len(side), columns)
+        for item in reversed(side[start : start + columns])
+    )
+
+
+def build_imposition(
+    page_count: int,
+    mode: ImpositionMode = "four_up",
+    binding_direction: BindingDirection = "left",
+) -> ImpositionPlan:
     if page_count < 0:
         raise ValueError("page_count must not be negative")
+    if binding_direction not in {"left", "right"}:
+        raise ValueError(
+            f"Unsupported binding direction: {binding_direction}"
+        )
     if mode == "four_up":
-        return _build_four_up(page_count)
-    if mode == "signature16":
-        return _build_signature16(page_count)
-    if mode in {"single_a5", "single_4x6", "b6_on_a5"}:
-        return _build_single_page(page_count, mode)
-    raise ValueError(f"Unsupported imposition mode: {mode}")
+        plan = _build_four_up(page_count)
+    elif mode == "signature16":
+        plan = _build_signature16(page_count)
+    elif mode in {"single_a5", "single_4x6", "b6_on_a5"}:
+        plan = _build_single_page(page_count, mode)
+    else:
+        raise ValueError(f"Unsupported imposition mode: {mode}")
+    if binding_direction == "right" and mode in {"four_up", "signature16"}:
+        return replace(
+            plan,
+            sides=tuple(_mirror_rows(side, 2) for side in plan.sides),
+        )
+    return plan

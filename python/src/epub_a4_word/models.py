@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypeAlias
+from typing import Literal, TypeAlias
+
+
+WritingMode = Literal["taiwan_vertical", "horizontal"]
+BindingDirection = Literal["right", "left"]
 
 
 @dataclass(frozen=True)

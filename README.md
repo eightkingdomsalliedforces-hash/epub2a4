@@ -191,3 +191,11 @@ python3.13 scripts/verify_project.py
 LibreOffice 與 `pdfinfo` 存在時，測試會實際將 DOCX 轉成 PDF，驗證 A5、4×6、B6-on-A5 的頁數與紙張尺寸。
 
 建置與實機驗證狀態請看 [BUILD_STATUS.md](BUILD_STATUS.md)。
+## v0.8.0 排版控制
+
+- Desktop 與 Android 預設使用「台灣直排（右裝訂）」；也可切回「橫排（左裝訂）」。
+- 台灣直排由上往下閱讀、欄位由右往左排列，中文保持直立。
+- 英文與長數字交由 Microsoft Word 的原生直排規則處理，不拆成單字元文字。
+- 圖片保持正向，並維持 EPUB／DOCX 原本的內容順序。
+- 「顯示頁碼」是唯一頁碼開關：開啟時文字頁與圖片頁都有頁碼；關閉時所有頁面都沒有頁碼，適合漫畫。
+- 直排效果以 Microsoft Word 的東亞版面支援為準；其他文書軟體可能有不同的字型替代或旋轉結果。

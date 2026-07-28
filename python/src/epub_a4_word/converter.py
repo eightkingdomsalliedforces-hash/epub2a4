@@ -111,7 +111,11 @@ def convert_epub(
         )
     )
     _notify(progress, 100, "轉換完成。")
-    plan = build_imposition(len(pages), settings.imposition_mode)
+    plan = build_imposition(
+        len(pages),
+        settings.imposition_mode,
+        settings.binding_direction,
+    )
     return ConversionResult(
         output_path=output,
         title=book.title,

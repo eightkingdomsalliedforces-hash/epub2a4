@@ -113,32 +113,145 @@ def _reference_slots(
     tier: ModernSpineTier,
     accent: str,
 ) -> tuple[ModernSpineSlot, ...]:
+    if tier == "full":
+        return _reference_full_slots(safe, tier, accent)
+    if tier == "compact":
+        return _reference_compact_slots(safe, tier, accent)
+    return _reference_minimal_slots(safe, tier, accent)
+
+
+def _reference_full_slots(
+    safe: RectMm,
+    tier: ModernSpineTier,
+    accent: str,
+) -> tuple[ModernSpineSlot, ...]:
     return (
-        _slot(safe, tier, "logo", 0.00, 0.105, accent),
+        _slot(safe, tier, "logo", 0.00, 0.10, accent),
         _slot(
             safe,
             tier,
             "english_title",
-            0.115,
-            0.135,
+            0.11,
+            0.08,
             "#444444",
             direction="horizontal",
         ),
-        _slot(safe, tier, "title", 0.255, 0.285, "#191919", weight=600),
-        _slot(safe, tier, "arc", 0.550, 0.075, "#333333"),
-        _slot(safe, tier, "volume_badge", 0.635, 0.095, accent, weight=700),
-        _slot(safe, tier, "author", 0.745, 0.125, "#191919", weight=500),
+        _slot(safe, tier, "title", 0.20, 0.35, "#191919", weight=700),
+        _slot(safe, tier, "arc", 0.56, 0.07, accent, weight=600),
+        _slot(safe, tier, "volume_badge", 0.64, 0.09, accent, weight=700),
+        _slot(safe, tier, "author", 0.75, 0.11, "#191919", weight=500),
         _slot(
             safe,
             tier,
             "code",
-            0.880,
-            0.045,
+            0.87,
+            0.05,
             "#555555",
+            width=0.52,
             direction="horizontal",
         ),
-        _slot(safe, tier, "publisher", 0.935, 0.060, "#191919", weight=500),
+        _slot(
+            safe,
+            tier,
+            "publisher",
+            0.93,
+            0.06,
+            "#191919",
+            weight=500,
+            direction="horizontal",
+        ),
     )
+
+
+def _reference_compact_slots(
+    safe: RectMm,
+    tier: ModernSpineTier,
+    accent: str,
+) -> tuple[ModernSpineSlot, ...]:
+    return (
+        _slot(safe, tier, "logo", 0.00, 0.10, accent),
+        _slot(safe, tier, "title", 0.12, 0.42, "#191919", weight=700),
+        _slot(safe, tier, "arc", 0.55, 0.07, accent, weight=600),
+        _slot(safe, tier, "volume_badge", 0.64, 0.09, accent, weight=700),
+        _slot(safe, tier, "author", 0.75, 0.11, "#191919", weight=500),
+        _slot(
+            safe,
+            tier,
+            "code",
+            0.875,
+            0.05,
+            "#555555",
+            width=0.58,
+            direction="horizontal",
+        ),
+        _slot(
+            safe,
+            tier,
+            "publisher",
+            0.94,
+            0.055,
+            "#191919",
+            weight=500,
+            direction="horizontal",
+        ),
+    )
+
+
+def _reference_minimal_slots(
+    safe: RectMm,
+    tier: ModernSpineTier,
+    accent: str,
+) -> tuple[ModernSpineSlot, ...]:
+    return (
+        _slot(safe, tier, "logo", 0.00, 0.11, accent),
+        _slot(safe, tier, "title", 0.13, 0.45, "#191919", weight=700),
+        _slot(safe, tier, "arc", 0.60, 0.08, accent, weight=600),
+        _slot(safe, tier, "volume_badge", 0.70, 0.10, accent, weight=700),
+        _slot(safe, tier, "author", 0.82, 0.09, "#191919", weight=500),
+        _slot(
+            safe,
+            tier,
+            "publisher",
+            0.93,
+            0.065,
+            "#191919",
+            weight=500,
+            direction="horizontal",
+        ),
+    )
+
+
+def _weighted_text_units(text: str) -> float:
+    return sum(0.5 if ord(character) < 128 else 1.0 for character in text)
+
+
+def _text_fits(slot: ModernSpineSlot, text: str, font_size_pt: float) -> bool:
+    font_mm = font_size_pt * 25.4 / 72.0
+    units = _weighted_text_units(text)
+    if slot.direction == "horizontal":
+        return units * font_mm * 0.55 <= slot.rect.width_mm
+    rows = max(1.0, slot.rect.height_mm / (font_mm * 1.05))
+    columns = max(1.0, slot.rect.width_mm / (font_mm * 1.15))
+    return units <= rows * columns
+
+
+def fit_spine_font_size(
+    slot: ModernSpineSlot,
+    text: str,
+) -> tuple[float, tuple[str, ...]]:
+    minimums = {
+        "title": 6.0,
+        "author": 4.5,
+        "publisher": 4.0,
+        "code": 3.5,
+    }
+    minimum = minimums.get(slot.role, 3.5)
+    fitted = max(minimum, slot.font_size_pt)
+    while fitted > minimum and not _text_fits(slot, text, fitted):
+        fitted = max(minimum, round(fitted - 0.5, 1))
+    if _text_fits(slot, text, fitted):
+        return fitted, ()
+    return fitted, ("書脊文字已縮至可讀下限並限制於安全範圍。",)
 
 
 def _clean_slots(
