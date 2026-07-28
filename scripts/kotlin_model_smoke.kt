@@ -2,8 +2,11 @@ import tw.daniel.epubword.model.ConversionOptions
 import tw.daniel.epubword.model.InputKind
 import tw.daniel.epubword.model.MarginMode
 import tw.daniel.epubword.model.OutputMode
+import tw.daniel.epubword.model.WritingPreset
 
 fun main() {
+    check(WritingPreset.TAIWAN_VERTICAL.writingMode == "taiwan_vertical")
+    check(WritingPreset.TAIWAN_VERTICAL.bindingDirection == "right")
     check(OutputMode.allowedFor(InputKind.DOCX) == listOf(OutputMode.A5, OutputMode.PHOTO_4X6))
     check(OutputMode.allowedFor(InputKind.EPUB).contains(OutputMode.SIGNATURE16))
     val normalized = ConversionOptions(outputMode = OutputMode.SIGNATURE16)

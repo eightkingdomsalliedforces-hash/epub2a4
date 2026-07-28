@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.8.0 — 2026-07-28
+
+### 台灣直排與頁碼
+
+- Desktop 與 Android 新增「台灣直排（右裝訂）」及「橫排（左裝訂）」選擇。
+- 直排 DOCX 使用 Microsoft Word 原生直排規則處理英文與長數字；中文及圖片維持正向。
+- 單一頁碼開關同時控制文字頁與純圖片頁，關閉後適合無頁碼漫畫。
+- 右裝訂模式會鏡像拼版位置與頁碼方向，橫排舊有輸出保持相容。
+
+### 現代出版社書脊
+
+- A 款書脊改為頂端只放真實出版社 Logo，出版社名稱只在底部出現一次。
+- 主標題加大、卷數使用主題色圓形徽章，作者與內部書號依實際書脊寬度排列。
+- 窄書脊會自動省略次要欄位、縮放文字並限制在安全範圍內，不會超出書脊。
+- PNG 預覽、PDF 與 DOCX 共用同一套書脊幾何與裁切範圍。
+
 ### Conversion and pagination
 
 - Changed EPUB conversion to default to body-only output, with a user-visible option to retain the original front and back cover pages.
