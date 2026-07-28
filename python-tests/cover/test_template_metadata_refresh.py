@@ -8,6 +8,44 @@ from epub_a4_word.cover.models import ElementTransform
 from epub_a4_word.cover.templates import apply_template, refresh_template_metadata
 
 
+def test_refresh_marks_changed_accent_as_manual(sample_project) -> None:
+    project = sample_project()
+    project = replace(
+        project,
+        metadata=replace(
+            project.metadata,
+            spine_accent_color="#2674D9",
+            extracted_accent_color="#2674D9",
+            accent_color_mode="auto",
+        ),
+    )
+
+    refreshed = refresh_template_metadata(
+        project,
+        replace(project.metadata, spine_accent_color="#D56A31"),
+    )
+
+    assert refreshed.metadata.spine_accent_color == "#D56A31"
+    assert refreshed.metadata.accent_color_mode == "manual"
+
+
+def test_refresh_keeps_unchanged_extracted_accent_automatic(sample_project) -> None:
+    project = sample_project()
+    project = replace(
+        project,
+        metadata=replace(
+            project.metadata,
+            spine_accent_color="#2674D9",
+            extracted_accent_color="#2674D9",
+            accent_color_mode="auto",
+        ),
+    )
+
+    refreshed = refresh_template_metadata(project, project.metadata)
+
+    assert refreshed.metadata.accent_color_mode == "auto"
+
+
 def test_metadata_refresh_preserves_existing_template_geometry(sample_project) -> None:
     project = apply_template(
         replace(

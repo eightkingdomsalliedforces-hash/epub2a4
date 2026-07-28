@@ -11,6 +11,7 @@ from zipfile import BadZipFile, ZipFile
 from epub_a4_word.epub import estimate_epub_page_count
 from epub_a4_word.pagination import LayoutSettings
 
+from .accent_color import apply_auto_accent
 from .docx_export import export_docx
 from .export_plan import build_export_plan
 from .geometry import calculate_layout
@@ -389,6 +390,15 @@ def new_project(source_path: str, settings_json: str) -> str:
         ),
     )
     front_asset, back_asset = _cover_assets(source, inspection, settings, assets_dir)
+    metadata, accent_warnings = apply_auto_accent(project.metadata, front_asset)
+    background = dict(project.background)
+    if accent_warnings:
+        warnings = list(background.get("warnings", ()))
+        for warning in accent_warnings:
+            if warning not in warnings:
+                warnings.append(warning)
+        background["warnings"] = warnings
+    project = replace(project, metadata=metadata, background=background)
     if front_asset is not None:
         layout = calculate_layout(project)
         if image_mode is ImageMode.FULL_SPREAD:

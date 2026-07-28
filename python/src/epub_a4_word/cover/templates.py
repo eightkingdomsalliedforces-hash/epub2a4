@@ -758,6 +758,11 @@ def refresh_template_metadata(
 ) -> CoverProject:
     """Refresh template-managed content while preserving edited geometry."""
 
+    if (
+        metadata.extracted_accent_color
+        and metadata.spine_accent_color != metadata.extracted_accent_color
+    ):
+        metadata = replace(metadata, accent_color_mode="manual")
     candidate = replace(project, metadata=metadata)
     active = str(project.background.get("active_template", "")).strip()
     if not active:
