@@ -7,7 +7,15 @@ from dataclasses import dataclass, field, replace
 from typing import Iterable, Literal, Mapping
 
 from .imposition import ImpositionMode
-from .models import ContentBlock, ImageBlock, PageBreakBlock, TextBlock, TextRun
+from .models import (
+    BindingDirection,
+    ContentBlock,
+    ImageBlock,
+    PageBreakBlock,
+    TextBlock,
+    TextRun,
+    WritingMode,
+)
 from .text_metrics import paragraph_metrics, word_safety_points
 
 MarginMode = Literal["safe", "maximized", "borderless"]
@@ -50,6 +58,8 @@ _MARGIN_PRESETS: dict[MarginMode, _MarginPreset] = {
 @dataclass(frozen=True)
 class LayoutSettings:
     imposition_mode: ImpositionMode = "signature16"
+    writing_mode: WritingMode = "horizontal"
+    binding_direction: BindingDirection = "left"
     margin_mode: MarginMode = "maximized"
     font_name: str = "Noto Serif CJK TC"
     body_font_pt: float = 8.5
@@ -98,6 +108,12 @@ class MiniPage:
 
 def resolve_layout(settings: LayoutSettings) -> LayoutSettings:
     """Resolve paper, grid, page margins, cell geometry and content dimensions."""
+    if settings.writing_mode not in {"taiwan_vertical", "horizontal"}:
+        raise ValueError(f"Unsupported writing mode: {settings.writing_mode}")
+    if settings.binding_direction not in {"right", "left"}:
+        raise ValueError(
+            f"Unsupported binding direction: {settings.binding_direction}"
+        )
     try:
         preset = _MARGIN_PRESETS[settings.margin_mode]
     except KeyError as exc:

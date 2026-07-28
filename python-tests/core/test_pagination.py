@@ -1,9 +1,38 @@
+from dataclasses import replace
+
+import pytest
+
 from epub_a4_word.models import ImageBlock, PageBreakBlock, TextBlock, TextRun
-from epub_a4_word.pagination import LayoutSettings, paginate
+from epub_a4_word.pagination import LayoutSettings, paginate, resolve_layout
 
 
 def _body(text: str) -> TextBlock:
     return TextBlock((TextRun(text),), style="body")
+
+
+def test_layout_direction_defaults_preserve_legacy_horizontal_behavior() -> None:
+    settings = LayoutSettings()
+
+    assert settings.writing_mode == "horizontal"
+    assert settings.binding_direction == "left"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("writing_mode", "diagonal", "writing mode"),
+        ("binding_direction", "middle", "binding direction"),
+    ],
+)
+def test_resolve_layout_rejects_unknown_direction_values(
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    settings = replace(LayoutSettings(), **{field: value})
+
+    with pytest.raises(ValueError, match=message):
+        resolve_layout(settings)
 
 
 def test_paginate_splits_long_cjk_paragraph_without_losing_text() -> None:
@@ -106,11 +135,6 @@ def test_single_page_modes_resolve_exact_paper_and_one_by_one_grid() -> None:
     assert a5.cell_height_cm > photo.cell_height_cm
     assert a5.content_width_pt > photo.content_width_pt
     assert a5.content_height_pt > photo.content_height_pt
-
-
-import pytest
-
-from epub_a4_word.pagination import resolve_layout
 
 
 @pytest.mark.parametrize(
