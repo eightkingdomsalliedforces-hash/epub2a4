@@ -17,6 +17,7 @@ from PIL import (
 )
 
 from .barcode_layout import BarcodeTextAnchor, build_barcode_layout
+from .crop_frame import build_crop_frame
 from .fonts import resolve_font
 from .isbn import normalize_isbn
 from .geometry import CoverLayout, RectMm, calculate_layout
@@ -632,6 +633,20 @@ def _render_spread_with_warnings(
         layer = _clip_layer(layer, _element_clip(project, layout, element), dpi)
         canvas = Image.alpha_composite(canvas, layer)
 
+    crop_lines = build_crop_frame(project, layout)
+    if crop_lines:
+        draw = ImageDraw.Draw(canvas)
+        for line in crop_lines:
+            draw.line(
+                (
+                    mm_to_px(line.x1_mm, dpi),
+                    mm_to_px(line.y1_mm, dpi),
+                    mm_to_px(line.x2_mm, dpi),
+                    mm_to_px(line.y2_mm, dpi),
+                ),
+                fill="black",
+                width=max(1, round(line.width_pt / 72.0 * dpi)),
+            )
     return canvas, tuple(dict.fromkeys(warnings))
 
 

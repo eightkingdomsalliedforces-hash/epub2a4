@@ -41,6 +41,32 @@ def test_spread_pixel_size_matches_mm(
     assert image.height == round(layout.bleed_rect.height_mm / 25.4 * 300)
 
 
+def test_spread_draws_full_crop_frame_and_respects_switch(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    project = sample_project()
+    layout = calculate_layout(project)
+    dpi = 100
+    x = mm_to_px(layout.spread_rect.x_mm, dpi)
+    y = mm_to_px(
+        layout.spread_rect.y_mm + layout.spread_rect.height_mm / 2.0,
+        dpi,
+    )
+
+    shown = render_spread(project, dpi=dpi).convert("RGB")
+    hidden_project = replace(
+        project,
+        export_settings=replace(
+            project.export_settings,
+            show_crop_marks=False,
+        ),
+    )
+    hidden = render_spread(hidden_project, dpi=dpi).convert("RGB")
+
+    assert max(shown.getpixel((x, y))) < 40
+    assert min(hidden.getpixel((x, y))) > 240
+
+
 def test_front_only_image_does_not_paint_back(
     sample_project: Callable[..., CoverProject], tmp_path: Path
 ) -> None:

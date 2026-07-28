@@ -166,6 +166,23 @@ def test_vertical_text_box_keeps_editable_characters_with_line_breaks(
     assert len(shapes[0].xpath(".//w:br", namespaces=NS)) == 3
 
 
+def test_docx_uses_four_shared_crop_frame_lines_at_point_35(
+    sample_project: Callable[..., CoverProject], tmp_path: Path
+) -> None:
+    path = export_docx(
+        sample_project(trim=(105.0, 148.0)),
+        tmp_path / "crop-frame.docx",
+    ).path
+    document = _document_xml(path)
+    lines = document.xpath(
+        ".//v:line[starts-with(@id, 'crop-frame-')]",
+        namespaces=NS,
+    )
+
+    assert len(lines) == 4
+    assert all(line.get("strokeweight") == "0.35pt" for line in lines)
+
+
 def test_docx_package_reopens_and_has_image_relationships(
     sample_project: Callable[..., CoverProject], tmp_path: Path
 ) -> None:
