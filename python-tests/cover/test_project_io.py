@@ -55,6 +55,66 @@ def test_project_round_trip_preserves_types(tmp_path: Path) -> None:
     assert restored.elements[0].transform.width_mm == 105.0
 
 
+def test_project_round_trip_preserves_modern_cover_metadata(tmp_path: Path) -> None:
+    project = sample_project(tmp_path)
+    project = replace(
+        project,
+        metadata=replace(
+            project.metadata,
+            back_vertical_copy="第一欄\n第二欄",
+            back_highlight_copy="醒目文案",
+            spine_style="parallel_columns",
+            accent_color_mode="manual",
+            extracted_accent_color="#D56A31",
+        ),
+    )
+
+    restored = loads_project(dumps_project(project))
+
+    assert restored.metadata.back_vertical_copy == "第一欄\n第二欄"
+    assert restored.metadata.back_highlight_copy == "醒目文案"
+    assert restored.metadata.spine_style == "parallel_columns"
+    assert restored.metadata.accent_color_mode == "manual"
+    assert restored.metadata.extracted_accent_color == "#D56A31"
+
+
+def test_old_project_uses_modern_cover_metadata_defaults(tmp_path: Path) -> None:
+    raw = json.loads(dumps_project(sample_project(tmp_path)))
+    for key in (
+        "back_vertical_copy",
+        "back_highlight_copy",
+        "spine_style",
+        "accent_color_mode",
+        "extracted_accent_color",
+    ):
+        raw["metadata"].pop(key, None)
+
+    restored = loads_project(json.dumps(raw, ensure_ascii=False))
+
+    assert restored.metadata.back_vertical_copy == ""
+    assert restored.metadata.back_highlight_copy == ""
+    assert restored.metadata.spine_style == "reference_stacked"
+    assert restored.metadata.accent_color_mode == "auto"
+    assert restored.metadata.extracted_accent_color == ""
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("spine_style", "diagonal"),
+        ("accent_color_mode", "sometimes"),
+    ],
+)
+def test_rejects_invalid_modern_cover_metadata_enum(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    project = sample_project(tmp_path)
+    project = replace(project, metadata=replace(project.metadata, **{field: value}))
+
+    with pytest.raises(CoverValidationError, match=field):
+        dumps_project(project)
+
+
 def test_dump_is_deterministic_compact_utf8_json(tmp_path: Path) -> None:
     text = dumps_project(sample_project(tmp_path))
     assert text == dumps_project(sample_project(tmp_path))

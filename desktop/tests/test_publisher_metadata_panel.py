@@ -71,3 +71,37 @@ def test_cover_setup_uses_shared_publisher_panel_and_passes_settings(qtbot, tmp_
     assert settings["publisher"] == "台灣角川"
     assert settings["english_title"] == "Index"
     assert settings["volume_number"] == "1"
+
+
+def test_modern_cover_fields_are_editable(qtbot) -> None:
+    panel = PublisherMetadataPanel()
+    qtbot.addWidget(panel)
+    panel.back_vertical_copy_edit.setPlainText("黑色直排內文")
+    panel.back_highlight_copy_edit.setPlainText("醒目文案")
+    panel.spine_style_combo.setCurrentIndex(
+        panel.spine_style_combo.findData("parallel_columns")
+    )
+
+    values = panel.values()
+
+    assert values.back_vertical_copy == "黑色直排內文"
+    assert values.back_highlight_copy == "醒目文案"
+    assert values.spine_style == "parallel_columns"
+
+
+def test_manual_colour_edit_switches_mode(qtbot) -> None:
+    panel = PublisherMetadataPanel()
+    qtbot.addWidget(panel)
+
+    panel.spine_accent_color_edit.setText("#336699")
+
+    assert panel.values().accent_color_mode == "manual"
+
+
+def test_setup_exposes_full_crop_frame_switch(qtbot, tmp_path: Path) -> None:
+    panel = CoverSetupPanel()
+    qtbot.addWidget(panel)
+    panel.set_source(tmp_path / "book.epub", page_count=160, confirmed=True)
+    panel.show_crop_marks_check.setChecked(False)
+
+    assert panel.values().settings(tmp_path)["show_crop_marks"] is False

@@ -10,6 +10,7 @@ from docx.enum.section import WD_ORIENT, WD_SECTION
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+from .crop_frame import CropFrameLine, build_crop_frame
 from .geometry import RectMm, calculate_layout
 from .models import CoverElement, CoverProject, ElementKind
 from .ooxml import (
@@ -21,7 +22,7 @@ from .ooxml import (
     mm_to_twips,
 )
 from .pdf_export import CoverExportError, ExportResult
-from .print_plan import PrintMark, PrintPage, build_print_plan
+from .print_plan import PrintMark, PrintPage, build_print_plan, visible_print_marks
 from .project_io import validate_project
 
 
@@ -192,8 +193,8 @@ def _label_rect(mark: PrintMark) -> RectMm:
     )
 
 
-def _add_print_marks(paragraph, page: PrintPage) -> None:
-    for index, mark in enumerate(page.marks, start=1):
+def _add_print_marks(paragraph, project: CoverProject, page: PrintPage) -> None:
+    for index, mark in enumerate(visible_print_marks(project, page), start=1):
         if mark.kind == "line" and mark.x2_mm is not None and mark.y2_mm is not None:
             add_line_shape(
                 paragraph,
@@ -221,6 +222,52 @@ def _add_print_marks(paragraph, page: PrintPage) -> None:
                 z_index=-1,
             )
             paragraph._p.append(shape)
+
+
+def _clip_crop_line(
+    line: CropFrameLine,
+    source: RectMm,
+) -> tuple[float, float, float, float] | None:
+    if line.y1_mm == line.y2_mm:
+        if not source.y_mm <= line.y1_mm <= source.bottom_mm:
+            return None
+        left = max(min(line.x1_mm, line.x2_mm), source.x_mm)
+        right = min(max(line.x1_mm, line.x2_mm), source.right_mm)
+        if right < left:
+            return None
+        return left, line.y1_mm, right, line.y2_mm
+    if line.x1_mm == line.x2_mm:
+        if not source.x_mm <= line.x1_mm <= source.right_mm:
+            return None
+        top = max(min(line.y1_mm, line.y2_mm), source.y_mm)
+        bottom = min(max(line.y1_mm, line.y2_mm), source.bottom_mm)
+        if bottom < top:
+            return None
+        return line.x1_mm, top, line.x2_mm, bottom
+    return None
+
+
+def _add_crop_frame(
+    paragraph,
+    project: CoverProject,
+    layout,
+    page: PrintPage,
+) -> None:
+    for index, line in enumerate(build_crop_frame(project, layout), start=1):
+        clipped = _clip_crop_line(line, page.source_rect)
+        if clipped is None:
+            continue
+        x1, y1, x2, y2 = clipped
+        add_line_shape(
+            paragraph,
+            shape_id=f"crop-frame-{page.name}-{index}",
+            x1_mm=page.destination_rect.x_mm + x1 - page.source_rect.x_mm,
+            y1_mm=page.destination_rect.y_mm + y1 - page.source_rect.y_mm,
+            x2_mm=page.destination_rect.x_mm + x2 - page.source_rect.x_mm,
+            y2_mm=page.destination_rect.y_mm + y2 - page.source_rect.y_mm,
+            behind_text=False,
+            width_pt=line.width_pt,
+        )
 
 
 def _validate_docx(output: Path, expected_sections: int) -> None:
@@ -271,8 +318,9 @@ def export_docx(project: CoverProject, output_path: Path | str) -> ExportResult:
         paragraph.paragraph_format.space_before = 0
         paragraph.paragraph_format.space_after = 0
         paragraph.paragraph_format.line_spacing = 1
-        _add_print_marks(paragraph, page)
+        _add_print_marks(paragraph, project, page)
         drawing_id = _add_elements(paragraph, project, page, drawing_id)
+        _add_crop_frame(paragraph, project, layout, page)
 
     temporary = output.with_suffix(output.suffix + ".tmp")
     try:

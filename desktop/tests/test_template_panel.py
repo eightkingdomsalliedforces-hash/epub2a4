@@ -49,3 +49,15 @@ def test_all_template_panel_options_apply_through_controller(qtbot, tmp_path: Pa
             assert project.elements == ()
         else:
             assert project.elements
+
+
+def test_modern_vertical_template_is_available(qtbot) -> None:
+    panel = TemplatePanel()
+    qtbot.addWidget(panel)
+
+    values = [
+        str(panel.combo.itemData(index))
+        for index in range(panel.combo.count())
+    ]
+
+    assert "modern_vertical_back_with_spine" in values

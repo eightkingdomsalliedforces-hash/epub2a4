@@ -11,6 +11,7 @@ from zipfile import BadZipFile, ZipFile
 from epub_a4_word.epub import estimate_epub_page_count
 from epub_a4_word.pagination import LayoutSettings
 
+from .accent_color import apply_auto_accent
 from .docx_export import export_docx
 from .export_plan import build_export_plan
 from .geometry import calculate_layout
@@ -28,7 +29,11 @@ from .models import (
 from .pdf_export import ExportResult, export_original_pdf, export_pdf
 from .project_io import CoverValidationError, dumps_project, loads_project
 from .render import render_preview as _render_preview
-from .templates import apply_template as _apply_template, assign_publisher_logo as _assign_publisher_logo
+from .templates import (
+    apply_template as _apply_template,
+    assign_publisher_logo as _assign_publisher_logo,
+    refresh_template_metadata as _refresh_template_metadata,
+)
 
 _SUPPORTED_TRIMS = (
     (148.0, 210.0),
@@ -63,6 +68,11 @@ _ALLOWED_SETTINGS = {
     "series_name",
     "internal_book_code",
     "spine_accent_color",
+    "back_vertical_copy",
+    "back_highlight_copy",
+    "spine_style",
+    "accent_color_mode",
+    "extracted_accent_color",
     "confirmed_back_cover_asset_id",
 }
 
@@ -348,6 +358,13 @@ def new_project(source_path: str, settings_json: str) -> str:
         spine_accent_color=metadata_text(
             "spine_accent_color", inspection.metadata.spine_accent_color
         ) or "#F15A24",
+        back_vertical_copy=metadata_text(
+            "back_vertical_copy", inspection.metadata.description
+        ),
+        back_highlight_copy=metadata_text("back_highlight_copy", ""),
+        spine_style=metadata_text("spine_style", "reference_stacked"),
+        accent_color_mode=metadata_text("accent_color_mode", "auto"),
+        extracted_accent_color=metadata_text("extracted_accent_color", ""),
         page_count_is_estimate=estimated,
     )
     image_mode_value = settings.get("image_mode", ImageMode.FRONT_ONLY.value)
@@ -377,6 +394,15 @@ def new_project(source_path: str, settings_json: str) -> str:
         ),
     )
     front_asset, back_asset = _cover_assets(source, inspection, settings, assets_dir)
+    metadata, accent_warnings = apply_auto_accent(project.metadata, front_asset)
+    background = dict(project.background)
+    if accent_warnings:
+        warnings = list(background.get("warnings", ()))
+        for warning in accent_warnings:
+            if warning not in warnings:
+                warnings.append(warning)
+        background["warnings"] = warnings
+    project = replace(project, metadata=metadata, background=background)
     if front_asset is not None:
         layout = calculate_layout(project)
         if image_mode is ImageMode.FULL_SPREAD:
@@ -476,6 +502,46 @@ def extract_embedded_asset(project_json: str, asset_id: str) -> dict[str, Any]:
 
 def apply_template(project_json: str, template_id: str) -> str:
     return dumps_project(_apply_template(loads_project(project_json), template_id))
+
+
+def refresh_template_metadata(project_json: str, candidate_json: str) -> str:
+    project = loads_project(project_json)
+    candidate = loads_project(candidate_json)
+    return dumps_project(_refresh_template_metadata(project, candidate.metadata))
+
+
+def reextract_accent(project_json: str) -> str:
+    project = loads_project(project_json)
+    front_path: str | None = None
+    ordered = sorted(
+        project.elements,
+        key=lambda element: element.id != "source-cover-image",
+    )
+    for element in ordered:
+        if (
+            element.kind is ElementKind.IMAGE
+            and element.region in {Region.FRONT, Region.SPREAD}
+        ):
+            value = element.content.get("path")
+            if isinstance(value, str) and value.strip():
+                front_path = value
+                break
+    metadata, warnings = apply_auto_accent(
+        replace(project.metadata, accent_color_mode="auto"),
+        front_path,
+    )
+    background = dict(project.background)
+    if warnings:
+        existing = list(background.get("warnings", ()))
+        for warning in warnings:
+            if warning not in existing:
+                existing.append(warning)
+        background["warnings"] = existing
+    refreshed = _refresh_template_metadata(
+        replace(project, background=background),
+        metadata,
+    )
+    return dumps_project(refreshed)
 
 
 def assign_publisher_logo(project_json: str, image_path: str) -> str:

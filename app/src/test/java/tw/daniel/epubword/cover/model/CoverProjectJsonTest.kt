@@ -60,6 +60,39 @@ class CoverProjectJsonTest {
     }
 
     @Test
+    fun preservesModernCoverMetadata() {
+        val fixture = JSONObject(javaClass.getResource("/cover-project-v1.json")!!.readText())
+        fixture.getJSONObject("metadata")
+            .put("back_vertical_copy", "第一欄\n第二欄")
+            .put("back_highlight_copy", "醒目文案")
+            .put("spine_style", "parallel_columns")
+            .put("accent_color_mode", "manual")
+            .put("extracted_accent_color", "#D56A31")
+
+        val restored = CoverProjectJson.decode(
+            CoverProjectJson.encode(CoverProjectJson.decode(fixture.toString())),
+        )
+
+        assertEquals("第一欄\n第二欄", restored.metadata.backVerticalCopy)
+        assertEquals("醒目文案", restored.metadata.backHighlightCopy)
+        assertEquals("parallel_columns", restored.metadata.spineStyle)
+        assertEquals("manual", restored.metadata.accentColorMode)
+        assertEquals("#D56A31", restored.metadata.extractedAccentColor)
+    }
+
+    @Test
+    fun oldProjectUsesModernCoverMetadataDefaults() {
+        val text = javaClass.getResource("/cover-project-v1.json")!!.readText()
+        val restored = CoverProjectJson.decode(text)
+
+        assertEquals("", restored.metadata.backVerticalCopy)
+        assertEquals("", restored.metadata.backHighlightCopy)
+        assertEquals("reference_stacked", restored.metadata.spineStyle)
+        assertEquals("auto", restored.metadata.accentColorMode)
+        assertEquals("", restored.metadata.extractedAccentColor)
+    }
+
+    @Test
     fun rejectsUnknownSchemaAndDuplicateElementIds() {
         val fixture = JSONObject(javaClass.getResource("/cover-project-v1.json")!!.readText())
         fixture.put("schema_version", 2)

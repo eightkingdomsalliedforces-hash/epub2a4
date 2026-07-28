@@ -190,6 +190,17 @@ def cover_apply_template_json(project_json: str, template_id: str) -> str:
     return cover_service.apply_template(project_json, template_id)
 
 
+def cover_refresh_template_metadata_json(
+    project_json: str,
+    candidate_json: str,
+) -> str:
+    return cover_service.refresh_template_metadata(project_json, candidate_json)
+
+
+def cover_reextract_accent_json(project_json: str) -> str:
+    return cover_service.reextract_accent(project_json)
+
+
 def cover_assign_publisher_logo_json(project_json: str, image_path: str) -> str:
     return cover_service.assign_publisher_logo(project_json, image_path)
 

@@ -11,6 +11,7 @@ from PIL import Image
 import pytest
 
 from epub_a4_word.cover.docx_export import export_docx
+from epub_a4_word.cover.geometry import calculate_layout
 from epub_a4_word.cover.models import (
     CoverElement,
     CoverProject,
@@ -127,6 +128,61 @@ def test_text_boxes_contain_real_word_text_and_absolute_vml_positioning(
     assert document.xpath(".//w:txbxContent//w:t[text()='範例書名']", namespaces=NS)
 
 
+def test_vertical_text_box_keeps_editable_characters_with_line_breaks(
+    sample_project: Callable[..., CoverProject], tmp_path: Path
+) -> None:
+    project = sample_project()
+    safe = calculate_layout(project).back_safe_rect
+    vertical = CoverElement(
+        id="editable-vertical-copy",
+        kind=ElementKind.TEXT,
+        region=Region.BACK,
+        transform=ElementTransform(
+            safe.x_mm,
+            safe.y_mm,
+            8.0,
+            50.0,
+        ),
+        content={
+            "text": "直排測試",
+            "font_family": "sans-serif",
+            "font_size_pt": 10.0,
+            "color": "#111111",
+            "direction": "vertical",
+        },
+    )
+    path = export_docx(
+        replace(project, elements=(vertical,)),
+        tmp_path / "vertical.docx",
+    ).path
+    document = _document_xml(path)
+    shapes = document.xpath(
+        ".//v:shape[@id='textbox-editable-vertical-copy']",
+        namespaces=NS,
+    )
+
+    assert len(shapes) == 1
+    assert "".join(shapes[0].xpath(".//w:t/text()", namespaces=NS)) == "直排測試"
+    assert len(shapes[0].xpath(".//w:br", namespaces=NS)) == 3
+
+
+def test_docx_uses_four_shared_crop_frame_lines_at_point_35(
+    sample_project: Callable[..., CoverProject], tmp_path: Path
+) -> None:
+    path = export_docx(
+        sample_project(trim=(105.0, 148.0)),
+        tmp_path / "crop-frame.docx",
+    ).path
+    document = _document_xml(path)
+    lines = document.xpath(
+        ".//v:line[starts-with(@id, 'crop-frame-')]",
+        namespaces=NS,
+    )
+
+    assert len(lines) == 4
+    assert all(line.get("strokeweight") == "0.35pt" for line in lines)
+
+
 def test_docx_package_reopens_and_has_image_relationships(
     sample_project: Callable[..., CoverProject], tmp_path: Path
 ) -> None:
@@ -175,3 +231,19 @@ def test_split_docx_uses_same_readable_page_marks_without_spine_page(
     assert "← 5 mm 拼接重疊區 →" not in text
     assert "書脊" not in text
     assert len(document.xpath(".//w:sectPr", namespaces=NS)) == 2
+
+
+def test_docx_omits_legacy_crop_lines_when_crop_marks_are_disabled(
+    sample_project: Callable[..., CoverProject], tmp_path: Path
+) -> None:
+    project = sample_project(trim=(105.0, 148.0))
+    project = replace(
+        project,
+        export_settings=replace(project.export_settings, show_crop_marks=False),
+    )
+
+    path = export_docx(project, tmp_path / "no-crop-marks.docx").path
+    document = _document_xml(path)
+    shape_ids = document.xpath(".//@id")
+
+    assert not any(str(shape_id).startswith("mark-") for shape_id in shape_ids)

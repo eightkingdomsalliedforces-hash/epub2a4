@@ -17,6 +17,7 @@ from PySide6.QtCore import QObject, QRunnable, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtGui import QUndoStack
 
 from epub_a4_word.cover import service as shared_service
+from epub_a4_word.cover.accent_color import apply_auto_accent
 from epub_a4_word.cover.composition import CompositionSelection
 from epub_a4_word.cover.geometry import RectMm, calculate_layout
 from epub_a4_word.cover.isbn import canonical_isbn13
@@ -216,6 +217,56 @@ class CoverController(QObject):
             label="重設出版社模板版面" if reset_layout else "更新出版社資訊",
         )
 
+    def set_crop_frame_enabled(self, enabled: bool) -> None:
+        project = self._require_project()
+        candidate = replace(
+            project,
+            export_settings=replace(
+                project.export_settings,
+                show_crop_marks=bool(enabled),
+            ),
+        )
+        self.replace_project(
+            dumps_project(candidate),
+            label="顯示完整裁切框" if enabled else "隱藏完整裁切框",
+        )
+
+    def reextract_accent_color(self) -> None:
+        project = self._require_project()
+        front_path: str | None = None
+        ordered = sorted(
+            project.elements,
+            key=lambda element: element.id != "source-cover-image",
+        )
+        for element in ordered:
+            if (
+                element.kind is ElementKind.IMAGE
+                and element.region in {Region.FRONT, Region.SPREAD}
+            ):
+                value = element.content.get("path")
+                if isinstance(value, str) and value.strip():
+                    front_path = value
+                    break
+        metadata, warnings = apply_auto_accent(
+            replace(project.metadata, accent_color_mode="auto"),
+            front_path,
+        )
+        background = dict(project.background)
+        if warnings:
+            existing = list(background.get("warnings", ()))
+            for warning in warnings:
+                if warning not in existing:
+                    existing.append(warning)
+            background["warnings"] = existing
+        candidate = refresh_template_metadata(
+            replace(project, background=background),
+            metadata,
+        )
+        self.replace_project(
+            dumps_project(candidate),
+            label="重新從封面擷取主題色",
+        )
+
     def apply_publisher_logo(
         self,
         downloaded: DownloadedLogo,
@@ -282,6 +333,7 @@ class CoverController(QObject):
         if active_template in {
             "publisher_back_matter",
             "publisher_back_matter_with_spine",
+            "modern_vertical_back_with_spine",
         }:
             candidate = refresh_template_metadata(project, metadata)
         else:

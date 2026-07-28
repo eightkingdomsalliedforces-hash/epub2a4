@@ -41,6 +41,65 @@ def test_spread_pixel_size_matches_mm(
     assert image.height == round(layout.bleed_rect.height_mm / 25.4 * 300)
 
 
+def test_spread_draws_full_crop_frame_and_respects_switch(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    project = sample_project()
+    layout = calculate_layout(project)
+    dpi = 100
+    x = mm_to_px(layout.spread_rect.x_mm, dpi)
+    y = mm_to_px(
+        layout.spread_rect.y_mm + layout.spread_rect.height_mm / 2.0,
+        dpi,
+    )
+
+    shown = render_spread(project, dpi=dpi).convert("RGB")
+    hidden_project = replace(
+        project,
+        export_settings=replace(
+            project.export_settings,
+            show_crop_marks=False,
+        ),
+    )
+    hidden = render_spread(hidden_project, dpi=dpi).convert("RGB")
+
+    assert max(shown.getpixel((x, y))) < 40
+    assert min(hidden.getpixel((x, y))) > 240
+
+
+def test_zero_bleed_draws_all_four_crop_frame_edges_inside_canvas(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    dpi = 100
+    project = sample_project(bleed_mm=0.0)
+    image = render_spread(project, dpi=dpi).convert("RGB")
+    mid_x = image.width // 2
+    mid_y = image.height // 2
+
+    assert max(image.getpixel((mid_x, 0))) < 40
+    assert max(image.getpixel((mid_x, image.height - 1))) < 40
+    assert max(image.getpixel((0, mid_y))) < 40
+    assert max(image.getpixel((image.width - 1, mid_y))) < 40
+
+
+def test_hidden_crop_marks_are_not_drawn_on_print_page(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    dpi = 100
+    project = sample_project()
+    project = replace(
+        project,
+        export_settings=replace(project.export_settings, show_crop_marks=False),
+    )
+    page = build_print_plan(calculate_layout(project)).pages[0]
+    crop = next(mark for mark in page.marks if mark.role == "crop")
+    image = render_print_page(project, page, dpi).convert("RGB")
+
+    assert min(
+        image.getpixel((mm_to_px(crop.x1_mm, dpi), mm_to_px(crop.y1_mm, dpi)))
+    ) > 240
+
+
 def test_front_only_image_does_not_paint_back(
     sample_project: Callable[..., CoverProject], tmp_path: Path
 ) -> None:
@@ -176,6 +235,39 @@ def test_text_overflow_is_reported_in_preview(
         replace(project, elements=(text,)), tmp_path / "overflow.png", max_px=600
     )
     assert any("overflow-text" in warning for warning in result.warnings)
+
+
+def test_vertical_text_newline_starts_a_new_column(
+    sample_project: Callable[..., CoverProject], tmp_path: Path
+) -> None:
+    project = sample_project()
+    layout = calculate_layout(project)
+    text = CoverElement(
+        id="two-vertical-columns",
+        kind=ElementKind.TEXT,
+        region=Region.BACK,
+        transform=ElementTransform(
+            layout.back_safe_rect.x_mm,
+            layout.back_safe_rect.y_mm,
+            12.0,
+            20.0,
+        ),
+        content={
+            "text": "甲乙丙丁\n戊己庚辛",
+            "font_family": "sans-serif",
+            "font_size_pt": 12.0,
+            "color": "#111111",
+            "direction": "vertical",
+        },
+    )
+
+    result = render_preview(
+        replace(project, elements=(text,)),
+        tmp_path / "vertical-columns.png",
+        max_px=900,
+    )
+
+    assert not any("two-vertical-columns" in warning for warning in result.warnings)
 
 
 def test_font_fallback_returns_a_usable_font() -> None:

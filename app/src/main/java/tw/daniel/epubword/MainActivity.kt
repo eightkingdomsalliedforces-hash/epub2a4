@@ -184,6 +184,12 @@ class MainActivity : ComponentActivity() {
                         onSeriesName = coverViewModel::setMetadataSeriesName,
                         onInternalBookCode = coverViewModel::setMetadataInternalBookCode,
                         onSpineAccentColor = coverViewModel::setMetadataSpineAccentColor,
+                        onBackVerticalCopy = coverViewModel::setBackVerticalCopy,
+                        onBackHighlightCopy = coverViewModel::setBackHighlightCopy,
+                        onSpineStyle = coverViewModel::setSpineStyle,
+                        onAutomaticAccent = coverViewModel::setAutomaticAccent,
+                        onReextractAccent = coverViewModel::reextractAccentColor,
+                        onShowCropMarks = coverViewModel::setShowCropMarks,
                         onChoosePublisherLogo = {
                             publisherLogoLauncher.launch(arrayOf("image/*"))
                         },
@@ -207,6 +213,7 @@ class MainActivity : ComponentActivity() {
                         onSelectEmbeddedImage = coverViewModel::selectEmbeddedImage,
                         onAddText = coverViewModel::addText,
                         onToggleGuides = coverViewModel::toggleGuides,
+                        onShowCropMarks = coverViewModel::setShowCropMarks,
                         onPreviewWord = {
                             coverWordPreviewRequested = true
                             coverViewModel.prepareExport(coverState.exportDpi)

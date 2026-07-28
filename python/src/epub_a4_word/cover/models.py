@@ -65,6 +65,11 @@ class CoverMetadata:
     series_name: str = ""
     internal_book_code: str = ""
     spine_accent_color: str = "#F15A24"
+    back_vertical_copy: str = ""
+    back_highlight_copy: str = ""
+    spine_style: str = "reference_stacked"
+    accent_color_mode: str = "auto"
+    extracted_accent_color: str = ""
     publisher_logo: LogoAssetMetadata | None = None
     language: str = ""
     page_count_is_estimate: bool = False

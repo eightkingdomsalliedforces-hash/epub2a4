@@ -22,6 +22,7 @@ def test_desktop_template_options_remain_available(qtbot) -> None:
         "full_bleed_image",
         "classic_book",
         "publisher_back_matter",
+        "modern_vertical_back_with_spine",
     ]
     assert _combo_values(setup.template_combo) == expected
     assert _combo_values(toolbar.combo) == expected

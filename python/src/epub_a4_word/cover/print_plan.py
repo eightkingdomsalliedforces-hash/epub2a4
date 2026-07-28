@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from .geometry import CoverLayout, CoverLayoutError, RectMm
+from .models import CoverProject
 
 
 A4_PORTRAIT = (210.0, 297.0)
@@ -44,6 +45,24 @@ class PrintPage:
 class PrintPlan:
     mode: Literal["single", "two_page"]
     pages: tuple[PrintPage, ...]
+
+
+def visible_print_marks(
+    project: CoverProject,
+    page: PrintPage,
+) -> tuple[PrintMark, ...]:
+    """Return only print marks enabled by the shared export settings."""
+
+    marks = page.marks
+    if not project.export_settings.show_crop_marks:
+        marks = tuple(mark for mark in marks if mark.role != "crop")
+    if not project.export_settings.show_assembly_marks:
+        marks = tuple(
+            mark
+            for mark in marks
+            if mark.role not in {"alignment", "overlap", "label", "instruction"}
+        )
+    return marks
 
 
 def _fits(source: RectMm, paper: tuple[float, float]) -> bool:

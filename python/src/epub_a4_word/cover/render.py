@@ -17,11 +17,12 @@ from PIL import (
 )
 
 from .barcode_layout import BarcodeTextAnchor, build_barcode_layout
+from .crop_frame import build_crop_frame
 from .fonts import resolve_font
 from .isbn import normalize_isbn
 from .geometry import CoverLayout, RectMm, calculate_layout
 from .models import CoverElement, CoverProject, ElementKind, ImageMode, Region
-from .print_plan import PrintMark, PrintPage
+from .print_plan import PrintMark, PrintPage, visible_print_marks
 from .typography import font_candidates
 from .search.logo_download import _validate_svg
 
@@ -419,16 +420,28 @@ def _render_vertical_text(
         max(1, round(font_size_pt / 72.0 * dpi)),
     )
     color = _parse_color(content.get("color", "#111111"), "#111111")
-    characters = [character for character in str(content.get("text", "")) if character != "\n"]
+    columns = str(content.get("text", "")).replace("\r\n", "\n").replace("\r", "\n").split("\n")
     cell = max(1, draw.textbbox((0, 0), "國", font=font)[3])
-    overflow = len(characters) * cell > size[1]
-    visible = characters[: max(1, size[1] // cell)]
-    x = max(0, (size[0] - cell) // 2)
-    y = max(0, (size[1] - len(visible) * cell) // 2)
-    for character in visible:
-        width = _text_width(draw, character, font)
-        draw.text((x + max(0, (cell - width) // 2), y), character, font=font, fill=color)
-        y += cell
+    capacity = max(1, size[1] // cell)
+    column_width = max(cell, size[0] // max(1, len(columns)))
+    overflow = (
+        len(columns) * cell > size[0]
+        or any(len(characters) > capacity for characters in columns)
+    )
+    for column_index, characters in enumerate(columns):
+        visible = characters[:capacity]
+        x = size[0] - (column_index + 1) * column_width
+        x += max(0, (column_width - cell) // 2)
+        y = max(0, (size[1] - len(visible) * cell) // 2)
+        for character in visible:
+            width = _text_width(draw, character, font)
+            draw.text(
+                (x + max(0, (cell - width) // 2), y),
+                character,
+                font=font,
+                fill=color,
+            )
+            y += cell
     return canvas, overflow
 
 
@@ -620,6 +633,22 @@ def _render_spread_with_warnings(
         layer = _clip_layer(layer, _element_clip(project, layout, element), dpi)
         canvas = Image.alpha_composite(canvas, layer)
 
+    crop_lines = build_crop_frame(project, layout)
+    if crop_lines:
+        draw = ImageDraw.Draw(canvas)
+        max_x = canvas.width - 1
+        max_y = canvas.height - 1
+        for line in crop_lines:
+            draw.line(
+                (
+                    min(max_x, mm_to_px(line.x1_mm, dpi)),
+                    min(max_y, mm_to_px(line.y1_mm, dpi)),
+                    min(max_x, mm_to_px(line.x2_mm, dpi)),
+                    min(max_y, mm_to_px(line.y2_mm, dpi)),
+                ),
+                fill="black",
+                width=max(1, round(line.width_pt / 72.0 * dpi)),
+            )
     return canvas, tuple(dict.fromkeys(warnings))
 
 
@@ -741,6 +770,6 @@ def render_print_page(
     # Source and destination use the same DPI and scale=1.0: paste directly.
     canvas.paste(crop, destination)
     draw = ImageDraw.Draw(canvas)
-    for mark in page.marks:
+    for mark in visible_print_marks(project, page):
         _draw_print_mark(draw, mark, dpi)
     return canvas

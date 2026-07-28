@@ -53,6 +53,11 @@ data class CoverUiState(
     val metadataSeriesName: String = "",
     val metadataInternalBookCode: String = "",
     val metadataSpineAccentColor: String = "#F15A24",
+    val metadataBackVerticalCopy: String = "",
+    val metadataBackHighlightCopy: String = "",
+    val metadataSpineStyle: String = "reference_stacked",
+    val metadataAccentColorMode: String = "auto",
+    val metadataExtractedAccentColor: String = "",
     val metadataLanguage: String = "",
     val trimPreset: TrimPreset = TrimPreset.A5,
     val pageCount: Int = 0,
@@ -64,6 +69,7 @@ data class CoverUiState(
     val bleedMm: Double = 3.0,
     val imageMode: ImageMode = ImageMode.FRONT_ONLY,
     val templateId: String = "minimal_text",
+    val showCropMarks: Boolean = true,
     val warnings: List<String> = emptyList(),
     val project: CoverProject? = null,
     val projectJson: String = "",
@@ -99,7 +105,10 @@ data class CoverUiState(
     val selectedElement get() = project?.elements?.firstOrNull { it.id == selectedElementId }
 
     val publisherTemplateSelected: Boolean get() =
-        templateId == PUBLISHER_BACK_MATTER_TEMPLATE_ID
+        templateId in setOf(
+            PUBLISHER_BACK_MATTER_TEMPLATE_ID,
+            MODERN_VERTICAL_TEMPLATE_ID,
+        )
 
     val publisherTemplateIssue: String? get() = when {
         !publisherTemplateSelected -> null

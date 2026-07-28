@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,6 +29,8 @@ fun normalizeCoverExportDpi(value: Int): Int {
 @Composable
 fun ExportCoverDialog(
     initialDpi: Int = 300,
+    showCropMarks: Boolean = true,
+    onShowCropMarks: (Boolean) -> Unit = {},
     onDismiss: () -> Unit,
     onExport: (Int) -> Unit,
 ) {
@@ -57,6 +60,16 @@ fun ExportCoverDialog(
                     }
                 }
                 Text("若 300 DPI 記憶體不足，App 會明確提示；不會自動降低品質。")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = showCropMarks,
+                        onCheckedChange = onShowCropMarks,
+                    )
+                    Text("顯示完整裁切框")
+                }
             }
         },
         confirmButton = {

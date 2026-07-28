@@ -51,6 +51,12 @@ class CoverSetupValues:
     series_name: str = ""
     internal_book_code: str = ""
     spine_accent_color: str = "#F15A24"
+    back_vertical_copy: str = ""
+    back_highlight_copy: str = ""
+    spine_style: str = "reference_stacked"
+    accent_color_mode: str = "auto"
+    extracted_accent_color: str = ""
+    show_crop_marks: bool = True
     confirmed_back_cover_asset_id: str | None = None
 
     def settings(self, working_dir: Path | str) -> dict[str, Any]:
@@ -64,7 +70,7 @@ class CoverSetupValues:
             "bleed_mm": self.bleed_mm,
             "overlap_mm": 5.0,
             "dpi": 300,
-            "show_crop_marks": True,
+            "show_crop_marks": self.show_crop_marks,
             "show_assembly_marks": True,
             "image_mode": self.image_mode.value,
             "isbn": self.isbn.strip(),
@@ -80,6 +86,11 @@ class CoverSetupValues:
             "series_name": self.series_name.strip(),
             "internal_book_code": self.internal_book_code.strip(),
             "spine_accent_color": self.spine_accent_color.strip() or "#F15A24",
+            "back_vertical_copy": self.back_vertical_copy.strip(),
+            "back_highlight_copy": self.back_highlight_copy.strip(),
+            "spine_style": self.spine_style,
+            "accent_color_mode": self.accent_color_mode,
+            "extracted_accent_color": self.extracted_accent_color,
             **(
                 {"confirmed_back_cover_asset_id": self.confirmed_back_cover_asset_id}
                 if self.confirmed_back_cover_asset_id
@@ -169,6 +180,8 @@ class CoverSetupPanel(QWidget):
         self.bleed_spin.setToolTip(
             "裁切外延只用於印刷廠裁切時避免白邊，與圖片產生無關；家用列印可保持 0 mm。"
         )
+        self.show_crop_marks_check = QCheckBox("顯示完整裁切框", self)
+        self.show_crop_marks_check.setChecked(True)
 
         self.image_mode_combo = QComboBox(self)
         self.image_mode_combo.addItem("只有正面圖片", ImageMode.FRONT_ONLY.value)
@@ -182,6 +195,10 @@ class CoverSetupPanel(QWidget):
         self.template_combo.addItem(
             "出版社封底＋直式書脊",
             "publisher_back_matter",
+        )
+        self.template_combo.addItem(
+            "現代直排封底＋可選書脊",
+            "modern_vertical_back_with_spine",
         )
         self.create_button = QPushButton("建立／更新封面專案", self)
         self.create_button.setEnabled(False)
@@ -200,6 +217,7 @@ class CoverSetupPanel(QWidget):
         form.addRow("", self.manual_spine_enabled)
         form.addRow("手動書脊", self.manual_spine_spin)
         form.addRow("裁切外延（出血）", self.bleed_spin)
+        form.addRow("", self.show_crop_marks_check)
         form.addRow("圖片模式", self.image_mode_combo)
         form.addRow("初始模板", self.template_combo)
         layout = QVBoxLayout(self)
@@ -305,7 +323,12 @@ class CoverSetupPanel(QWidget):
         estimated = False
         if isinstance(metadata, dict):
             estimated = bool(metadata.get("page_count_is_estimate", False))
-            self.publisher_metadata_panel.set_values(metadata)
+            publisher_metadata = dict(metadata)
+            if not str(publisher_metadata.get("back_vertical_copy", "") or "").strip():
+                publisher_metadata["back_vertical_copy"] = str(
+                    publisher_metadata.get("description", "") or ""
+                )
+            self.publisher_metadata_panel.set_values(publisher_metadata)
             embedded = metadata.get("embedded_images", ())
             roles = {
                 str(item.get("role", ""))
@@ -407,6 +430,12 @@ class CoverSetupPanel(QWidget):
             series_name=publisher_values.series_name,
             internal_book_code=publisher_values.internal_book_code,
             spine_accent_color=publisher_values.spine_accent_color,
+            back_vertical_copy=publisher_values.back_vertical_copy,
+            back_highlight_copy=publisher_values.back_highlight_copy,
+            spine_style=publisher_values.spine_style,
+            accent_color_mode=publisher_values.accent_color_mode,
+            extracted_accent_color=publisher_values.extracted_accent_color,
+            show_crop_marks=self.show_crop_marks_check.isChecked(),
             confirmed_back_cover_asset_id=(
                 self._back_cover_candidate_asset_id
                 if self.confirm_back_cover.isChecked()

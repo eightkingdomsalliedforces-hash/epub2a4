@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from PIL import Image
+
 from epub_a4_word.cover.project_io import loads_project
 from epub_a4_word.cover.service import (
     apply_template,
@@ -54,6 +56,48 @@ def test_new_project_uses_working_assets_and_never_writes_beside_source(
     assert {path.name for path in source.parent.iterdir()} == source_parent_before
     assert project.metadata.title == "測試 EPUB"
     assert project.page_count == 160
+
+
+def test_new_project_initializes_modern_cover_metadata(
+    fixtures_dir: Path, tmp_path: Path
+) -> None:
+    source = fixtures_dir / "cover/metadata.epub"
+    project = loads_project(
+        new_project(
+            str(source),
+            _settings(
+                tmp_path,
+                back_highlight_copy="醒目文案",
+                spine_style="clean_centered",
+                accent_color_mode="manual",
+                extracted_accent_color="#D56A31",
+            ),
+        )
+    )
+
+    assert project.metadata.back_vertical_copy == project.metadata.description
+    assert project.metadata.back_highlight_copy == "醒目文案"
+    assert project.metadata.spine_style == "clean_centered"
+    assert project.metadata.accent_color_mode == "manual"
+    assert project.metadata.extracted_accent_color == "#D56A31"
+
+
+def test_new_project_extracts_accent_from_explicit_front_cover(
+    fixtures_dir: Path, tmp_path: Path
+) -> None:
+    source = fixtures_dir / "cover/metadata.epub"
+    cover = tmp_path / "front.png"
+    Image.new("RGB", (80, 120), "#2674D9").save(cover)
+
+    project = loads_project(
+        new_project(
+            str(source),
+            _settings(tmp_path, cover_image_path=str(cover)),
+        )
+    )
+
+    assert project.metadata.spine_accent_color == "#2674D9"
+    assert project.metadata.extracted_accent_color == "#2674D9"
 
 
 def test_new_project_estimates_epub_pages_when_not_supplied(
