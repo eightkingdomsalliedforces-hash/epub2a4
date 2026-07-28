@@ -323,7 +323,12 @@ class CoverSetupPanel(QWidget):
         estimated = False
         if isinstance(metadata, dict):
             estimated = bool(metadata.get("page_count_is_estimate", False))
-            self.publisher_metadata_panel.set_values(metadata)
+            publisher_metadata = dict(metadata)
+            if not str(publisher_metadata.get("back_vertical_copy", "") or "").strip():
+                publisher_metadata["back_vertical_copy"] = str(
+                    publisher_metadata.get("description", "") or ""
+                )
+            self.publisher_metadata_panel.set_values(publisher_metadata)
             embedded = metadata.get("embedded_images", ())
             roles = {
                 str(item.get("role", ""))

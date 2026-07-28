@@ -29,7 +29,11 @@ from .models import (
 from .pdf_export import ExportResult, export_original_pdf, export_pdf
 from .project_io import CoverValidationError, dumps_project, loads_project
 from .render import render_preview as _render_preview
-from .templates import apply_template as _apply_template, assign_publisher_logo as _assign_publisher_logo
+from .templates import (
+    apply_template as _apply_template,
+    assign_publisher_logo as _assign_publisher_logo,
+    refresh_template_metadata as _refresh_template_metadata,
+)
 
 _SUPPORTED_TRIMS = (
     (148.0, 210.0),
@@ -498,6 +502,46 @@ def extract_embedded_asset(project_json: str, asset_id: str) -> dict[str, Any]:
 
 def apply_template(project_json: str, template_id: str) -> str:
     return dumps_project(_apply_template(loads_project(project_json), template_id))
+
+
+def refresh_template_metadata(project_json: str, candidate_json: str) -> str:
+    project = loads_project(project_json)
+    candidate = loads_project(candidate_json)
+    return dumps_project(_refresh_template_metadata(project, candidate.metadata))
+
+
+def reextract_accent(project_json: str) -> str:
+    project = loads_project(project_json)
+    front_path: str | None = None
+    ordered = sorted(
+        project.elements,
+        key=lambda element: element.id != "source-cover-image",
+    )
+    for element in ordered:
+        if (
+            element.kind is ElementKind.IMAGE
+            and element.region in {Region.FRONT, Region.SPREAD}
+        ):
+            value = element.content.get("path")
+            if isinstance(value, str) and value.strip():
+                front_path = value
+                break
+    metadata, warnings = apply_auto_accent(
+        replace(project.metadata, accent_color_mode="auto"),
+        front_path,
+    )
+    background = dict(project.background)
+    if warnings:
+        existing = list(background.get("warnings", ()))
+        for warning in warnings:
+            if warning not in existing:
+                existing.append(warning)
+        background["warnings"] = existing
+    refreshed = _refresh_template_metadata(
+        replace(project, background=background),
+        metadata,
+    )
+    return dumps_project(refreshed)
 
 
 def assign_publisher_logo(project_json: str, image_path: str) -> str:

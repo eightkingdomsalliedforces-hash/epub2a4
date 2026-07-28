@@ -86,4 +86,15 @@ class CoverViewModelTest {
             changed.copy(exportSettings = original.exportSettings),
         )
     }
+
+    @Test
+    fun blankInspectedBackCopyFallsBackToDescription() {
+        val metadata = JSONObject()
+            .put("description", "EPUB 封底簡介")
+            .put("back_vertical_copy", "")
+
+        assertEquals("EPUB 封底簡介", initialBackVerticalCopy(metadata))
+        metadata.put("back_vertical_copy", "使用者既有文案")
+        assertEquals("使用者既有文案", initialBackVerticalCopy(metadata))
+    }
 }

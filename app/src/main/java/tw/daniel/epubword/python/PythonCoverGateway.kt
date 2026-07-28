@@ -29,6 +29,15 @@ class PythonCoverGateway(
     fun applyTemplate(projectJson: String, templateId: String): String = executor.run {
         module().callAttr(BRIDGE_FUNCTIONS[2], projectJson, templateId).toString()
     }
+
+    fun refreshTemplateMetadata(projectJson: String, candidateJson: String): String = executor.run {
+        module().callAttr(BRIDGE_FUNCTIONS[6], projectJson, candidateJson).toString()
+    }
+
+    fun reextractAccent(projectJson: String): String = executor.run {
+        module().callAttr(BRIDGE_FUNCTIONS[7], projectJson).toString()
+    }
+
     fun assignPublisherLogo(projectJson: String, image: File): String = executor.run {
         module().callAttr(BRIDGE_FUNCTIONS[5], projectJson, image.absolutePath).toString()
     }
@@ -97,6 +106,8 @@ class PythonCoverGateway(
             "cover_render_preview_json",
             "cover_export_json",
             "cover_assign_publisher_logo_json",
+            "cover_refresh_template_metadata_json",
+            "cover_reextract_accent_json",
         )
         const val EXTRACT_EMBEDDED_ASSET_FUNCTION = "cover_extract_embedded_asset_json"
     }

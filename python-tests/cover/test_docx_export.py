@@ -231,3 +231,19 @@ def test_split_docx_uses_same_readable_page_marks_without_spine_page(
     assert "← 5 mm 拼接重疊區 →" not in text
     assert "書脊" not in text
     assert len(document.xpath(".//w:sectPr", namespaces=NS)) == 2
+
+
+def test_docx_omits_legacy_crop_lines_when_crop_marks_are_disabled(
+    sample_project: Callable[..., CoverProject], tmp_path: Path
+) -> None:
+    project = sample_project(trim=(105.0, 148.0))
+    project = replace(
+        project,
+        export_settings=replace(project.export_settings, show_crop_marks=False),
+    )
+
+    path = export_docx(project, tmp_path / "no-crop-marks.docx").path
+    document = _document_xml(path)
+    shape_ids = document.xpath(".//@id")
+
+    assert not any(str(shape_id).startswith("mark-") for shape_id in shape_ids)

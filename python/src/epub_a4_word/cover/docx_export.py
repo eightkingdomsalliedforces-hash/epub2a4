@@ -22,7 +22,7 @@ from .ooxml import (
     mm_to_twips,
 )
 from .pdf_export import CoverExportError, ExportResult
-from .print_plan import PrintMark, PrintPage, build_print_plan
+from .print_plan import PrintMark, PrintPage, build_print_plan, visible_print_marks
 from .project_io import validate_project
 
 
@@ -193,8 +193,8 @@ def _label_rect(mark: PrintMark) -> RectMm:
     )
 
 
-def _add_print_marks(paragraph, page: PrintPage) -> None:
-    for index, mark in enumerate(page.marks, start=1):
+def _add_print_marks(paragraph, project: CoverProject, page: PrintPage) -> None:
+    for index, mark in enumerate(visible_print_marks(project, page), start=1):
         if mark.kind == "line" and mark.x2_mm is not None and mark.y2_mm is not None:
             add_line_shape(
                 paragraph,
@@ -318,7 +318,7 @@ def export_docx(project: CoverProject, output_path: Path | str) -> ExportResult:
         paragraph.paragraph_format.space_before = 0
         paragraph.paragraph_format.space_after = 0
         paragraph.paragraph_format.line_spacing = 1
-        _add_print_marks(paragraph, page)
+        _add_print_marks(paragraph, project, page)
         drawing_id = _add_elements(paragraph, project, page, drawing_id)
         _add_crop_frame(paragraph, project, layout, page)
 

@@ -22,7 +22,7 @@ from .fonts import resolve_font
 from .isbn import normalize_isbn
 from .geometry import CoverLayout, RectMm, calculate_layout
 from .models import CoverElement, CoverProject, ElementKind, ImageMode, Region
-from .print_plan import PrintMark, PrintPage
+from .print_plan import PrintMark, PrintPage, visible_print_marks
 from .typography import font_candidates
 from .search.logo_download import _validate_svg
 
@@ -636,13 +636,15 @@ def _render_spread_with_warnings(
     crop_lines = build_crop_frame(project, layout)
     if crop_lines:
         draw = ImageDraw.Draw(canvas)
+        max_x = canvas.width - 1
+        max_y = canvas.height - 1
         for line in crop_lines:
             draw.line(
                 (
-                    mm_to_px(line.x1_mm, dpi),
-                    mm_to_px(line.y1_mm, dpi),
-                    mm_to_px(line.x2_mm, dpi),
-                    mm_to_px(line.y2_mm, dpi),
+                    min(max_x, mm_to_px(line.x1_mm, dpi)),
+                    min(max_y, mm_to_px(line.y1_mm, dpi)),
+                    min(max_x, mm_to_px(line.x2_mm, dpi)),
+                    min(max_y, mm_to_px(line.y2_mm, dpi)),
                 ),
                 fill="black",
                 width=max(1, round(line.width_pt / 72.0 * dpi)),
@@ -768,6 +770,6 @@ def render_print_page(
     # Source and destination use the same DPI and scale=1.0: paste directly.
     canvas.paste(crop, destination)
     draw = ImageDraw.Draw(canvas)
-    for mark in page.marks:
+    for mark in visible_print_marks(project, page):
         _draw_print_mark(draw, mark, dpi)
     return canvas

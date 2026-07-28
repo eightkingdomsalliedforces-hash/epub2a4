@@ -67,6 +67,39 @@ def test_spread_draws_full_crop_frame_and_respects_switch(
     assert min(hidden.getpixel((x, y))) > 240
 
 
+def test_zero_bleed_draws_all_four_crop_frame_edges_inside_canvas(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    dpi = 100
+    project = sample_project(bleed_mm=0.0)
+    image = render_spread(project, dpi=dpi).convert("RGB")
+    mid_x = image.width // 2
+    mid_y = image.height // 2
+
+    assert max(image.getpixel((mid_x, 0))) < 40
+    assert max(image.getpixel((mid_x, image.height - 1))) < 40
+    assert max(image.getpixel((0, mid_y))) < 40
+    assert max(image.getpixel((image.width - 1, mid_y))) < 40
+
+
+def test_hidden_crop_marks_are_not_drawn_on_print_page(
+    sample_project: Callable[..., CoverProject],
+) -> None:
+    dpi = 100
+    project = sample_project()
+    project = replace(
+        project,
+        export_settings=replace(project.export_settings, show_crop_marks=False),
+    )
+    page = build_print_plan(calculate_layout(project)).pages[0]
+    crop = next(mark for mark in page.marks if mark.role == "crop")
+    image = render_print_page(project, page, dpi).convert("RGB")
+
+    assert min(
+        image.getpixel((mm_to_px(crop.x1_mm, dpi), mm_to_px(crop.y1_mm, dpi)))
+    ) > 240
+
+
 def test_front_only_image_does_not_paint_back(
     sample_project: Callable[..., CoverProject], tmp_path: Path
 ) -> None:

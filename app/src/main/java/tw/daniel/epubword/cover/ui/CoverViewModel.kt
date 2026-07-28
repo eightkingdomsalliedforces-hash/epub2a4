@@ -69,6 +69,11 @@ internal fun withShowCropMarks(
     exportSettings = project.exportSettings.copy(showCropMarks = enabled),
 )
 
+internal fun initialBackVerticalCopy(metadata: JSONObject): String =
+    metadata.optString("back_vertical_copy").ifBlank {
+        metadata.optString("description")
+    }
+
 class CoverViewModel @JvmOverloads constructor(
     application: Application,
     private val repository: CoverDocumentRepository = CoverDocumentRepository(application),
@@ -118,10 +123,7 @@ class CoverViewModel @JvmOverloads constructor(
                         metadataSeriesName = metadata.optString("series_name"),
                         metadataInternalBookCode = metadata.optString("internal_book_code"),
                         metadataSpineAccentColor = metadata.optString("spine_accent_color", "#F15A24"),
-                        metadataBackVerticalCopy = metadata.optString(
-                            "back_vertical_copy",
-                            metadata.optString("description"),
-                        ),
+                        metadataBackVerticalCopy = initialBackVerticalCopy(metadata),
                         metadataBackHighlightCopy = metadata.optString("back_highlight_copy"),
                         metadataSpineStyle = metadata.optString("spine_style", "reference_stacked"),
                         metadataAccentColorMode = metadata.optString("accent_color_mode", "auto"),
@@ -181,10 +183,7 @@ class CoverViewModel @JvmOverloads constructor(
                         metadataSeriesName = metadata.optString("series_name"),
                         metadataInternalBookCode = metadata.optString("internal_book_code"),
                         metadataSpineAccentColor = metadata.optString("spine_accent_color", "#F15A24"),
-                        metadataBackVerticalCopy = metadata.optString(
-                            "back_vertical_copy",
-                            metadata.optString("description"),
-                        ),
+                        metadataBackVerticalCopy = initialBackVerticalCopy(metadata),
                         metadataBackHighlightCopy = metadata.optString("back_highlight_copy"),
                         metadataSpineStyle = metadata.optString("spine_style", "reference_stacked"),
                         metadataAccentColorMode = metadata.optString("accent_color_mode", "auto"),
@@ -315,7 +314,16 @@ class CoverViewModel @JvmOverloads constructor(
         _uiState.update {
             it.copy(metadataAccentColorMode = "auto", errorMessage = null)
         }
-        if (stagedSource != null && _uiState.value.canCreateProject) createProject()
+        val currentJson = _uiState.value.projectJson.takeIf(String::isNotBlank) ?: return
+        viewModelScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    gateway.reextractAccent(currentJson)
+                }
+            }.onSuccess {
+                commitProject(CoverProjectJson.decode(it))
+            }.onFailure(::showError)
+        }
     }
     fun setShowCropMarks(enabled: Boolean) {
         val project = _uiState.value.project
@@ -339,7 +347,7 @@ class CoverViewModel @JvmOverloads constructor(
         viewModelScope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
-                    gateway.applyTemplate(candidateJson, state.templateId)
+                    gateway.refreshTemplateMetadata(state.projectJson, candidateJson)
                 }
             }.onSuccess {
                 commitProject(CoverProjectJson.decode(it))
