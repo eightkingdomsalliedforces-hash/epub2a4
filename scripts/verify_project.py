@@ -10,7 +10,7 @@ from zipfile import BadZipFile, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 errors: list[str] = []
-EXPECTED_VERSION = "0.9.1"
+EXPECTED_VERSION = "0.9.2"
 
 
 def require(path: str) -> Path:
@@ -76,8 +76,8 @@ version_patterns = {
 for label, source in version_sources.items():
     if not re.search(version_patterns[label], source, re.MULTILINE):
         errors.append(f"version check failed: {label} must be {EXPECTED_VERSION}")
-if not re.search(r"versionCode\s*=\s*10\b", app_gradle):
-    errors.append("version check failed: Android versionCode must be 10")
+if not re.search(r"versionCode\s*=\s*11\b", app_gradle):
+    errors.append("version check failed: Android versionCode must be 11")
 
 chaquopy_index = app_gradle.find("chaquopy {")
 canonical_source_index = app_gradle.find('srcDir("../python/src")')
