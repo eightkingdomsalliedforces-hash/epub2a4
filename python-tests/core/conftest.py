@@ -5,7 +5,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 
 @pytest.fixture()
@@ -54,12 +54,36 @@ def sample_epub(tmp_path: Path) -> Path:
 def cover_epub_factory(tmp_path: Path):
     """Build EPUBs with explicit or medium-confidence front/back cover pages."""
 
-    def build(*, generic_back: bool = False, leading_empty: bool = False) -> Path:
+    def build(
+        *,
+        generic_back: bool = False,
+        leading_empty: bool = False,
+        duplicate_front: bool = False,
+        barcode_back: bool = False,
+    ) -> Path:
         path = tmp_path / ("candidate-cover.epub" if generic_back else "front-back-cover.epub")
         image_data = BytesIO()
         Image.new("RGB", (600, 900), "white").save(image_data, format="PNG")
         png = image_data.getvalue()
 
+        back_image = Image.new("RGB", (600, 900), "white")
+        if barcode_back:
+            draw = ImageDraw.Draw(back_image)
+            for x in range(60, 360, 4):
+                width = 2 if (x // 4) % 3 else 3
+                draw.rectangle((x, 80, x + width, 220), fill="black")
+        back_data = BytesIO()
+        back_image.save(back_data, format="PNG")
+
+        duplicate_manifest = (
+            """
+            <item id='duplicate-front-page' href='Text/duplicate-front.xhtml' media-type='application/xhtml+xml'/>
+            <item id='duplicate-front-image' href='Images/duplicate-front.png' media-type='image/png'/>
+            """
+            if duplicate_front
+            else ""
+        )
+        duplicate_spine = "<itemref idref='duplicate-front-page'/>" if duplicate_front else ""
         back_id = "plate-page" if generic_back else "back-cover-page"
         back_href = "plate.xhtml" if generic_back else "back-cover.xhtml"
         guide = "" if generic_back else "<guide><reference type='back-cover' href='Text/back-cover.xhtml'/></guide>"
@@ -79,8 +103,9 @@ def cover_epub_factory(tmp_path: Path):
             <item id='{back_id}' href='Text/{back_href}' media-type='application/xhtml+xml'/>
             <item id='front-image' href='Images/front.png' media-type='image/png' properties='cover-image'/>
             <item id='back-image' href='Images/back.png' media-type='image/png'/>
+            {duplicate_manifest}
           </manifest>
-          <spine><itemref idref='front-page'/>{empty_spine}<itemref idref='chapter'/><itemref idref='{back_id}'/></spine>
+          <spine><itemref idref='front-page'/>{empty_spine}{duplicate_spine}<itemref idref='chapter'/><itemref idref='{back_id}'/></spine>
           {guide}
         </package>"""
         front = "<html xmlns='http://www.w3.org/1999/xhtml'><body><img alt='封面' src='../Images/front.png'/></body></html>"
@@ -93,10 +118,21 @@ def cover_epub_factory(tmp_path: Path):
             zf.writestr("OEBPS/Text/front.xhtml", front, compress_type=ZIP_DEFLATED)
             if leading_empty:
                 zf.writestr("OEBPS/Text/empty.xhtml", "<html xmlns='http://www.w3.org/1999/xhtml'><body></body></html>", compress_type=ZIP_DEFLATED)
+            if duplicate_front:
+                zf.writestr(
+                    "OEBPS/Text/duplicate-front.xhtml",
+                    "<html xmlns='http://www.w3.org/1999/xhtml'><body><img src='../Images/duplicate-front.png'/></body></html>",
+                    compress_type=ZIP_DEFLATED,
+                )
+                zf.writestr(
+                    "OEBPS/Images/duplicate-front.png",
+                    png,
+                    compress_type=ZIP_DEFLATED,
+                )
             zf.writestr("OEBPS/Text/chapter.xhtml", chapter, compress_type=ZIP_DEFLATED)
             zf.writestr(f"OEBPS/Text/{back_href}", back, compress_type=ZIP_DEFLATED)
             zf.writestr("OEBPS/Images/front.png", png, compress_type=ZIP_DEFLATED)
-            zf.writestr("OEBPS/Images/back.png", png, compress_type=ZIP_DEFLATED)
+            zf.writestr("OEBPS/Images/back.png", back_data.getvalue(), compress_type=ZIP_DEFLATED)
         return path
 
     return build

@@ -70,6 +70,32 @@ def test_parse_epub_can_preserve_original_cover_pages(cover_epub_factory) -> Non
     assert sum(isinstance(block, PageBreakBlock) for block in book.blocks) == 2
 
 
+def test_body_only_removes_near_duplicate_front_cover_page(
+    cover_epub_factory,
+) -> None:
+    book = parse_epub(cover_epub_factory(duplicate_front=True))
+
+    assert [
+        block.resource_path
+        for block in book.blocks
+        if isinstance(block, ImageBlock)
+    ] == []
+
+
+def test_body_only_removes_generic_barcode_back_cover(
+    cover_epub_factory,
+) -> None:
+    book = parse_epub(
+        cover_epub_factory(generic_back=True, barcode_back=True)
+    )
+
+    assert [
+        block.resource_path
+        for block in book.blocks
+        if isinstance(block, ImageBlock)
+    ] == []
+
+
 def test_medium_back_cover_remains_until_user_confirms_it(cover_epub_factory) -> None:
     source = cover_epub_factory(generic_back=True)
 

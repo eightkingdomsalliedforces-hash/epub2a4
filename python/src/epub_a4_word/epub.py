@@ -252,8 +252,7 @@ def parse_epub(
         excluded_pages: set[str] = set()
         if content_only:
             detection = structure.detection
-            if detection.front_page:
-                excluded_pages.add(detection.front_page)
+            excluded_pages.update(detection.front_pages)
             if detection.back_confidence.value == "high" and detection.back_page:
                 excluded_pages.add(detection.back_page)
             if confirmed_back_cover_page:

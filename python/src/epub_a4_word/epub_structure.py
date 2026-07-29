@@ -10,7 +10,7 @@ from urllib.parse import unquote, urldefrag
 from zipfile import BadZipFile, ZipFile
 
 from lxml import etree
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageStat, UnidentifiedImageError
 
 
 class CoverConfidence(StrEnum):
@@ -31,6 +31,7 @@ class EpubManifestItem:
 class EpubCoverDetection:
     front_resource: str | None
     front_page: str | None
+    front_pages: tuple[str, ...]
     back_resource: str | None
     back_page: str | None
     back_confidence: CoverConfidence
@@ -172,6 +173,61 @@ def _similar_dimensions(first: tuple[int, int] | None, second: tuple[int, int] |
     width_delta = abs(fw - sw) / max(fw, sw)
     height_delta = abs(fh - sh) / max(fh, sh)
     return ratio_delta <= 0.12 and width_delta <= 0.35 and height_delta <= 0.35
+
+
+def _visually_similar_images(
+    archive: ZipFile,
+    first: str | None,
+    second: str | None,
+    names: set[str],
+) -> bool:
+    if (
+        not first
+        or not second
+        or first not in names
+        or second not in names
+        or not _similar_dimensions(
+            _image_dimensions(archive, first, names),
+            _image_dimensions(archive, second, names),
+        )
+    ):
+        return False
+    try:
+        with Image.open(io.BytesIO(archive.read(first))) as first_image:
+            normalized_first = first_image.convert("RGB").resize((32, 32))
+        with Image.open(io.BytesIO(archive.read(second))) as second_image:
+            normalized_second = second_image.convert("RGB").resize((32, 32))
+    except (UnidentifiedImageError, OSError, ValueError):
+        return False
+    difference = ImageChops.difference(normalized_first, normalized_second)
+    return sum(ImageStat.Stat(difference).mean) / 3.0 <= 6.0
+
+
+def _has_barcode_pattern(
+    archive: ZipFile,
+    path: str | None,
+    names: set[str],
+) -> bool:
+    if not path or path not in names or Path(path).suffix.lower() == ".svg":
+        return False
+    try:
+        with Image.open(io.BytesIO(archive.read(path))) as source:
+            grayscale = source.convert("L")
+            height = max(1, round(grayscale.height * 512 / grayscale.width))
+            image = grayscale.resize((512, height))
+    except (UnidentifiedImageError, OSError, ValueError, ZeroDivisionError):
+        return False
+
+    barcode_rows = 0
+    for y in range(max(1, round(image.height * 0.45))):
+        dark = [pixel < 100 for pixel in image.crop((0, y, 512, y + 1)).getdata()]
+        dark_fraction = sum(dark) / len(dark)
+        transitions = sum(first != second for first, second in zip(dark, dark[1:]))
+        if 0.03 <= dark_fraction <= 0.65 and transitions >= 60:
+            barcode_rows += 1
+            if barcode_rows >= 6:
+                return True
+    return False
 
 
 def _resolve_reference(
@@ -368,8 +424,31 @@ def inspect_epub_structure(path: Path | str) -> EpubStructure:
                     _image_dimensions(archive, pure[0], names),
                 ):
                     back_resource, back_page = pure[0], final_page
-                    back_confidence = CoverConfidence.MEDIUM
-                    back_reasons.append("閱讀順序末端純圖片頁與正面封面尺寸相近")
+                    if _has_barcode_pattern(archive, pure[0], names):
+                        back_confidence = CoverConfidence.HIGH
+                        back_reasons.append("閱讀順序末端純圖片頁包含條碼圖樣")
+                    else:
+                        back_confidence = CoverConfidence.MEDIUM
+                        back_reasons.append("閱讀順序末端純圖片頁與正面封面尺寸相近")
+
+        front_pages: list[str] = []
+        if front_page:
+            front_pages.append(front_page)
+        for page in resource_pages.get(front_resource or "", []):
+            if page not in front_pages and page != back_page:
+                front_pages.append(page)
+        final_spine_page = spine_documents[-1] if spine_documents else None
+        for page in spine_documents[:5]:
+            if page == final_spine_page or page == back_page or page in front_pages:
+                continue
+            pure = page_images.get(page)
+            if pure and _visually_similar_images(
+                archive,
+                front_resource,
+                pure[0],
+                names,
+            ):
+                front_pages.append(page)
 
         return EpubStructure(
             opf_path=opf_path,
@@ -379,6 +458,7 @@ def inspect_epub_structure(path: Path | str) -> EpubStructure:
             detection=EpubCoverDetection(
                 front_resource=front_resource,
                 front_page=front_page,
+                front_pages=tuple(front_pages),
                 back_resource=back_resource,
                 back_page=back_page,
                 back_confidence=back_confidence,
