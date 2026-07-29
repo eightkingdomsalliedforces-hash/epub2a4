@@ -32,3 +32,10 @@ def test_high_compatibility_checkbox_selects_drawingml(qtbot, tmp_path: Path) ->
     request = page._build_request()
 
     assert request.guide_render_mode == "drawingml"
+
+
+def test_high_compatibility_guides_are_enabled_by_default(qtbot) -> None:
+    page = ConverterPage()
+    qtbot.addWidget(page)
+
+    assert page.high_compat_guides.isChecked()

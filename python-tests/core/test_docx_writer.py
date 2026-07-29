@@ -539,7 +539,8 @@ def test_vertical_writer_emits_native_tb_rl_and_keeps_source_text(
 
     with ZipFile(output) as archive:
         xml = archive.read("word/document.xml")
-    assert b'<w:textDirection w:val="tbRl"' in xml
+    assert b'<w:textDirection w:val="tbRlV"' in xml
+    assert b'<w:textDirection w:val="tbRl"' not in xml
     rendered_text = "\n".join(
         cell.text
         for row in Document(output).tables[0].rows
@@ -591,7 +592,7 @@ def test_vertical_writer_keeps_image_in_horizontal_nested_cell(
     with ZipFile(output) as archive:
         xml = archive.read("word/document.xml")
         names = archive.namelist()
-    assert b'<w:textDirection w:val="tbRl"' in xml
+    assert b'<w:textDirection w:val="tbRlV"' in xml
     assert b'<w:textDirection w:val="lrTb"' in xml
     assert len(Document(output).inline_shapes) == 1
     assert any(name.startswith("word/media/") for name in names)

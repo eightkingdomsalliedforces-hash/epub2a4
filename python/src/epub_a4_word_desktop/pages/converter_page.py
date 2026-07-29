@@ -89,6 +89,7 @@ class ConverterPage(QWidget):
         self.cut_guides = QCheckBox("顯示裁切／折線", self)
         self.cut_guides.setChecked(True)
         self.high_compat_guides = QCheckBox("高相容裁切線", self)
+        self.high_compat_guides.setChecked(True)
         self.high_compat_guides.setToolTip(
             "改用 DrawingML 頁面圖形，供不完整支援 VML 的 Word 閱讀器使用。"
         )

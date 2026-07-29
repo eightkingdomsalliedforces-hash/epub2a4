@@ -281,7 +281,7 @@ def _populate_cell(
     warnings: list[str] = []
     cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
     if settings.writing_mode == "taiwan_vertical":
-        _set_cell_text_direction(cell, "tbRl")
+        _set_cell_text_direction(cell, "tbRlV")
     assert settings.cell_outer_margin_cm is not None
     assert settings.gutter_margin_cm is not None
     assert settings.cell_vertical_margin_cm is not None
@@ -455,6 +455,11 @@ def write_docx(
                     if parity_number % 2 == 1
                     else row.cells[0].merge(row.cells[1])
                 )
+                guide_cell = (
+                    row.cells[0]
+                    if parity_number % 2 == 1
+                    else row.cells[2]
+                )
                 warnings.extend(
                     _populate_cell(
                         content_cell,
@@ -467,7 +472,7 @@ def write_docx(
                     )
                 )
                 add_guides_to_paragraph(
-                    content_cell.paragraphs[0],
+                    guide_cell.paragraphs[0],
                     page_placement.guides,
                     paper_width_mm=page_placement.paper_width_mm,
                     paper_height_mm=page_placement.paper_height_mm,

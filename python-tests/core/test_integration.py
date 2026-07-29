@@ -145,4 +145,4 @@ def test_vertical_epub_end_to_end_is_right_bound_and_reopenable(tmp_path: Path) 
     assert result.mini_page_count >= 2
     with ZipFile(output) as archive:
         xml = archive.read("word/document.xml")
-        assert b'<w:textDirection w:val="tbRl"' in xml
+        assert b'<w:textDirection w:val="tbRlV"' in xml

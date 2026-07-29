@@ -88,7 +88,7 @@ class LayoutSettings:
     grid_cols: int | None = None
     page_prefix_height_cm: float | None = None
     output_mark_mode: OutputMarkMode = "normal"
-    guide_render_mode: GuideRenderMode = "vml"
+    guide_render_mode: GuideRenderMode = "drawingml"
     page_margin_left_cm: float | None = None
     page_margin_right_cm: float | None = None
     page_margin_top_cm: float | None = None

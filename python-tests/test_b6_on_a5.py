@@ -58,4 +58,5 @@ def test_crop_mark_mode_adds_only_page_local_top_and_left_guides(tmp_path):
             return archive.read("word/document.xml")
 
     assert document_xml(normal).count(b"<v:line") == 0
-    assert document_xml(marked).count(b"<v:line") == 2
+    assert document_xml(marked).count(b"<v:line") == 0
+    assert document_xml(marked).count(b"<wp:anchor") == 2

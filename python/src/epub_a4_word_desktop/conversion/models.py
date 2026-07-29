@@ -35,7 +35,7 @@ class ConversionRequest:
     page_numbers: bool = True
     cut_guides: bool = True
     output_mark_mode: str = "normal"
-    guide_render_mode: str = "vml"
+    guide_render_mode: str = "drawingml"
     content_only: bool = True
 
     def validate(self) -> None:

@@ -13,6 +13,10 @@ from epub_a4_word.page_placement import CropGuide
 from epub_a4_word.pagination import LayoutSettings, MiniPage
 
 
+def test_layout_defaults_to_drawingml_guides() -> None:
+    assert LayoutSettings().guide_render_mode == "drawingml"
+
+
 def _page() -> MiniPage:
     return MiniPage(
         [TextBlock((TextRun("正文"),), style="body")],
@@ -89,6 +93,7 @@ def test_b6_drawingml_guides_use_same_full_page_coordinates(tmp_path: Path) -> N
     xml = _document_xml(output)
     assert "<w:drawing" in xml
     assert "<v:line" not in xml
+    assert xml.count('layoutInCell="0"') == 2
     assert xml.count('name="epub2a4-crop-guide-') == 2
     positions = re.findall(
         r'<wp:positionH relativeFrom="page"><wp:posOffset>(\d+)</wp:posOffset></wp:positionH>'

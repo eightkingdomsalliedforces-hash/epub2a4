@@ -31,6 +31,7 @@ def _page(text: str = "測試正文", number: int = 1) -> MiniPage:
 
 def _write(tmp_path: Path, mode: str, **settings_values) -> Path:
     output = tmp_path / f"{mode}-{len(list(tmp_path.iterdir()))}.docx"
+    settings_values.setdefault("guide_render_mode", "vml")
     write_docx(
         [_page()],
         output,
@@ -96,6 +97,7 @@ def test_b6_docx_uses_bottom_right_content_and_full_cut_lines(tmp_path: Path) ->
         assert actual == pytest.approx(wanted, abs=0.01)
     assert [values[4] for values, _inner in lines] == pytest.approx([0.35, 0.35])
     assert all(b"dashstyle" not in inner for _values, inner in lines)
+    assert _document_xml(output).count(b"mso-layout-in-cell:f") == 2
     assert _lines_from_headers(output) == []
 
 
@@ -155,6 +157,8 @@ def test_b6_docx_mirrors_crop_lines_per_page(tmp_path: Path) -> None:
         settings=LayoutSettings(
             imposition_mode="b6_on_a5",
             output_mark_mode="crop_marks",
+            writing_mode="taiwan_vertical",
+            guide_render_mode="vml",
         ),
         imposition_mode="b6_on_a5",
     )
@@ -181,6 +185,9 @@ def test_b6_docx_mirrors_crop_lines_per_page(tmp_path: Path) -> None:
         "count(.//w:body/w:tbl//w:pict)",
         namespaces=namespaces,
     )) == 4
+    for pict in root.xpath(".//w:pict", namespaces=namespaces):
+        guide_cell = pict.xpath("ancestor::w:tc[1]", namespaces=namespaces)[0]
+        assert not guide_cell.xpath(".//w:textDirection", namespaces=namespaces)
     identifiers = re.findall(
         rb'id="epub2a4-guide-(\d+)"',
         _document_xml(output),
